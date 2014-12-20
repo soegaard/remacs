@@ -51,18 +51,18 @@
 (module+ test
   (define illead-text 
     (text (map string->line
-               (list "Sing, O goddess, the anger of Achilles son of Peleus, that brought"
-                     "countless ills upon the Achaeans. Many a brave soul did it send hurrying"
-                     "down to Hades, and many a hero did it yield a prey to dogs and vultures,"
-                     "for so were the counsels of Jove fulfilled from the day on which the"
-                     "son of Atreus, king of men, and great Achilles, first fell out with"
-                     "one another."))))
+               (list "Sing, O goddess, the anger of Achilles son of Peleus, that brought\n"
+                     "countless ills upon the Achaeans. Many a brave soul did it send hurrying\n"
+                     "down to Hades, and many a hero did it yield a prey to dogs and vultures,\n"
+                     "for so were the counsels of Jove fulfilled from the day on which the\n"
+                     "son of Atreus, king of men, and great Achilles, first fell out with\n"
+                     "one another.\n"))))
   
   ; recreate the same text file from scratch
   (define (create-new-test-file path)
     (with-output-to-file path
       (λ() (for ([line (text-lines illead-text)])
-             (displayln (line-string line))))
+             (display (line-string line))))
       #:exists 'replace)))
 
 ; line-insert-char! : line char index -> void
@@ -104,7 +104,8 @@
 ;   create a text with contents from the file given by path
 (define (path->text path)
   (with-input-from-file path 
-    (λ () (text (for/list ([l (in-lines)]) (string->line l))))))
+    (λ () (text (for/list ([s (in-lines)])
+                  (string->line (string-append s "\n")))))))
 
 (module+ test
   (void (create-new-test-file "illead.txt"))
@@ -160,6 +161,21 @@
             (values (+ r 1) (+ q n))))))
   (values row col))
 
+; mark-move-beginning-of-line! : mark buffer -> void
+;   move the mark to the begining of its line
+(define (mark-move-beginning-of-line! m b)
+  (define p (mark-position m))
+  (define-values (row col) (mark-row+column m b))
+  (set-mark-position! m (- p col)))
+
+; mark-move-end-of-line! : mark buffer -> void
+;   move the mark to the end of its line
+(define (mark-move-end-of-line! m b)
+  (define p (mark-position m))
+  (define-values (row col) (mark-row+column m b))
+  (define n (line-length (list-ref (text-lines (buffer-text b)) row)))
+  (set-mark-position! m (+ p (- n col) -1)))
+
 ;;;
 ;;; BUFFER
 ;;;
@@ -191,7 +207,7 @@
   (when file
     (with-output-to-file file
       (λ () (for ([line (text-lines (buffer-text b))])
-              (displayln (line-string line))))
+              (display (line-string line))))
       #:exists 'replace)
     (set-buffer-modified?! b #f)))
 
@@ -205,7 +221,7 @@
 ;   replace text of buffer with file contents
 (define (read-buffer! b)
   (define path (buffer-path b))
-  (unless path (error 'read-buffer "no assoiated file: ~a" b))
+  (unless path (error 'read-buffer "no associated file: ~a" b))
   (define text (path->text path))
   (define stats (text-stats text))
   (set-buffer-text! b text)
@@ -267,6 +283,18 @@
   (define t (buffer-text b))
   (text-insert-char-at-mark! t m b c))
 
+; buffer-move-point-to-begining-of-line! : buffer -> void
+;   move the point to the beginning of the line
+(define (buffer-move-point-to-begining-of-line! b)
+  (define m (buffer-point b))
+  (mark-move-beginning-of-line! m b))
+
+; buffer-move-point-to-end-of-line! : buffer -> void
+;   move the point to the end of the line
+(define (buffer-move-point-to-end-of-line! b)
+  (define m (buffer-point b))
+  (mark-move-end-of-line! m b))
+
 ;;;
 ;;; WORLD
 ;;;
@@ -292,12 +320,22 @@
       (define/override (on-char event)
         (send msg set-label "subeditor-canvas key event")
         (define k (send event get-key-code))
-        (match k
-          [(? char? k) (buffer-insert-char! b k)
-                       (buffer-move-point! b 1)]
-          ['left       (buffer-move-point! b -1)]
-          ['right      (buffer-move-point! b  1)]
-          [_           (void)])
+        (define ctrl-down? (send event get-control-down))
+        (cond
+          [ctrl-down?
+            ; control
+            (match k
+              [#\a         (buffer-move-point-to-begining-of-line! b)]
+              [#\e         (buffer-move-point-to-end-of-line! b)]
+              [_           (void)])]
+          [else
+            ; no control
+            (match k
+              [(? char? k) (buffer-insert-char! b k)
+                           (buffer-move-point! b 1)]
+              ['left       (buffer-move-point! b -1)]
+              ['right      (buffer-move-point! b  1)]
+              [_           (void)])])
         (send canvas on-paint))
       (define/override (on-paint)
         (define dc (send canvas get-dc))
