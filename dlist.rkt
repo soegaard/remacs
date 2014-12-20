@@ -1,6 +1,7 @@
 #lang racket
 (provide dcons              ; (dcons element prev next)   like cons
          dempty             ; empty dlist
+         dempty?            ; empty predicate
          last-dcons?        ; is next dempty?
          first-dcons?       ; is prev dempty?
          dlist?             ; is input part of a dlist?
