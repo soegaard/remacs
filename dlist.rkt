@@ -26,6 +26,7 @@
          dlist-length       ; find total length
          right-dlist-length ; find total length of right sublist
          left-dlist-length  ; find total length of left sublist
+         for/dlist          ; dlist comprehension
          )
          
         
@@ -165,7 +166,8 @@
      (dcons a dempty dempty)]
     [(first-dcons? xs)
      (define d (dcons a dempty xs))
-     (set-dcons-p! xs d)]
+     (set-dcons-p! xs d)
+     d]
     [else
      (define p (dcons-p xs))
      (define d (dcons a p xs))
@@ -181,13 +183,14 @@
     [(dempty? xs)
      (dcons a dempty dempty)]
     [(last-dcons? xs)
-     (define d (dcons a dempty xs))
-     (set-dcons-p! xs d)]
+     (define d (dcons a xs dempty))
+     (set-dcons-n! xs d)
+     d]
     [else
-     (define p (dcons-p xs))
-     (define d (dcons a p xs))
-     (set-dcons-n! p d)
-     (set-dcons-p! xs d)
+     (define n (dcons-n xs))
+     (define d (dcons a n xs))
+     (set-dcons-p! n d)
+     (set-dcons-n! xs d)
      d]))
 
 (define (dlist-split-before! xs)
@@ -319,6 +322,14 @@
         (loop (+ n 1) (dcons-p xs))))
   (loop 0 xs))
 
+(define-syntax (for/dlist stx)
+  (syntax-parse stx
+    [(_ clauses . defs+exprs)
+     #'(let ()
+         (define xs (for/fold/derived stx ([xs dempty]) clauses
+                                      (define a (let () . defs+exprs))
+                                      (dinsert-after! xs a)))
+         (if (dempty? xs) xs (first-dcons xs)))]))
 
 
 (module+ test (require rackunit)
