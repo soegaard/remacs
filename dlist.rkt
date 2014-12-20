@@ -29,7 +29,7 @@
          right-dlist-length ; find total length of right sublist
          left-dlist-length  ; find total length of left sublist
          for/dlist          ; dlist comprehension
-         )
+         (struct-out dcons))
 
 ;;;
 ;;; DOUBLE LINKED LIST
