@@ -195,7 +195,7 @@
      d]
     [else
      (define n (dcons-n xs))
-     (define d (dcons a n xs))
+     (define d (dcons a xs n))
      (set-dcons-p! n d)
      (set-dcons-n! xs d)
      d]))
