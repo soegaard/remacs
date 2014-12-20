@@ -2,6 +2,7 @@
 (provide dcons              ; (dcons element prev next)   like cons
          dempty             ; empty dlist
          dempty?            ; empty predicate
+         dfirst             ; first element
          last-dcons?        ; is next dempty?
          first-dcons?       ; is prev dempty?
          dlist?             ; is input part of a dlist?
@@ -46,16 +47,15 @@
   #:property prop:sequence
   (λ (xs) (in-right-dlist/proc xs)))
 
-
-      
-      
-      
-
-
 ; dempty? : any -> boolean
 ;   does xs represent the empty doubly linked list
 (define (dempty? xs) 
   (null? xs))
+
+; dfirst : dlist -> any
+;   return first element
+(define (dfirst xs)
+  (dcons-a xs))
 
 ; last-dcons? : any -> boolean
 ;   is xs the last dcons in a doubly linked list?
