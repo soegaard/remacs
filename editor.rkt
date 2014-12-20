@@ -145,6 +145,15 @@
   (define l (dlist-ref (text-lines t) row))
   (line-insert-char! l c col))
 
+; text-break-line! : text natural natural -> void
+;   break line number row into two at index col
+(define (text-break-line! t row col)
+  (define d (dlist-move (text-lines t) row))
+  (define l (dfirst d))
+  (define-values (pre post) (line-split l col))
+  (set-dcons-a! d pre)
+  (dinsert-after! d post)
+  (set-text-length! t (+ 1 (text-length t))))
 
 ;;;
 ;;; MARKS
@@ -314,23 +323,18 @@
 (define (buffer-length b)
   (text-length (buffer-text b)))
 
+
 ; buffer-break-line! : buffer -> void
 ;   break line at point
 (define (buffer-break-line! b)
   (define m (buffer-point b))
-  (define t (buffer-text b))
   (define-values (row col) (mark-row+column m b))
-  (define d (dlist-move (text-lines t) row))
-  (define l (dfirst d))
-  (define-values (pre post) (line-split l col))
-  (set-dcons-a! d pre)
-  (dinsert-after! d post)
-  (set-text-length! t (+ 1 (text-length t)))
+  (text-break-line! (buffer-text b) row col)
   (mark-move! m b 1))
 
-;;;
-;;; WORLD
-;;;
+;(define (buffer-delete-backward-char count)
+;  ; emacs: delete-backward-char
+  
 
 ;;;
 ;;; GUI
