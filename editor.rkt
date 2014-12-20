@@ -89,6 +89,15 @@
   (set-line-string! l new-string)
   (set-line-length! l (+ n (string-length t))))
 
+
+(define (line-split l i)
+  (define s (line-string l))
+  (define n (line-length l))
+  (define s1 (substring s 0 i))
+  (define s2 (substring s i n))
+  (values (line (string-append s1 "\n") (+ i 1))
+          (line s2 (- n i))))
+
 ;;;
 ;;; TEXT
 ;;;
@@ -147,7 +156,6 @@
 ; mark-move! : mark buffer integer -> void
 ;  move the mark n characters
 (define (mark-move! m b n)
-  (displayln (list (buffer-length b) m))
   (define p (mark-position m))
   (define q (if (> n 0)
                 (min (+ p n) (max 0 (- (buffer-length b) 1)))
@@ -301,8 +309,24 @@
   (define m (buffer-point b))
   (mark-move-end-of-line! m b))
 
+; buffer-length : buffer -> natural
+;   return the total length of the text
 (define (buffer-length b)
   (text-length (buffer-text b)))
+
+; buffer-break-line! : buffer -> void
+;   break line at point
+(define (buffer-break-line! b)
+  (define m (buffer-point b))
+  (define t (buffer-text b))
+  (define-values (row col) (mark-row+column m b))
+  (define d (dlist-move (text-lines t) row))
+  (define l (dfirst d))
+  (define-values (pre post) (line-split l col))
+  (set-dcons-a! d pre)
+  (dinsert-after! d post)
+  (set-text-length! t (+ 1 (text-length t)))
+  (mark-move! m b 1))
 
 ;;;
 ;;; WORLD
@@ -340,11 +364,16 @@
           [else
            ; no control
            (match k
+             [#\return    (buffer-break-line! b)]
+             [#\backspace (error 'todo)] ; the backspace key
+             [#\rubout    (error 'todo)] ; the delete key
              [(? char? k) (buffer-insert-char! b k)
                           (buffer-move-point! b 1)]
              ['left       (buffer-move-point! b -1)]
              ['right      (buffer-move-point! b  1)]
-             [_           (void)])])
+             [_           (when (char? k)
+                            (display "key not handled: ") (write k) (newline))
+                          (void)])])
         (send canvas on-paint))
       (define/override (on-paint)
         (define dc (send canvas get-dc))
