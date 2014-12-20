@@ -1,28 +1,31 @@
 #lang racket
-(provide dcons             ; (dcons element prev next)   like cons
-         dempty            ; empty dlist
-         last-dcons?       ; is next dempty?
-         first-dcons?      ; is prev dempty?
-         dlist?            ; is input part of a dlist?
-         first-dcons       ; find first dcons in the dlist
-         last-dcons        ; find last dcons in the dlist
-         list->dlist       ; create dlist with elements from list
-         right-dlist->list ; create list with elements from the dcons and dconses to the right
-         left-dlist->list  ; create list with elements from the dcons and dconses to the left
-         dlist->list       ; convert dlist to list
-         dappend!          ; destructively append two lists
-         connect-dconses!  ; link two dconses together
-         dinsert-before!   ; insert element in a newly allocated dcons before input dcons
-         dinsert-after!    ; insert element in a newly allocated dcons after input dcons
-         dlist             ; create dlist, like list
-         in-right-dlist    ; iterate to the right
-         in-left-dlist     ; iterate to the left
-         in-dlist          ; iterate through all elements
-         dlist             ; match pattern
-         right-dlist       ; match pattern
-         left-dlist        ; match pattern
-         dlist-ref         ; like list-ref, negative indices to the left
-         dlist-move        ; find dcons relative to input
+(provide dcons              ; (dcons element prev next)   like cons
+         dempty             ; empty dlist
+         last-dcons?        ; is next dempty?
+         first-dcons?       ; is prev dempty?
+         dlist?             ; is input part of a dlist?
+         first-dcons        ; find first dcons in the dlist
+         last-dcons         ; find last dcons in the dlist
+         list->dlist        ; create dlist with elements from list
+         right-dlist->list  ; create list with elements from the dcons and dconses to the right
+         left-dlist->list   ; create list with elements from the dcons and dconses to the left
+         dlist->list        ; convert dlist to list
+         dappend!           ; destructively append two lists
+         connect-dconses!   ; link two dconses together
+         dinsert-before!    ; insert element in a newly allocated dcons before input dcons
+         dinsert-after!     ; insert element in a newly allocated dcons after input dcons
+         dlist              ; create dlist, like list
+         in-right-dlist     ; iterate to the right
+         in-left-dlist      ; iterate to the left
+         in-dlist           ; iterate through all elements
+         dlist              ; match pattern
+         right-dlist        ; match pattern
+         left-dlist         ; match pattern
+         dlist-ref          ; like list-ref, negative indices to the left
+         dlist-move         ; find dcons relative to input
+         dlist-length       ; find total length
+         right-dlist-length ; find total length of right sublist
+         left-dlist-length  ; find total length of left sublist
          )
          
         
@@ -296,6 +299,27 @@
     (syntax-parse stx
       [[(a) (_ xs-expr)]
        #'[(a) (in-right-dlist (first-dcons xs-expr))]])))
+
+(define (dlist-length xs)
+  (if (dempty? xs)
+      0
+      (right-dlist-length (first-dcons xs))))
+
+(define (right-dlist-length xs)
+  (define (loop n xs)
+    (if (dempty? xs)
+        n
+        (loop (+ n 1) (dcons-n xs))))
+  (loop 0 xs))
+
+(define (left-dlist-length xs)
+  (define (loop n xs)
+    (if (dempty? xs)
+        n
+        (loop (+ n 1) (dcons-p xs))))
+  (loop 0 xs))
+
+
 
 (module+ test (require rackunit)
   (define xs (list->dlist '(1 2 3)))
