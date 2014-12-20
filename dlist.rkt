@@ -1,4 +1,32 @@
 #lang racket
+(provide dcons             ; (dcons element prev next)   like cons
+         dempty            ; empty dlist
+         last-dcons?       ; is next dempty?
+         first-dcons?      ; is prev dempty?
+         dlist?            ; is input part of a dlist?
+         first-dcons       ; find first dcons in the dlist
+         last-dcons        ; find last dcons in the dlist
+         list->dlist       ; create dlist with elements from list
+         right-dlist->list ; create list with elements from the dcons and dconses to the right
+         left-dlist->list  ; create list with elements from the dcons and dconses to the left
+         dlist->list       ; convert dlist to list
+         dappend!          ; destructively append two lists
+         connect-dconses!  ; link two dconses together
+         dinsert-before!   ; insert element in a newly allocated dcons before input dcons
+         dinsert-after!    ; insert element in a newly allocated dcons after input dcons
+         dlist             ; create dlist, like list
+         in-right-dlist    ; iterate to the right
+         in-left-dlist     ; iterate to the left
+         in-dlist          ; iterate through all elements
+         dlist             ; match pattern
+         right-dlist       ; match pattern
+         left-dlist        ; match pattern
+         dlist-ref         ; like list-ref, negative indices to the left
+         dlist-move        ; find dcons relative to input
+         )
+         
+        
+         
 ;;;
 ;;; DOUBLE LINKED LIST
 ;;;
