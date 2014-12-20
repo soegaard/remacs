@@ -8,13 +8,13 @@
 
 (struct line (string length) #:transparent #:mutable)
 
-(struct text (lines) #:transparent)
+(struct text (lines length) #:transparent #:mutable)
 ; A text being edited is represented as a doubly linked list of lines.
 
 (struct stats (num-lines num-chars))
 ; The number of lines and number of characters in a text.
 
-(struct buffer (text name path points marks modes cur-line num-chars num-lines modified?) 
+(struct buffer (text name path points marks modes cur-line num-chars num-lines modified?)
   #:transparent #:mutable)
 ; A buffer is the basic unit of text being edited.
 ; It contains a text being edited.
@@ -51,14 +51,14 @@
 
 (module+ test
   (define illead-text 
-    (text (list->dlist
-           (map string->line
-                (list "Sing, O goddess, the anger of Achilles son of Peleus, that brought\n"
-                      "countless ills upon the Achaeans. Many a brave soul did it send hurrying\n"
-                      "down to Hades, and many a hero did it yield a prey to dogs and vultures,\n"
-                      "for so were the counsels of Jove fulfilled from the day on which the\n"
-                      "son of Atreus, king of men, and great Achilles, first fell out with\n"
-                      "one another.\n")))))
+    (new-text (list->dlist
+               (map string->line
+                    (list "Sing, O goddess, the anger of Achilles son of Peleus, that brought\n"
+                          "countless ills upon the Achaeans. Many a brave soul did it send hurrying\n"
+                          "down to Hades, and many a hero did it yield a prey to dogs and vultures,\n"
+                          "for so were the counsels of Jove fulfilled from the day on which the\n"
+                          "son of Atreus, king of men, and great Achilles, first fell out with\n"
+                          "one another.\n")))))
   
   ; recreate the same text file from scratch
   (define (create-new-test-file path)
@@ -95,24 +95,22 @@
 
 ; new-text : -> text
 ;   create an empty text
-(define (new-text)
-  (text '()))
+(define (new-text [lines dempty])
+  (cond 
+    [(dempty? lines) (text dempty 0)]
+    [else            (text lines (for/sum ([l lines]) (line-length l)))]))
 
-; text-append : text text -> text
+; text-append! : text text -> text
 (define (text-append! t1 t2)
-  (text (dappend! (text-lines t1) (text-lines t2))))
-
-#;(define (text-append t1 t2)
-    (text (append (text-lines t1) (text-lines t2))))
-
-
+  (text (dappend! (text-lines t1) (text-lines t2))
+        (+ (text-length t1) (text-length t2))))
 
 ; path->text : path -> text
 ;   create a text with contents from the file given by path
 (define (path->text path)
   (with-input-from-file path 
-    (λ () (text (for/dlist ([s (in-lines)])
-                  (string->line (string-append s "\n")))))))
+    (λ () (new-text (for/dlist ([s (in-lines)])
+                      (string->line (string-append s "\n")))))))
 
 (module+ test
   (void (create-new-test-file "illead.txt"))
@@ -146,13 +144,14 @@
 (define (new-mark name [pos 0] [fixed? #f])
   (mark pos name fixed?))
 
-; mark-move! : mark integer -> void
+; mark-move! : mark buffer integer -> void
 ;  move the mark n characters
-(define (mark-move! m n)
+(define (mark-move! m b n)
+  (displayln (list (buffer-length b) m))
   (define p (mark-position m))
   (define q (if (> n 0)
-                (+ p n) ; todo: max position in buffer?
-                (max 0     (+ p n))))
+                (min (+ p n) (max 0 (- (buffer-length b) 1)))
+                (max (+ p n) 0)))
   (set-mark-position! m q))
 
 ; mark-row+column : mark buffer -> integer integer
@@ -238,7 +237,7 @@
 
 (module+ test
   (void (create-new-test-file "illead.txt"))
-  (define b (new-buffer (text '()) "illead.txt" "illead"))
+  (define b (new-buffer (new-text) "illead.txt" "illead"))
   (read-buffer! b)
   (check-equal? b illead-buffer))
 
@@ -268,17 +267,17 @@
 ; buffer-point-set! : buffer mark -> void
 ;   set the point at the position given by the mark m
 (define (buffer-move-point! b n)
-  (mark-move! (buffer-point b) n))
+  (mark-move! (buffer-point b) b n))
 
 (define (buffer-display b)
   (define (line-display l)
-    (displayln (line-string l)))
+    (display (line-string l)))
   (define (text-display t)
     (for ([l (text-lines t)])
       (line-display l)))
   (define (status-display)
-    (newline)
-    (displayln (~a "buffer: " (buffer-name b) "    " (if (buffer-modified? b) "*" "saved"))))
+    (displayln (~a "--- buffer: " (buffer-name b) "    " (if (buffer-modified? b) "*" "saved") 
+                   " ---")))
   (text-display (buffer-text b))
   (status-display))
 
@@ -301,6 +300,9 @@
 (define (buffer-move-point-to-end-of-line! b)
   (define m (buffer-point b))
   (mark-move-end-of-line! m b))
+
+(define (buffer-length b)
+  (text-length (buffer-text b)))
 
 ;;;
 ;;; WORLD
@@ -351,7 +353,7 @@
         (send dc set-text-foreground text-color)
         (send dc set-font fixed-font)
         ; draw line
-        (for/fold ([y 0]) ([l (text-lines (buffer-text b))])          
+        (for/fold ([y 0]) ([l (text-lines (buffer-text b))])
           (send dc draw-text (line-string l) 0 y)
           (+ y font-size 1))
         ; draw points
@@ -359,7 +361,7 @@
         (for ([p (buffer-points b)])
           (define-values (r c) (mark-row+column p b))
           (define x (* c font-width))
-          (define y (* r font-height))
+          (define y (* r (+ font-height -2))) ; why -2 ?
           (send dc draw-line x y x (+ y font-height))))
       (super-new)))
   (define canvas (new subeditor-canvas% [parent frame]))
@@ -369,13 +371,3 @@
 
 (module+ test
   (new-editor-frame illead-buffer))
-
-
-
-
-
-
-
-
-
-
