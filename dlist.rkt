@@ -28,9 +28,7 @@
          left-dlist-length  ; find total length of left sublist
          for/dlist          ; dlist comprehension
          )
-         
-        
-         
+
 ;;;
 ;;; DOUBLE LINKED LIST
 ;;;
@@ -42,8 +40,16 @@
 ;      p is the previous dcons
 ;      n is the next dcons.
 
-(struct dcons (a p n) #:mutable #:transparent)
 (define dempty '())
+(struct dcons (a p n) #:mutable #:transparent
+  #:property prop:sequence
+  (λ (xs) (in-right-dlist/proc xs)))
+
+
+      
+      
+      
+
 
 ; dempty? : any -> boolean
 ;   does xs represent the empty doubly linked list
@@ -303,6 +309,33 @@
       [[(a) (_ xs-expr)]
        #'[(a) (in-right-dlist (first-dcons xs-expr))]])))
 
+(define (in-right-dlist/proc xs)
+  (make-do-sequence 
+   (λ ()
+     (values 
+      dcons-a ; pos->element
+      dcons-n ; next pos
+      xs      ; initial pos
+      dcons?  ; continue-with-pos?
+      #f      ; use continue-with-pos?
+      #f      ; ditto
+      ))))
+
+(define (in-left-dlist/proc xs)
+  (make-do-sequence 
+   (λ ()
+     (values 
+      dcons-a ; pos->element
+      dcons-p ; next pos
+      xs      ; initial pos
+      dcons?  ; continue-with-pos?
+      #f      ; use continue-with-pos?
+      #f      ; ditto
+      ))))
+
+(define (in-dlist/proc xs)
+  (in-right-dlist/proc (first-dcons xs)))
+  
 (define (dlist-length xs)
   (if (dempty? xs)
       0
