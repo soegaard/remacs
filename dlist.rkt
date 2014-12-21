@@ -25,11 +25,12 @@
          left-dlist         ; match pattern
          dlist-ref          ; like list-ref, negative indices to the left
          dlist-move         ; find dcons relative to input
-         dlist-length       ; find total length
-         right-dlist-length ; find total length of right sublist
-         left-dlist-length  ; find total length of left sublist
+         dlength            ; find total length
+         right-dlength      ; find total length of right sublist
+         left-dlength       ; find total length of left sublist
          for/dlist          ; dlist comprehension
          dcons-remove!      ; remove dcons from dlist, return previous
+         dlength            ; length
          (struct-out dcons))
 
 ;;;
@@ -88,6 +89,7 @@
   (or (null? xs)
       (and (dcons? xs)
            (dlist-right? (dcons-n xs)))))
+
 
 ; last-dcons : dcons -> dcons
 ;   find the last dcons to the right
@@ -357,19 +359,21 @@
 (define (in-dlist/proc xs)
   (in-right-dlist/proc (first-dcons xs)))
   
-(define (dlist-length xs)
+(define (dlength xs)
   (if (dempty? xs)
       0
-      (right-dlist-length (first-dcons xs))))
+      (+ (right-dlength xs)
+         (left-dlength xs)
+         -1)))
 
-(define (right-dlist-length xs)
+(define (right-dlength xs)
   (define (loop n xs)
     (if (dempty? xs)
         n
         (loop (+ n 1) (dcons-n xs))))
   (loop 0 xs))
 
-(define (left-dlist-length xs)
+(define (left-dlength xs)
   (define (loop n xs)
     (if (dempty? xs)
         n
