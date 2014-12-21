@@ -67,6 +67,7 @@
              (display (line-string line))))
       #:exists 'replace)))
 
+
 ; line-insert-char! : line char index -> void
 ;   insert char c in the line l at index i
 (define (line-insert-char! l c i)
@@ -97,6 +98,20 @@
   (define s2 (substring s i n))
   (values (line (string-append s1 "\n") (+ i 1))
           (line s2 (- n i))))
+
+(define (line-append l1 l2)
+  (line (string-append (line-string l1) (line-string l2))
+        (+ (line-length l1) (line-length l2))))
+
+; line-delete-backward-char! : line -> line
+(define (line-delete-backward-char! l i)
+  (unless (> i 0) (error 'line-delete-backward-char! "got ~a" i))
+  (define s (line-string l))
+  (define n (line-length l))
+  (define s1 (substring s 0 (- i 1)))
+  (define s2 (substring s i n))
+  (set-line-string! l (string-append s1 s2))
+  (set-line-length! l (- n 1)))
 
 ;;;
 ;;; TEXT
@@ -154,6 +169,29 @@
   (set-dcons-a! d pre)
   (dinsert-after! d post)
   (set-text-length! t (+ 1 (text-length t))))
+
+; text-delete-backward-char! : text natural natural -> void
+;   delete the char at line row before column col
+(define (text-delete-backward-char! t row col)
+  (define d (dlist-move (text-lines t) row))
+  (define l (dfirst d))
+  (define n (text-length t))
+  (cond
+    [(> col 0) (line-delete-backward-char! l col)
+               (set-text-length! t (- n 1))]
+    [(and (= col 0) (= row 0))
+     (beep "Beginning of buffer")]
+    [(= col 0) 
+     ; we need to append this line to the previous
+     (define p (dcons-p d))
+     (define pl (dfirst p))
+     (set-dcons-a! p (line-append pl l))
+     (dcons-remove! d)
+     (set-text-length! t (- n 1))]
+    [else      ; 
+     (error 'todo)]))
+
+(define beep void)
 
 ;;;
 ;;; MARKS
@@ -332,8 +370,13 @@
   (text-break-line! (buffer-text b) row col)
   (mark-move! m b 1))
 
-;(define (buffer-delete-backward-char count)
-;  ; emacs: delete-backward-char
+(define (buffer-delete-backward-char b [count 1])
+  ; emacs: delete-backward-char
+  (define m (buffer-point b))
+  (define t (buffer-text b))
+  (define-values (row col) (mark-row+column m b))
+  (text-delete-backward-char! t row col)
+  (mark-move! m b -1))
   
 
 ;;;
@@ -369,7 +412,7 @@
            ; no control
            (match k
              [#\return    (buffer-break-line! b)]
-             [#\backspace (error 'todo)] ; the backspace key
+             [#\backspace (buffer-delete-backward-char b 1)] ; the backspace key
              [#\rubout    (error 'todo)] ; the delete key
              [(? char? k) (buffer-insert-char! b k)
                           (buffer-move-point! b 1)]
