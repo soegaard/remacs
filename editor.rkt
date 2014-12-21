@@ -45,6 +45,11 @@
 ;;; LINES
 ;;;
 
+; line-ref : line index -> char
+;   return the ith character of a line
+(define (line-ref l i)
+  (string-ref (line-string l) i))
+
 ; string->line : string -> line
 (define (string->line s)
   (line s (string-length s)))
@@ -127,6 +132,12 @@
   (cond 
     [(dempty? lines) (text dempty 0)]
     [else            (text lines (for/sum ([l lines]) (line-length l)))]))
+
+
+; text-line : text integer -> line
+;   the the ith line
+(define (text-line t i)
+  (dlist-ref (text-lines t) i))  
 
 ; text-append! : text text -> text
 (define (text-append! t1 t2)
@@ -257,7 +268,6 @@
   (define p (mark-position m))
   (define-values (row col) (mark-row+column m))
   (define t (buffer-text (mark-buffer m)))
-  (displayln (list row (text-num-lines t)))
   (unless (= (+ row 1) (text-num-lines t))
     (define d (dlist-move (text-lines t) row))
     (define l1 (dfirst d))
@@ -265,6 +275,38 @@
     (define new-col (min (line-length l2) col))
     (define new-pos (+ p (- (line-length l1) col) new-col))
     (set-mark-position! m new-pos)))
+
+; mark-backward-word! : mark -> void
+;   move mark backward until a word seperator is found
+(define (mark-backward-word! m)
+  (define-values (row col) (mark-row+column m))
+  (define t (buffer-text (mark-buffer m)))
+  (define l (text-line t row))
+  ; first skip whitespace
+  (define i (for/first ([i (in-range (- col 1) -1 -1)]
+                        #:when (not (word-separator? (line-ref l i))))
+              i))
+  (cond
+    [(or (not i) (= i 0))
+     ; continue searching for word at previous line (unless at top line)
+     (mark-move-beginning-of-line! m)
+     (unless (= row 0)
+       (mark-move! m -1)
+       (mark-backward-word! m))]
+    [else
+     ; we have found a word, find the beginning
+     (define j (for/first ([j (in-range (or i (- col 1)) -1 -1)]
+                           #:when (word-separator? (line-ref l j)))
+                 j))
+     ; j is now the index of the first word separator
+     (mark-move! m (- (if j (- col (+ j 1)) col)))]))
+
+;;;
+;;; WORDS
+;;;
+
+(define (word-separator? c)
+  (char-whitespace? c))
 
 ;;;
 ;;; BUFFER
@@ -362,6 +404,13 @@
 (define (buffer-move-point-down! b)
   (mark-move-down! (buffer-point b)))
 
+; buffer-backward-word! : buffer -> void
+;   move point to until it a delimiter is found
+(define (buffer-backward-word! b)
+  (displayln (list buffer-backward-word!))
+  (mark-backward-word! (buffer-point b)))
+  
+
 (define (buffer-display b)
   (define (line-display l)
     (display (~a "|" (regexp-replace #rx"\n$" (line-string l) "") "|\n")))
@@ -447,8 +496,10 @@
              [_           (void)])]
           [meta-down?   ; command + something
            (match k
-             ['left       (buffer-move-point-to-begining-of-line! b)]
-             ['right      (buffer-move-point-to-end-of-line! b)]
+             ['left       (buffer-backward-word! b)]
+             ; ['right      (buffer-move-point-to-end-of-line! b)]
+             ; ['left       (buffer-move-point-to-begining-of-line! b)]
+             ; ['right      (buffer-move-point-to-end-of-line! b)]
              [#\d         (buffer-display b)]
              [#\s         (save-buffer! b)]
              [#\w         (save-buffer! b)      ; todo: ask!
