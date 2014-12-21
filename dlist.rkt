@@ -29,6 +29,7 @@
          right-dlist-length ; find total length of right sublist
          left-dlist-length  ; find total length of left sublist
          for/dlist          ; dlist comprehension
+         dcons-remove!      ; remove dcons from dlist, return previous
          (struct-out dcons))
 
 ;;;
@@ -199,6 +200,25 @@
      (set-dcons-p! n d)
      (set-dcons-n! xs d)
      d]))
+
+(define (dcons-remove! xs)
+  (cond
+    [(and (first-dcons? xs) (last-dcons? xs))
+     dempty]
+    [(first-dcons? xs)
+     (define n (dcons-n xs))
+     (set-dcons-p! n dempty)
+     n]
+    [(last-dcons? xs)
+     (define p (dcons-p xs))
+     (set-dcons-n! p dempty)
+     p]
+    [else
+     (define p (dcons-p xs))
+     (define n (dcons-n xs))
+     (set-dcons-n! p n)
+     (set-dcons-p! n p)
+     p]))
 
 (define (dlist-split-before! xs)
   (cond
