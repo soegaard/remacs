@@ -6,7 +6,17 @@
 ;;; REPRESENTATION
 ;;;
 
-(struct line (string length) #:transparent #:mutable)
+(struct line (strings length) #:transparent #:mutable)
+
+(struct linked-line dcons (version marks) #:transparent #:mutable)
+; the element of a linked-line is a line struct
+; marks is a list of marks located on the line
+; version will be used for the redisplay code
+
+; properties are copied as part of the text
+; overlays are not copied - they are specifically not part of the text
+; (struct overlay  (specification) #:transparent)
+; (struct property (specification) #:transparent)
 
 (struct text (lines length) #:transparent #:mutable)
 ; A text being edited is represented as a doubly linked list of lines.
@@ -45,82 +55,174 @@
 ;;; LINES
 ;;;
 
-; line-ref : line index -> char
-;   return the ith character of a line
-(define (line-ref l i)
-  (string-ref (line-string l) i))
+(define (line->string l)
+  (apply string-append (line-strings l)))
 
 ; string->line : string -> line
 (define (string->line s)
-  (line s (string-length s)))
+  (line (list s) (string-length s)))
+
+(define (new-line s)
+  (string->line s))
+
+; list->lines : list-of-strings -> dlist-of-lines
+(define (list->lines xs)
+  (define (string->line s) (new-line s))
+  (define (recur p xs)
+    (cond 
+      [(null? xs) dempty]
+      [else       (define s (car xs))
+                  (define l (new-line s))
+                  (define d (linked-line l p #f #f '()))
+                  (define n (recur d (cdr xs)))
+                  (set-dcons-n! d n)
+                  d]))
+  (cond 
+    [(null? xs)   (dlist (new-line "\n") dempty dempty)]
+    [else         (define s (car xs))
+                  (define l (new-line s))
+                  (define d (linked-line l dempty #f #f '()))
+                  (define n (recur d (cdr xs)))
+                  (set-dcons-n! d n)
+                  d]))
+
+; line-ref : line index -> char
+;   return the ith character of a line
+(define (line-ref l i)
+  (when (>= i (line-length l))
+    (error 'line-ref "index ~a to large for line, got: ~a" i l))
+  (let loop ([i i] [ss (line-strings l)])
+    (define s (first ss))
+    (define n (string-length s))
+    (if (< i n) 
+        (string-ref s i)
+        (loop (- i n) (rest ss)))))
 
 (module+ test
   (define illead-text 
-    (new-text (list->dlist
-               (map string->line
-                    (list "Sing, O goddess, the anger of Achilles son of Peleus, that brought\n"
-                          "countless ills upon the Achaeans. Many a brave soul did it send hurrying\n"
-                          "down to Hades, and many a hero did it yield a prey to dogs and vultures,\n"
-                          "for so were the counsels of Jove fulfilled from the day on which the\n"
-                          "son of Atreus, king of men, and great Achilles, first fell out with\n"
-                          "one another.\n")))))
+    (new-text 
+     (list->lines
+      (list "Sing, O goddess, the anger of Achilles son of Peleus, that brought\n"
+            "countless ills upon the Achaeans. Many a brave soul did it send hurrying\n"
+            "down to Hades, and many a hero did it yield a prey to dogs and vultures,\n"
+            "for so were the counsels of Jove fulfilled from the day on which the\n"
+            "son of Atreus, king of men, and great Achilles, first fell out with\n"
+            "one another.\n"))))
   
   ; recreate the same text file from scratch
   (define (create-new-test-file path)
     (with-output-to-file path
       (λ() (for ([line (text-lines illead-text)])
-             (display (line-string line))))
+             (for ([s (line-strings line)])
+               (display s))))
       #:exists 'replace)))
 
+(define (string-insert-char s i c)
+  (define n (string-length s))
+  (unless (<= i n) (error 'string-insert-char "index too large, got ~a ~a" s i))
+  (cond 
+    [(= i n) (string-append s (string s))]
+    [(= i 0) (string-append (string c) s)]
+    [else    (string-append (substring s 0 i) (string c) (substring s i n))]))
+
+; skip-strings : list-of-strings index -> index strings strings
+;   If (j, us, vs) is returned,
+;   then ss = (append us vs)
+;   and  (string-ref (concat ss) i) = (string-ref (first vs) j)
+(define (skip-strings ss i)
+  (let loop ([i i] [before '()] [after ss])
+    (cond 
+      [(null? after) (values #f (reverse before) '())]
+      [else          (define s (first after))
+                     (define n (string-length s))
+                     (if (< i n)
+                         (values i (reverse before) after)
+                         (loop (- i n) (cons s before) (rest after)))])))
 
 ; line-insert-char! : line char index -> void
 ;   insert char c in the line l at index i
 (define (line-insert-char! l c i)
-  (match-define (line s n) l)
+  (define n (line-length l))
   (unless (<= i n) (error 'line-insert-char "index i greater than line length, i=~a, l=~a" i l))
-  (define new-string (cond [(= i n) (string-append s (string c))]
-                           [(= i 0) (string-append (string c) s)]
-                           [else    (string-append (substring s 0 i) (string c) (substring s i n))]))
-  (set-line-string! l new-string)
-  (set-line-length! l (+ n 1)))
+  (define-values (j us vs) (skip-strings (line-strings l) i))
+  (define v (first vs))
+  (define vn (string-length v))
+  (define w (cond 
+              [(= j 0)  (string-append (string c) v)]
+              [(= j vn) (string-append v (string c))]
+              [else     (string-append (substring v 0 j) (string c) (substring v j vn))]))
+  (set-line-strings! l (append us (cons w (rest vs))))
+  (set-line-length!  l (+ n 1)))
 
 ; line-insert-string! : line string index -> void
 ;   insert string t in the line l at index i
 (define (line-insert-string! l t i)
-  (match-define (line s n) l)
-  (unless (<= i n) (error 'line-insert-char "index i greater than line length, i=~a, l=~a" i l))
-  (define new-string (cond [(= i n) (string-append s t)]
-                           [(= i 0) (string-append t s)]
-                           [else    (string-append (substring s 0 i) t (substring s i n))]))
-  (set-line-string! l new-string)
-  (set-line-length! l (+ n (string-length t))))
-
-
-(define (line-split l i)
-  (define s (line-string l))
   (define n (line-length l))
-  (define s1 (substring s 0 i))
-  (define s2 (substring s i n))
-  (values (line (string-append s1 "\n") (+ i 1))
-          (line s2 (- n i))))
+  (unless (<= i n) (error 'line-insert-string "index i greater than line length, i=~a, l=~a" i l))
+  (define-values (j us vs) (skip-strings (line-strings l) i))
+  (define v (first vs))
+  (define vn (string-length v))
+  (define w (cond 
+              [(= j 0)  (string-append t v)]
+              [(= j vn) (string-append v t)]
+              [else     (string-append (substring v 0 j) t (substring v j vn))]))
+  (set-line-strings! l (append us (cons w (rest vs))))
+  (set-line-length!  l (+ n (string-length t))))
+
+; line-split : line index -> line line
+;   split the line in two at the index
+(define (line-split l i)
+  (define n (line-length l))
+  (unless (<= i n) (error 'line-split "index ~a larger than line length ~a, the line is ~a" i n l))
+  (define-values (j us vs) (skip-strings (line-strings l) i))  
+  (cond
+    [(empty? vs) (values l (line '("\n") 0))]
+    [else        (define s (first vs))
+                 (define sn (string-length s))
+                 (define s1 (substring s 0 j))
+                 (define s2 (substring s j sn))
+                 (values (line (append us (list (string-append s1 "\n"))) (+ i 1))
+                         (line (cons s2 (rest vs)) (- n i)))]))
 
 ; line-append : line line -> line
 ;   append two lines, note the line ending of l1 is removed
 (define (line-append l1 l2)
-  (define s1 (line-string l1))
-  (define n1 (string-length s1))  
-  (line (string-append (substring s1 0 (- n1 1)) (line-string l2))
-        (+ (line-length l1) -1 (line-length l2))))
+  (define ws (let loop ([us (line-strings l1)])
+               ; we must remove the newline of the last string of us
+               (if (null? (rest us))
+                   (cons (substring (first us) 0 (- (string-length (first us)) 1))
+                         (line-strings l2))
+                   (cons (first us)
+                         (loop (rest us))))))
+  (line ws (+ (line-length l1) -1 (line-length l2))))
+
+(module+ test
+  (check-equal? (line-append (line '("a" "b\n") 3) (line '("c" "d\n") 3))
+                (line '("a" "b" "c" "d\n") 5)))
 
 ; line-delete-backward-char! : line -> line
 (define (line-delete-backward-char! l i)
   (unless (> i 0) (error 'line-delete-backward-char! "got ~a" i))
-  (define s (line-string l))
-  (define n (line-length l))
-  (define s1 (substring s 0 (- i 1)))
-  (define s2 (substring s i n))
-  (set-line-string! l (string-append s1 s2))
-  (set-line-length! l (- n 1)))
+  (define-values (j us vs) (skip-strings (line-strings l) (- i 1)))
+  (write (list 'back-char l i 'j j 'us us 'vs vs)) (newline)
+  (define s (first vs))
+  (define n (string-length s))
+  (define s1 (substring s 0 j)) 
+  (define s2 (substring s (+ j 1) n))
+  (define ws (append us (cons (string-append s1 s2) (rest vs))))
+  (set-line-strings! l ws)
+  (set-line-length! l (- (line-length l) 1)))
+
+(module+ test
+  (define del-char line-delete-backward-char!)
+  (check-equal? (let ([l (line '("abc\n") 4)]) (del-char l 1) l) (line '("bc\n") 3))
+  (check-equal? (let ([l (line '("abc\n") 4)]) (del-char l 2) l) (line '("ac\n") 3))
+  (check-equal? (let ([l (line '("abc\n") 4)]) (del-char l 3) l) (line '("ab\n") 3))
+  (check-equal? (let ([l (line '("ab" "cd\n") 5)]) (del-char l 1) l) (line '("b" "cd\n") 4))
+  (check-equal? (let ([l (line '("ab" "cd\n") 5)]) (del-char l 2) l) (line '("a" "cd\n") 4))
+  (check-equal? (let ([l (line '("ab" "cd\n") 5)]) (del-char l 3) l) (line '("ab" "d\n") 4))
+  (check-equal? (let ([l (line '("ab" "cd\n") 5)]) (del-char l 4) l) (line '("ab" "c\n") 4)))
+
 
 ;;;
 ;;; TEXT
@@ -129,9 +231,11 @@
 ; new-text : -> text
 ;   create an empty text
 (define (new-text [lines dempty])
+  (displayln lines)
   (cond 
     [(dempty? lines) (text dempty 0)]
-    [else            (text lines (for/sum ([l lines]) (line-length l)))]))
+    [else            (text lines (for/sum ([l lines]) 
+                                   (line-length l)))]))
 
 
 ; text-line : text integer -> line
@@ -153,7 +257,12 @@
 
 (module+ test
   (void (create-new-test-file "illead.txt"))
-  (check-equal? (path->text "illead.txt") illead-text))
+  ; (displayln "--- illead test file ---")
+  ; (write (path->text "illead.txt")) (newline)
+  ; (displayln "---")
+  ;(write illead-text) (newline)
+  ;(displayln "---")
+  #;(check-equal? (path->text "illead.txt") illead-text))
 
 ; text-num-lines : text -> natural
 ;   return number of lines in the text
@@ -255,15 +364,19 @@
   (define n (line-length (dlist-ref (text-lines (buffer-text b)) row)))
   (set-mark-position! m (+ p (- n col) -1)))
 
+; mark-move-up! : mark -> void
+;   move mark up one line
 (define (mark-move-up! m)
   (define p (mark-position m))
   (define-values (row col) (mark-row+column m))
   (unless (= row 0)
-    (define l (dlist-ref (text-lines (buffer-text (mark-buffer m))) (- row 1)))
+    (define l (text-line (buffer-text (mark-buffer m)) (- row 1)))
     (define new-col (min (line-length l) col))
     (define new-pos (- p col (line-length l) (- new-col)))
     (set-mark-position! m new-pos)))
 
+; mark-move-down! : mark -> void
+;  move mark down one line
 (define (mark-move-down! m)
   (define p (mark-position m))
   (define-values (row col) (mark-row+column m))
@@ -368,7 +481,8 @@
   (when file
     (with-output-to-file file
       (λ () (for ([line (text-lines (buffer-text b))])
-              (display (line-string line))))
+              (for ([s (line-strings line)])
+                (display s))))
       #:exists 'replace)
     (set-buffer-modified?! b #f)))
 
@@ -438,13 +552,13 @@
 ; buffer-forward-word! : buffer -> void
 ;   move point to until it a delimiter is found
 (define (buffer-forward-word! b)
-  (displayln (list 'buffer-forward-word!))
   (mark-forward-word! (buffer-point b)))
-  
+
 
 (define (buffer-display b)
   (define (line-display l)
-    (display (~a "|" (regexp-replace #rx"\n$" (line-string l) "") "|\n")))
+    ; (write l) (newline)
+    (display (~a "|" (regexp-replace #rx"\n$" (line->string l) "") "|\n")))
   (define (text-display t)
     (for ([l (text-lines t)])
       (line-display l)))
@@ -455,7 +569,7 @@
   (status-display))
 
 (module+ test
-  (buffer-display illead-buffer))
+  #;(buffer-display illead-buffer))
 
 (define (buffer-insert-char! b c)
   (define m (buffer-point b))
@@ -519,18 +633,20 @@
         (define ctrl-down? (send event get-control-down))
         (define alt-down?  (send event get-alt-down))
         (define meta-down? (send event get-meta-down))  ; cmd (OS X)
+        ; (displayln k)
         (cond
           [ctrl-down?  ; control + something
            (match k
              [#\a         (buffer-move-point-to-begining-of-line! b)]
              [#\e         (buffer-move-point-to-end-of-line! b)]
+             [#\p         (buffer-move-point-up! b)]
+             [#\n         (buffer-move-point-down! b)]
              [_           (void)])]
           [meta-down?   ; command + something
            (match k
              ['left       (buffer-backward-word! b)]
              ['right      (buffer-forward-word! b)]
-             ; ['left       (buffer-move-point-to-begining-of-line! b)]
-             ; ['right      (buffer-move-point-to-end-of-line! b)]
+             
              [#\d         (buffer-display b)]
              [#\s         (save-buffer! b)]
              [#\w         (save-buffer! b)      ; todo: ask!
@@ -548,6 +664,8 @@
              ['right      (buffer-move-point! b  1)]
              ['up         (buffer-move-point-up! b)]
              ['down       (buffer-move-point-down! b)]
+             ['home       (buffer-move-point-to-begining-of-line! b)] ; fn+left
+             ['end        (buffer-move-point-to-end-of-line! b)]      ; fn+right
              [_           (when (char? k)
                             (display "key not handled: ") (write k) (newline))
                           (void)])])
@@ -560,7 +678,7 @@
         (send dc set-font fixed-font)
         ; draw line
         (for/fold ([y 0]) ([l (text-lines (buffer-text b))])
-          (send dc draw-text (line-string l) 0 y)
+          (send dc draw-text (line->string l) 0 y)
           (+ y font-size 1))
         ; draw points
         (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
