@@ -99,9 +99,13 @@
   (values (line (string-append s1 "\n") (+ i 1))
           (line s2 (- n i))))
 
+; line-append : line line -> line
+;   append two lines, note the line ending of l1 is removed
 (define (line-append l1 l2)
-  (line (string-append (line-string l1) (line-string l2))
-        (+ (line-length l1) (line-length l2))))
+  (define s1 (line-string l1))
+  (define n1 (string-length s1))  
+  (line (string-append (substring s1 0 (- n1 1)) (line-string l2))
+        (+ (line-length l1) -1 (line-length l2))))
 
 ; line-delete-backward-char! : line -> line
 (define (line-delete-backward-char! l i)
@@ -360,7 +364,7 @@
 
 (define (buffer-display b)
   (define (line-display l)
-    (display (line-string l)))
+    (display (~a "|" (regexp-replace #rx"\n$" (line-string l) "") "|\n")))
   (define (text-display t)
     (for ([l (text-lines t)])
       (line-display l)))
@@ -401,7 +405,7 @@
   (define m (buffer-point b))
   (define-values (row col) (mark-row+column m))
   (text-break-line! (buffer-text b) row col)
-  (mark-move! m b 1))
+  (mark-move! m 1))
 
 (define (buffer-delete-backward-char b [count 1])
   ; emacs: delete-backward-char
@@ -445,6 +449,7 @@
            (match k
              ['left       (buffer-move-point-to-begining-of-line! b)]
              ['right      (buffer-move-point-to-end-of-line! b)]
+             [#\d         (buffer-display b)]
              [#\s         (save-buffer! b)]
              [#\w         (save-buffer! b)      ; todo: ask!
                           (send frame on-exit)] ; DrRacket = Close tab
