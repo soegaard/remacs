@@ -401,12 +401,18 @@
         (send msg set-label "subeditor-canvas key event")
         (define k (send event get-key-code))
         (define ctrl-down? (send event get-control-down))
+        (define alt-down?  (send event get-alt-down))
+        (define meta-down? (send event get-meta-down))  ; cmd (OS X)
         (cond
-          [ctrl-down?
-           ; control
+          [ctrl-down?  ; control + something
            (match k
              [#\a         (buffer-move-point-to-begining-of-line! b)]
              [#\e         (buffer-move-point-to-end-of-line! b)]
+             [_           (void)])]
+          [meta-down?   ; command + something
+           (match k
+             ['left       (buffer-move-point-to-begining-of-line! b)]
+             ['right      (buffer-move-point-to-end-of-line! b)]
              [_           (void)])]
           [else
            ; no control
