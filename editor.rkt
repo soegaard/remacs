@@ -29,8 +29,8 @@
 ; The list modes contains the active modes (see below).
 ; A buffer can have multiple marks:
 
-(struct mark (position name fixed?) #:transparent #:mutable)
-; A mark rembers a position in the text.
+(struct mark (buffer position name fixed?) #:transparent #:mutable)
+; A mark rembers a position in the text of a buffer
 ; The mark name can be used to refer to the mark.
 ; fixed? = #f  A normal mark moves when insertions are made to the buffer.
 ; fixed? = #t  A fixed-mark remain in place.
@@ -156,7 +156,7 @@
   (stats nlines nchars))
 
 (define (text-insert-char-at-mark! t m b c)
-  (define-values (row col) (mark-row+column m b))
+  (define-values (row col) (mark-row+column m))
   (define l (dlist-ref (text-lines t) row))
   (line-insert-char! l c col))
 
@@ -197,21 +197,23 @@
 ;;; MARKS
 ;;;
 
-(define (new-mark name [pos 0] [fixed? #f])
-  (mark pos name fixed?))
+(define (new-mark buffer name [pos 0] [fixed? #f])
+  (mark buffer pos name fixed?))
 
-; mark-move! : mark buffer integer -> void
+; mark-move! : mark integer -> void
 ;  move the mark n characters
-(define (mark-move! m b n)
+(define (mark-move! m n)
+  (define b (mark-buffer m))
   (define p (mark-position m))
   (define q (if (> n 0)
                 (min (+ p n) (max 0 (- (buffer-length b) 1)))
                 (max (+ p n) 0)))
   (set-mark-position! m q))
 
-; mark-row+column : mark buffer -> integer integer
-;   return row and column number for the mark m in the buffer b
-(define (mark-row+column m b)
+; mark-row+column : mark- > integer integer
+;   return row and column number for the mark m
+(define (mark-row+column m)
+  (define b (mark-buffer m))
   (define p (mark-position m))
   (define-values (row col)
     (let/ec return
@@ -222,18 +224,19 @@
             (values (+ r 1) (+ q n))))))
   (values row col))
 
-; mark-move-beginning-of-line! : mark buffer -> void
+; mark-move-beginning-of-line! : mark -> void
 ;   move the mark to the begining of its line
-(define (mark-move-beginning-of-line! m b)
+(define (mark-move-beginning-of-line! m)
   (define p (mark-position m))
-  (define-values (row col) (mark-row+column m b))
+  (define-values (row col) (mark-row+column m))
   (set-mark-position! m (- p col)))
 
-; mark-move-end-of-line! : mark buffer -> void
+; mark-move-end-of-line! : mark -> void
 ;   move the mark to the end of its line
-(define (mark-move-end-of-line! m b)
+(define (mark-move-end-of-line! m)
+  (define b (mark-buffer m))
   (define p (mark-position m))
-  (define-values (row col) (mark-row+column m b))
+  (define-values (row col) (mark-row+column m))
   (define n (line-length (dlist-ref (text-lines (buffer-text b)) row)))
   (set-mark-position! m (+ p (- n col) -1)))
 
@@ -250,7 +253,8 @@
 ; new-buffer : -> buffer
 ;   create fresh buffer without an associated file
 (define (new-buffer [text (new-text)] [path #f] [name (default-buffer-name)])
-  (define points (list (new-mark "*point*")))
+  (define point (new-mark #f "*point*"))
+  (define points (list point))
   (define marks '())
   (define modes '())
   (define cur-line 0)
@@ -258,7 +262,9 @@
   (define num-lines (stats-num-lines stats))
   (define num-chars (stats-num-chars stats))
   (define modified? #f)
-  (buffer text name path points marks modes cur-line num-chars num-lines modified?))
+  (define b (buffer text name path points marks modes cur-line num-chars num-lines modified?))
+  (set-mark-buffer! point b)
+  b)
 
 ; save-buffer : buffer -> void
 ;   save contents of buffer to associated file
@@ -322,7 +328,7 @@
 ; buffer-point-set! : buffer mark -> void
 ;   set the point at the position given by the mark m
 (define (buffer-move-point! b n)
-  (mark-move! (buffer-point b) b n))
+  (mark-move! (buffer-point b) n))
 
 (define (buffer-display b)
   (define (line-display l)
@@ -348,13 +354,13 @@
 ;   move the point to the beginning of the line
 (define (buffer-move-point-to-begining-of-line! b)
   (define m (buffer-point b))
-  (mark-move-beginning-of-line! m b))
+  (mark-move-beginning-of-line! m))
 
 ; buffer-move-point-to-end-of-line! : buffer -> void
 ;   move the point to the end of the line
 (define (buffer-move-point-to-end-of-line! b)
   (define m (buffer-point b))
-  (mark-move-end-of-line! m b))
+  (mark-move-end-of-line! m))
 
 ; buffer-length : buffer -> natural
 ;   return the total length of the text
@@ -366,7 +372,7 @@
 ;   break line at point
 (define (buffer-break-line! b)
   (define m (buffer-point b))
-  (define-values (row col) (mark-row+column m b))
+  (define-values (row col) (mark-row+column m))
   (text-break-line! (buffer-text b) row col)
   (mark-move! m b 1))
 
@@ -374,9 +380,9 @@
   ; emacs: delete-backward-char
   (define m (buffer-point b))
   (define t (buffer-text b))
-  (define-values (row col) (mark-row+column m b))
+  (define-values (row col) (mark-row+column m))
   (text-delete-backward-char! t row col)
-  (mark-move! m b -1))
+  (mark-move! m -1))
   
 
 ;;;
@@ -421,7 +427,7 @@
            (match k
              [#\return    (buffer-break-line! b)]
              [#\backspace (buffer-delete-backward-char b 1)] ; the backspace key
-             [#\rubout    (error 'todo)] ; the delete key
+             [#\rubout    (error 'todo)]                     ; the delete key
              [(? char? k) (buffer-insert-char! b k)
                           (buffer-move-point! b 1)]
              ['left       (buffer-move-point! b -1)]
@@ -443,7 +449,7 @@
         ; draw points
         (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
         (for ([p (buffer-points b)])
-          (define-values (r c) (mark-row+column p b))
+          (define-values (r c) (mark-row+column p))
           (define x (* c font-width))
           (define y (* r (+ font-height -2))) ; why -2 ?
           (send dc draw-line x y x (+ y font-height))))
