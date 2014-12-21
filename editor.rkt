@@ -445,6 +445,7 @@
            (match k
              ['left       (buffer-move-point-to-begining-of-line! b)]
              ['right      (buffer-move-point-to-end-of-line! b)]
+             [#\s         (save-buffer! b)]
              [#\w         (save-buffer! b)      ; todo: ask!
                           (send frame on-exit)] ; DrRacket = Close tab
              [_           (void)])]
