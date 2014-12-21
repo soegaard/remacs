@@ -3,7 +3,7 @@
 (require "dlist.rkt")
 
 ;;;
-;;; REPRENSENTATION
+;;; REPRESENTATION
 ;;;
 
 (struct line (string length) #:transparent #:mutable)
@@ -143,7 +143,7 @@
 ; text-num-lines : text -> natural
 ;   return number of lines in the text
 (define (text-num-lines t)
-  (length (text-lines t)))
+  (dlength (text-lines t)))
 
 (define (text-num-chars t)
   (for/sum ([line (text-lines t)])
@@ -240,6 +240,28 @@
   (define n (line-length (dlist-ref (text-lines (buffer-text b)) row)))
   (set-mark-position! m (+ p (- n col) -1)))
 
+(define (mark-move-up! m)
+  (define p (mark-position m))
+  (define-values (row col) (mark-row+column m))
+  (unless (= row 0)
+    (define l (dlist-ref (text-lines (buffer-text (mark-buffer m))) (- row 1)))
+    (define new-col (min (line-length l) col))
+    (define new-pos (- p col (line-length l) (- new-col)))
+    (set-mark-position! m new-pos)))
+
+(define (mark-move-down! m)
+  (define p (mark-position m))
+  (define-values (row col) (mark-row+column m))
+  (define t (buffer-text (mark-buffer m)))
+  (displayln (list row (text-num-lines t)))
+  (unless (= (+ row 1) (text-num-lines t))
+    (define d (dlist-move (text-lines t) row))
+    (define l1 (dfirst d))
+    (define l2 (dlist-ref d 1))
+    (define new-col (min (line-length l2) col))
+    (define new-pos (+ p (- (line-length l1) col) new-col))
+    (set-mark-position! m new-pos)))
+
 ;;;
 ;;; BUFFER
 ;;;
@@ -330,6 +352,12 @@
 (define (buffer-move-point! b n)
   (mark-move! (buffer-point b) n))
 
+(define (buffer-move-point-up! b)
+  (mark-move-up! (buffer-point b)))
+
+(define (buffer-move-point-down! b)
+  (mark-move-down! (buffer-point b)))
+
 (define (buffer-display b)
   (define (line-display l)
     (display (line-string l)))
@@ -367,7 +395,6 @@
 (define (buffer-length b)
   (text-length (buffer-text b)))
 
-
 ; buffer-break-line! : buffer -> void
 ;   break line at point
 (define (buffer-break-line! b)
@@ -383,7 +410,6 @@
   (define-values (row col) (mark-row+column m))
   (text-delete-backward-char! t row col)
   (mark-move! m -1))
-  
 
 ;;;
 ;;; GUI
@@ -432,6 +458,8 @@
                           (buffer-move-point! b 1)]
              ['left       (buffer-move-point! b -1)]
              ['right      (buffer-move-point! b  1)]
+             ['up         (buffer-move-point-up! b)]
+             ['down       (buffer-move-point-down! b)]
              [_           (when (char? k)
                             (display "key not handled: ") (write k) (newline))
                           (void)])])
