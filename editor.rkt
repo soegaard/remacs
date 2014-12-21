@@ -7,16 +7,21 @@
 ;;;
 
 (struct line (strings length) #:transparent #:mutable)
+; A line is a list of elements of the types:
+;   string        represents actual text
+;   property      represents a text property e.g. bold
+;   overlay       represents ...
+
+; properties are copied as part of the text
+; overlays are not copied - they are specifically not part of the text
+(struct overlay  (specification) #:transparent)
+(struct property (specification) #:transparent)
+
 
 (struct linked-line dcons (version marks) #:transparent #:mutable)
 ; the element of a linked-line is a line struct
 ; marks is a list of marks located on the line
 ; version will be used for the redisplay code
-
-; properties are copied as part of the text
-; overlays are not copied - they are specifically not part of the text
-; (struct overlay  (specification) #:transparent)
-; (struct property (specification) #:transparent)
 
 (struct text (lines length) #:transparent #:mutable)
 ; A text being edited is represented as a doubly linked list of lines.
@@ -56,7 +61,7 @@
 ;;;
 
 (define (line->string l)
-  (apply string-append (line-strings l)))
+  (apply string-append (filter string? (line-strings l))))
 
 ; string->line : string -> line
 (define (string->line s)
@@ -134,16 +139,18 @@
     (cond 
       [(null? after) (values #f (reverse before) '())]
       [else          (define s (first after))
-                     (define n (string-length s))
-                     (if (< i n)
-                         (values i (reverse before) after)
-                         (loop (- i n) (cons s before) (rest after)))])))
+                     (cond
+                       [(string? s) (define n (string-length s))
+                                    (if (< i n)
+                                        (values i (reverse before) after)
+                                        (loop (- i n) (cons s before) (rest after)))]
+                       [else         (loop i (cons s before) (rest after))])])))
 
 ; line-insert-char! : line char index -> void
 ;   insert char c in the line l at index i
 (define (line-insert-char! l c i)
   (define n (line-length l))
-  (unless (<= i n) (error 'line-insert-char "index i greater than line length, i=~a, l=~a" i l))
+  (unless (<= i n) (error 'line-insert-char! "index i greater than line length, i=~a, l=~a" i l))
   (define-values (j us vs) (skip-strings (line-strings l) i))
   (define v (first vs))
   (define vn (string-length v))
@@ -158,7 +165,7 @@
 ;   insert string t in the line l at index i
 (define (line-insert-string! l t i)
   (define n (line-length l))
-  (unless (<= i n) (error 'line-insert-string "index i greater than line length, i=~a, l=~a" i l))
+  (unless (<= i n) (error 'line-insert-string! "index i greater than line length, i=~a, l=~a" i l))
   (define-values (j us vs) (skip-strings (line-strings l) i))
   (define v (first vs))
   (define vn (string-length v))
@@ -168,6 +175,22 @@
               [else     (string-append (substring v 0 j) t (substring v j vn))]))
   (set-line-strings! l (append us (cons w (rest vs))))
   (set-line-length!  l (+ n (string-length t))))
+
+
+; line-insert-property! : line property index -> void
+;   insert property p in the line l at index i
+(define (line-insert-property! l p i)
+  (define n (line-length l))
+  (unless (<= i n) (error 'line-insert-property! "index i greater than line length, i=~a, l=~a" i l))
+  (define-values (j us vs) (skip-strings (line-strings l) i))
+  (define v (first vs))
+  (define vn (string-length v))
+  (define w (cond 
+              [(= j 0)  (cons p (list v))]
+              [(= j vn) (append (list v) (list p))]
+              [else     (list (substring v 0 j) p (substring v j vn))]))
+  (set-line-strings! l (append us w (rest vs)))
+  (set-line-length!  l (+ n 1)))
 
 ; line-split : line index -> line line
 ;   split the line in two at the index
@@ -557,8 +580,8 @@
 
 (define (buffer-display b)
   (define (line-display l)
-    ; (write l) (newline)
-    (display (~a "|" (regexp-replace #rx"\n$" (line->string l) "") "|\n")))
+    (write l) (newline)
+    #;(display (~a "|" (regexp-replace #rx"\n$" (line->string l) "") "|\n")))
   (define (text-display t)
     (for ([l (text-lines t)])
       (line-display l)))
@@ -609,6 +632,13 @@
   (text-delete-backward-char! t row col)
   (mark-move! m -1))
 
+(define (buffer-insert-property! b p)
+  (define m (buffer-point b))
+  (define t (buffer-text b))
+  (define-values (row col) (mark-row+column m))
+  (line-insert-property! (dlist-ref (text-lines t) row) p col))
+
+
 ;;;
 ;;; GUI
 ;;;
@@ -616,12 +646,34 @@
 (require racket/gui/base)
 
 (define (new-editor-frame b)
+  ;;; FONT
+  (define font-style  (make-parameter 'normal))  ; style  in '(normal italic)
+  (define font-weight (make-parameter 'normal))  ; weight in '(normal bold)
+  (define font-size   (make-parameter 16))
+  (define font-family (make-parameter 'modern))  ; fixed width
+  (define (use-default-font-settings)
+    (font-style  'normal)
+    (font-weight 'normal)
+    (font-size   16)
+    (font-family 'modern))
+  (define font-ht (make-hash))                   ; (list size family style weight) -> font  
+  (define (get-font)
+    (define key (list (font-size) (font-family) (font-style) (font-weight)))
+    (define font (hash-ref font-ht key #f))
+    (unless font
+      (set! font (make-object font% (font-size) (font-family) (font-style) (font-weight)))
+      (hash-set! font-ht key font))
+    font)
+  (define default-fixed-font  (get-font))
+  (define (toggle-bold) 
+    (displayln 'toggle-bold)
+    (font-weight (if (eq? (font-weight) 'normal) 'bold 'normal)))
+  ;;; WINDOW SIZE
   (define min-width  800)
   (define min-height 800)
+  ;;; COLORS
   (define text-color (make-object color% "black"))
-  (define font-size  16)
-  (define font-family 'modern) ; fixed width
-  (define fixed-font (make-object font% font-size font-family))
+
   (define frame (new frame% [label "Editor"]))
   (define msg   (new message% [parent frame] [label "No news"]))
   (send msg min-width min-width)
@@ -647,6 +699,8 @@
              ['left       (buffer-backward-word! b)]
              ['right      (buffer-forward-word! b)]
              
+             [#\b         (displayln 'insert-bold)
+                          (buffer-insert-property! b (property 'bold))]
              [#\d         (buffer-display b)]
              [#\s         (save-buffer! b)]
              [#\w         (save-buffer! b)      ; todo: ask!
@@ -672,21 +726,33 @@
         (send canvas on-paint))
       (define/override (on-paint)
         (define dc (send canvas get-dc))
+        ; reset drawing context
+        (use-default-font-settings)
+        (send dc set-font default-fixed-font)
+        (send dc set-text-mode 'solid) ; solid -> use text background color
+        (send dc set-text-background "white")
+        (send dc set-text-foreground text-color)
         (send msg set-label "on-paint")
         (send dc clear)
-        (send dc set-text-foreground text-color)
-        (send dc set-font fixed-font)
         ; draw line
         (for/fold ([y 0]) ([l (text-lines (buffer-text b))])
-          (send dc draw-text (line->string l) 0 y)
-          (+ y font-size 1))
+          (for/fold ([x 0]) ([s (line-strings l)])
+            (cond 
+              [(string? s) (define-values (w h _ __) (send dc get-text-extent s))
+                           (send dc draw-text s x y)
+                           (+ x w)]
+              [else        (toggle-bold)
+                           (send dc set-font (get-font))
+                           x]))
+          (+ y (font-size) 1))
         ; draw points
         (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
         (for ([p (buffer-points b)])
           (define-values (r c) (mark-row+column p))
           (define x (* c font-width))
           (define y (* r (+ font-height -2))) ; why -2 ?
-          (send dc draw-line x y x (+ y font-height))))
+          (send dc draw-line x y x (+ y font-height)))
+        #;(send dc set-background (make-object color% "white")))
       (super-new)))
   (define canvas (new subeditor-canvas% [parent frame]))
   (send canvas min-client-width  400)
