@@ -277,7 +277,7 @@
     (set-mark-position! m new-pos)))
 
 ; mark-backward-word! : mark -> void
-;   move mark backward until a word seperator is found
+;   move mark backward until a word separator is found
 (define (mark-backward-word! m)
   (define-values (row col) (mark-row+column m))
   (define t (buffer-text (mark-buffer m)))
@@ -300,6 +300,32 @@
                  j))
      ; j is now the index of the first word separator
      (mark-move! m (- (if j (- col (+ j 1)) col)))]))
+
+; mark-forward-word! : mark -> void
+;   move mark forward until a word separator is found
+(define (mark-forward-word! m)
+  (define-values (row col) (mark-row+column m))
+  (define t (buffer-text (mark-buffer m)))
+  (define l (text-line t row))
+  (define n (line-length l))
+  ; first skip whitespace
+  (define i (for/first ([i (in-range col n)]
+                        #:when (not (word-separator? (line-ref l i))))
+              i))
+  (cond
+    [(or (not i) (= i (- n 1)))
+     ; continue searching for word at next line (unless at bottom line)
+     (mark-move-end-of-line! m)
+     (unless (= row (- (text-num-lines t) 1))
+       (mark-move! m 1)
+       (mark-forward-word! m))]
+    [else
+     ; we have found a word, find the beginning
+     (define j (for/first ([j (in-range (or i (- col 1)) n)]
+                           #:when (word-separator? (line-ref l j)))
+                 j))
+     ; j is now the index of the first word separator
+     (mark-move! m (if j (- j col) col))]))
 
 ;;;
 ;;; WORDS
@@ -405,10 +431,15 @@
   (mark-move-down! (buffer-point b)))
 
 ; buffer-backward-word! : buffer -> void
-;   move point to until it a delimiter is found
+;   move point forward until a word separator is found
 (define (buffer-backward-word! b)
-  (displayln (list buffer-backward-word!))
   (mark-backward-word! (buffer-point b)))
+
+; buffer-forward-word! : buffer -> void
+;   move point to until it a delimiter is found
+(define (buffer-forward-word! b)
+  (displayln (list 'buffer-forward-word!))
+  (mark-forward-word! (buffer-point b)))
   
 
 (define (buffer-display b)
@@ -497,7 +528,7 @@
           [meta-down?   ; command + something
            (match k
              ['left       (buffer-backward-word! b)]
-             ; ['right      (buffer-move-point-to-end-of-line! b)]
+             ['right      (buffer-forward-word! b)]
              ; ['left       (buffer-move-point-to-begining-of-line! b)]
              ; ['right      (buffer-move-point-to-end-of-line! b)]
              [#\d         (buffer-display b)]
