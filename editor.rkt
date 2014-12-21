@@ -413,6 +413,8 @@
            (match k
              ['left       (buffer-move-point-to-begining-of-line! b)]
              ['right      (buffer-move-point-to-end-of-line! b)]
+             [#\w         (save-buffer! b)      ; todo: ask!
+                          (send frame on-exit)] ; DrRacket = Close tab
              [_           (void)])]
           [else
            ; no control
@@ -453,3 +455,9 @@
 
 (module+ test
   (new-editor-frame illead-buffer))
+
+(define (display-file path)
+  (with-input-from-file path
+    (λ ()
+      (for ([l (in-lines)])
+        (displayln l)))))
