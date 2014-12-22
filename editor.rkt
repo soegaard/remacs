@@ -29,8 +29,9 @@
 ; The number of lines and number of characters in a text.
 
 (module buffer-struct racket/base
-  ; buffer-name is extended to handle current-buffer later on
-  (provide (except-out (struct-out buffer) buffer-name) (rename-out [buffer-name -buffer-name]))
+  ; buffer-name and buffer-modified? are extendeded to handle current-buffer later on
+  (provide (except-out (struct-out buffer) buffer-name buffer-modified?) 
+           (rename-out [buffer-name -buffer-name] [buffer-modified? -buffer-modified?]))
   (struct buffer (text name path points marks modes cur-line num-chars num-lines modified?)
     #:transparent #:mutable))
 (require (submod "." buffer-struct))
@@ -553,6 +554,11 @@
   (register-buffer b)
   b)
 
+; generate-new-buffer : string -> buffer
+(define (generate-new-buffer name)
+  (unless (string? name) (error 'generate-new-buffer "string expected, got ~a" name))
+  (new-buffer (new-text) #f (generate-new-buffer-name name)))
+
 (define current-buffer 
   (make-parameter (new-buffer (new-text (list->lines '("The scratch buffer"))) #f "*scratch*")))
 
@@ -564,7 +570,22 @@
   (set-buffer-name! b new-name)
   new-name)
 
+(define (buffer-modified? [b (current-buffer)])
+  (-buffer-modified? b))
 
+
+; set-buffer-modified! : any [buffer] -> void
+;   set modified?, redisplay mode line
+(define (set-buffer-modified! flag [b (current-buffer)])
+  ; TODO (redisplay-mode-line-for-current-buffer]
+  (when flag (set-buffer-modified?! b #t)))
+
+; get-buffer-create : buffer-or-name -> buffer
+;   get buffer with given name, if none exists, create it
+(define (get-buffer-create buffer-or-name)
+  (define b buffer-or-name)
+  (if (buffer? b) b (generate-new-buffer b)))
+ 
 
 ; save-buffer : buffer -> void
 ;   save contents of buffer to associated file
