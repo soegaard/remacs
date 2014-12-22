@@ -17,7 +17,6 @@
 (struct overlay  (specification) #:transparent)
 (struct property (specification) #:transparent)
 
-
 (struct linked-line dcons (version marks) #:transparent #:mutable)
 ; the element of a linked-line is a line struct
 ; marks is a list of marks located on the line
@@ -26,7 +25,7 @@
 (struct text (lines length) #:transparent #:mutable)
 ; A text being edited is represented as a doubly linked list of lines.
 
-(struct stats (num-lines num-chars))
+(struct stats (num-lines num-chars) #:transparent)
 ; The number of lines and number of characters in a text.
 
 (struct buffer (text name path points marks modes cur-line num-chars num-lines modified?)
@@ -44,8 +43,9 @@
 ; The list modes contains the active modes (see below).
 ; A buffer can have multiple marks:
 
-(struct mark (buffer position name fixed?) #:transparent #:mutable)
-; A mark rembers a position in the text of a buffer
+(struct mark (buffer link position name fixed?) #:transparent #:mutable)
+; A mark rembers a position in the text of a buffer.
+; The mark stores the link (linked-line) which hold the line.
 ; The mark name can be used to refer to the mark.
 ; fixed? = #f  A normal mark moves when insertions are made to the buffer.
 ; fixed? = #t  A fixed-mark remain in place.
@@ -60,15 +60,23 @@
 ;;; LINES
 ;;;
 
-(define (line->string l)
-  (apply string-append (filter string? (line-strings l))))
-
 ; string->line : string -> line
 (define (string->line s)
   (line (list s) (string-length s)))
 
+; new-line : string ->list
+;   antipating extra options for new-line
 (define (new-line s)
   (string->line s))
+
+(module+ test (check-equal? (new-line "abc\n") (line '("abc\n") 4)))
+
+; line->string : line -> string
+;   return string contents of a line (i.e. remove properties and overlays)
+(define (line->string l)
+  (apply string-append (filter string? (line-strings l))))
+
+(module+ test (check-equal? (line->string (new-line "abc\n")) "abc\n"))
 
 ; list->lines : list-of-strings -> dlist-of-lines
 (define (list->lines xs)
@@ -90,6 +98,11 @@
                   (define n (recur d (cdr xs)))
                   (set-dcons-n! d n)
                   d]))
+
+(module+ test (let ([xs '("ab\n" "cd\n")])
+                (check-equal? (for/list ([x (list->lines xs)]) x)
+                              (map new-line xs))))
+
 
 ; line-ref : line index -> char
 ;   return the ith character of a line
@@ -227,7 +240,7 @@
 (define (line-delete-backward-char! l i)
   (unless (> i 0) (error 'line-delete-backward-char! "got ~a" i))
   (define-values (j us vs) (skip-strings (line-strings l) (- i 1)))
-  (write (list 'back-char l i 'j j 'us us 'vs vs)) (newline)
+  ; (write (list 'back-char l i 'j j 'us us 'vs vs)) (newline)
   (define s (first vs))
   (define n (string-length s))
   (define s1 (substring s 0 j)) 
@@ -254,9 +267,10 @@
 ; new-text : -> text
 ;   create an empty text
 (define (new-text [lines dempty])
-  (displayln lines)
   (cond 
-    [(dempty? lines) (text dempty 0)]
+    [(dempty? lines) (text (linked-line (new-line "\n") dempty dempty "no-version-yet" '()) 1)]
+    ; linked correctly?  
+    ; xxx
     [else            (text lines (for/sum ([l lines]) 
                                    (line-length l)))]))
 
@@ -297,6 +311,7 @@
     (line-length line)))
 
 (define (text-stats t)
+  (displayln (list 'text-stats t))
   (define-values (nlines nchars)
     (for/fold ([nl 0] [nc 0]) ([l (text-lines t)])
       (values (+ nl 1) (+ nc (line-length l)))))
@@ -344,8 +359,13 @@
 ;;; MARKS
 ;;;
 
-(define (new-mark buffer name [pos 0] [fixed? #f])
-  (mark buffer pos name fixed?))
+; new-mark : buffer string integer boolean -> mark
+(define (new-mark b name [pos 0] [fixed? #f])
+  ; (define link (text-lines (buffer-text b)))
+  (define link (text-lines (buffer-text b)))
+  (define m (mark b link pos name fixed?))
+  ; (set-linked-line-marks! link (cons m (linked-line-marks link)))
+  m)
 
 ; mark-move! : mark integer -> void
 ;  move the mark n characters
@@ -483,18 +503,27 @@
 ; new-buffer : -> buffer
 ;   create fresh buffer without an associated file
 (define (new-buffer [text (new-text)] [path #f] [name (default-buffer-name)])
-  (define point (new-mark #f "*point*"))
+  (define b (buffer text name path 
+                    '() ; points
+                    '() ; marks
+                    '() ; modes 
+                    0   ; cur-line
+                    0   ; num-chars
+                    0   ; num-lines
+                    #f))  ; modified?  
+  (define point (new-mark b "*point*"))
   (define points (list point))
-  (define marks '())
-  (define modes '())
-  (define cur-line 0)
+  (set-buffer-points! b points)
   (define stats (text-stats text))
   (define num-lines (stats-num-lines stats))
+  (set-buffer-num-lines! b num-lines)
   (define num-chars (stats-num-chars stats))
-  (define modified? #f)
-  (define b (buffer text name path points marks modes cur-line num-chars num-lines modified?))
-  (set-mark-buffer! point b)
+  (set-buffer-num-chars! b num-chars)
   b)
+
+(define current-buffer 
+  (make-parameter (new-buffer (new-text (list->lines '("The scratch buffer"))) #f "*scratch*")))
+
 
 ; save-buffer : buffer -> void
 ;   save contents of buffer to associated file
@@ -531,7 +560,7 @@
   (void (create-new-test-file "illead.txt"))
   (define b (new-buffer (new-text) "illead.txt" "illead"))
   (read-buffer! b)
-  (check-equal? b illead-buffer))
+ (check-equal? b illead-buffer))
 
 ; append-to-buffer-from-file : buffer path -> void
 ;   append contents of file given by the path p to the text of the buffer b
@@ -639,11 +668,44 @@
   (line-insert-property! (dlist-ref (text-lines t) row) p col))
 
 
+; buffer-point-marker! : buffer -> mark
+;   set new mark at point (i.e. "copy point")
+#;(define (buffer-point-marker! b)
+    (define p (buffer-point b))
+    ...)
+
 ;;;
 ;;; GUI
 ;;;
 
 (require racket/gui/base)
+
+;;; COLORS
+
+(define (hex->color x)
+  (define red   (remainder           x        256))
+  (define green (remainder (quotient x 256)   256))
+  (define blue  (remainder (quotient x 65536) 256))
+  (make-object color% red green blue))
+
+(define base03  (hex->color #x002b36)) ; brblack    background   (darkest)
+(define base02  (hex->color #x073642)) ; black      background 
+(define base01  (hex->color #x586e75)) ; brgreen    content tone (darkest)
+(define base00  (hex->color #x657b83)) ; bryellow   content tone
+
+(define base0   (hex->color #x839496)) ; brblue     content tone
+(define base1   (hex->color #x93a1a1)) ; brcyan     content tone (brigtest)
+(define base2   (hex->color #xeee8d5)) ; white      background
+(define base3   (hex->color #xfdf6e3)) ; brwhite    background   (brightest)
+
+(define yellow  (hex->color #xb58900)) ; yellow     accent color
+(define orange  (hex->color #xcb4b16)) ; brred      accent color
+(define red     (hex->color #xdc322f)) ; red        accent color
+(define magenta (hex->color #xd33682)) ; magenta    accent color
+(define violet  (hex->color #x6c71c4)) ; brmagenta  accent color
+(define blue    (hex->color #x268bd2)) ; blue       accent color
+(define cyan    (hex->color #x2aa198)) ; cyan       accent color
+(define green   (hex->color #x859900)) ; green      accent color
 
 (define (new-editor-frame b)
   ;;; FONT
@@ -671,8 +733,9 @@
   (define min-width  800)
   (define min-height 800)
   ;;; COLORS
-  (define text-color (make-object color% "black"))
-
+  (define background-color base1)
+  (define text-color       base03)
+  
   (define frame (new frame% [label "Editor"]))
   (define msg   (new message% [parent frame] [label "No news"]))
   (send msg min-width min-width)
@@ -700,8 +763,9 @@
              ['left       (buffer-backward-word! b)]
              ['right      (buffer-forward-word! b)]
              [#\b         (buffer-insert-property! b (property 'bold))]
-             [#\i         (buffer-insert-property! b (property 'italics))]
              [#\d         (buffer-display b)]
+             [#\i         (buffer-insert-property! b (property 'italics))]
+             ; [#\k         (buffer-point-marker! b)]                          ; point-marker
              [#\s         (save-buffer! b)]
              [#\w         (save-buffer! b)      ; todo: ask!
                           (send frame on-exit)] ; DrRacket = Close tab
@@ -730,21 +794,27 @@
         (use-default-font-settings)
         (send dc set-font default-fixed-font)
         (send dc set-text-mode 'solid) ; solid -> use text background color
-        (send dc set-text-background "white")
+        (send dc set-background "white")
+        (send dc clear)
+        (send dc set-text-background background-color)        
         (send dc set-text-foreground text-color)
         (send msg set-label "on-paint")
-        (send dc clear)
         ; draw line
         (for/fold ([y 0]) ([l (text-lines (buffer-text b))])
-          (for/fold ([x 0]) ([s (line-strings l)])
+          (define strings (line-strings l))
+          (define n (length strings))
+          (define (last-string? i) (= i (- n 1)))
+          (for/fold ([x 0]) ([s strings] [i (in-range n)])
             (match s 
-              [(? string?) (define-values (w h _ __) (send dc get-text-extent s))
-                           (send dc draw-text s x y)
+              [(? string?) (define t ; remove final newline
+                             (if (last-string? i) (substring s 0(max 0 (- (string-length s) 1))) s))
+                           (define-values (w h _ __) (send dc get-text-extent t))
+                           (send dc draw-text t x y)
                            (+ x w)]
               [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) x]
               [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
               [_ (displayln (~a "Warning: Got " s)) x]))
-          (+ y (font-size) 1))
+          (+ y (font-size) 0))
         ; draw points
         (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
         (for ([p (buffer-points b)])
@@ -760,6 +830,7 @@
   (send frame show #t))
 
 (module+ test
+  (current-buffer illead-buffer)
   (new-editor-frame illead-buffer))
 
 (define (display-file path)
