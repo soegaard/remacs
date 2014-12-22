@@ -1,6 +1,6 @@
 #lang racket
 (module+ test (require rackunit))
-(require "dlist.rkt")
+(require "dlist.rkt" (for-syntax syntax/parse))
 
 ;;;
 ;;; REPRESENTATION
@@ -28,8 +28,12 @@
 (struct stats (num-lines num-chars) #:transparent)
 ; The number of lines and number of characters in a text.
 
-(struct buffer (text name path points marks modes cur-line num-chars num-lines modified?)
-  #:transparent #:mutable)
+(module buffer-struct racket/base
+  ; buffer-name is extended to handle current-buffer later on
+  (provide (except-out (struct-out buffer) buffer-name) (rename-out [buffer-name -buffer-name]))
+  (struct buffer (text name path points marks modes cur-line num-chars num-lines modified?)
+    #:transparent #:mutable))
+(require (submod "." buffer-struct))
 ; A buffer is the basic unit of text being edited.
 ; It contains a text being edited.
 ; The buffer has a name, so the user can refer to the buffer.
@@ -494,15 +498,42 @@
 ;;; BUFFER
 ;;;
 
-(define buffer-counter 0)
+; buffer-name : [buffer] -> string
+;   return name of buffer
+(define (buffer-name [b (current-buffer)]) 
+  (-buffer-name b))
 
-(define (default-buffer-name)
-  (set! buffer-counter (+ buffer-counter 1))
-  (~a "*buffer" buffer-counter "*"))
+; all buffers are registered in buffers-ht
+(define buffers-ht (make-hash))  ; string -> buffer
+
+; register-buffer : buffer [thunk-or-#f] -> void
+;   associate (buffer-name b) to b in buffers-ht
+(define (register-buffer b [on-error #f])
+  (define name (buffer-name b))
+  (if (hash-ref buffers-ht name #f)
+      (cond 
+        [on-error (on-error)]
+        [else (error 'register-buffer 
+                     "attempt to register buffer with name already in use: ~a" name)])
+      (hash-set! buffers-ht name b)))
+
+; get-buffer : buffer-or-string -> buffer-or-#f
+;   return buffer specified by buffer-or-name
+(define (get-buffer buffer-or-name)
+  (define b buffer-or-name)
+  (if (buffer? b) b (hash-ref buffers-ht b #f)))
+
+; generate-new-buffer-name : string -> string
+;   generate buffer name not in use
+(define (generate-new-buffer-name starting-name)
+  (define (name i) (if (= i 1) starting-name (~a starting-name i)))
+  (for/first ([i (in-naturals 1)]
+              #:unless (get-buffer (name i)))
+    (name i)))
 
 ; new-buffer : -> buffer
 ;   create fresh buffer without an associated file
-(define (new-buffer [text (new-text)] [path #f] [name (default-buffer-name)])
+(define (new-buffer [text (new-text)] [path #f] [name (generate-new-buffer-name "buffer")])
   (define b (buffer text name path 
                     '() ; points
                     '() ; marks
@@ -510,7 +541,7 @@
                     0   ; cur-line
                     0   ; num-chars
                     0   ; num-lines
-                    #f))  ; modified?  
+                    #f))  ; modified?
   (define point (new-mark b "*point*"))
   (define points (list point))
   (set-buffer-points! b points)
@@ -519,10 +550,20 @@
   (set-buffer-num-lines! b num-lines)
   (define num-chars (stats-num-chars stats))
   (set-buffer-num-chars! b num-chars)
+  (register-buffer b)
   b)
 
 (define current-buffer 
   (make-parameter (new-buffer (new-text (list->lines '("The scratch buffer"))) #f "*scratch*")))
+
+; rename-buffer! : string -> string
+(define (rename-buffer! new-name [b (current-buffer)] [unique? #t])
+  (unless (string? new-name) (error 'rename-buffer "string expected, got " new-name))
+  ; todo: check that buffer-name is not in use, if it is signal error unless unique? is false
+  ;       in that case generate new name and return it
+  (set-buffer-name! b new-name)
+  new-name)
+
 
 
 ; save-buffer : buffer -> void
@@ -540,7 +581,7 @@
 
 (module+ test
   (provide illead-buffer)
-  (define illead-buffer (new-buffer illead-text "illead.txt" "illead"))
+  (define illead-buffer (new-buffer illead-text "illead.txt" (generate-new-buffer-name "illead")))
   (save-buffer! illead-buffer)
   (check-equal? (path->text "illead.txt") illead-text))
 
@@ -558,9 +599,9 @@
 
 (module+ test
   (void (create-new-test-file "illead.txt"))
-  (define b (new-buffer (new-text) "illead.txt" "illead"))
+  (define b (new-buffer (new-text) "illead.txt" (generate-new-buffer-name "illead")))
   (read-buffer! b)
- (check-equal? b illead-buffer))
+  (check-equal? b illead-buffer))
 
 ; append-to-buffer-from-file : buffer path -> void
 ;   append contents of file given by the path p to the text of the buffer b
@@ -675,6 +716,46 @@
     ...)
 
 ;;;
+;;; INTERACTIVE COMMANDS
+;;;
+
+;; Names from emacs
+
+(define (beginning-of-line) (buffer-move-point-to-begining-of-line! (current-buffer)))
+(define (end-of-line)       (buffer-move-point-to-end-of-line! (current-buffer)))
+(define (backward-char)     (buffer-move-point! (current-buffer) -1))
+(define (forward-char)      (buffer-move-point! (current-buffer) +1))
+(define (previous-line)     (buffer-move-point-up! (current-buffer)))
+(define (next-line)         (buffer-move-point-down! (current-buffer)))
+(define (backward-word)     (buffer-backward-word! (current-buffer)))
+(define (forward-word)      (buffer-forward-word! (current-buffer)))
+
+; syntax: (save-current-buffer body ...)
+;   store current-buffer while evaluating body ...
+;   the return value is the result from the last body
+(define-syntax (save-current-buffer stx)
+  (syntax-parse stx
+    [(s-c-b body ...)
+     #'(let ([b (current-buffer)])
+         (begin0 (begin body ...)
+                 (current-buffer b)))]))
+
+; syntax (with-current-buffer buffer-or-name body ...)
+;   use buffer-or-name while evaluating body ...,
+;   restore current buffer afterwards
+(define-syntax (with-current-buffer stx)
+  (syntax-parse stx
+    [(w-c-b buffer-or-name body ...)
+     #'(parameterize ([current-buffer buffer-or-name])
+         ; (todo "lookup buffer if it is a name")
+         body ...)]))
+
+; TODO syntax  (with-temp-buffer body ...)
+
+
+
+
+;;;
 ;;; GUI
 ;;;
 
@@ -684,7 +765,7 @@
 
 (define (hex->color x)
   (define red   (remainder           x        256))
-  (define green (remainder (quotient x 256)   256))
+  (define green (remainder (quotient x   256) 256))
   (define blue  (remainder (quotient x 65536) 256))
   (make-object color% red green blue))
 
