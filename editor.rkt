@@ -687,17 +687,18 @@
         ; (displayln k)
         (cond
           [ctrl-down?  ; control + something
-           (match k
-             [#\a         (buffer-move-point-to-begining-of-line! b)]
-             [#\e         (buffer-move-point-to-end-of-line! b)]
-             [#\p         (buffer-move-point-up! b)]
-             [#\n         (buffer-move-point-down! b)]
+           (match k                                                   ; Emacs names
+             [#\a         (buffer-move-point-to-begining-of-line! b)] ; beginning-of-line
+             [#\b         (buffer-move-point! b -1)]                  ; backward-char
+             [#\e         (buffer-move-point-to-end-of-line! b)]      ; end-of-line
+             [#\f         (buffer-move-point! b +1)]                  ; forward-char
+             [#\p         (buffer-move-point-up! b)]                  ; previous-line
+             [#\n         (buffer-move-point-down! b)]                ; next-line
              [_           (void)])]
           [meta-down?   ; command + something
            (match k
              ['left       (buffer-backward-word! b)]
              ['right      (buffer-forward-word! b)]
-             
              [#\b         (buffer-insert-property! b (property 'bold))]
              [#\i         (buffer-insert-property! b (property 'italics))]
              [#\d         (buffer-display b)]
