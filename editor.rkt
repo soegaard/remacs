@@ -665,9 +665,8 @@
       (hash-set! font-ht key font))
     font)
   (define default-fixed-font  (get-font))
-  (define (toggle-bold) 
-    (displayln 'toggle-bold)
-    (font-weight (if (eq? (font-weight) 'normal) 'bold 'normal)))
+  (define (toggle-bold)    (font-weight (if (eq? (font-weight) 'normal) 'bold   'normal)))
+  (define (toggle-italics) (font-style  (if (eq? (font-style)  'normal) 'italic 'normal)))
   ;;; WINDOW SIZE
   (define min-width  800)
   (define min-height 800)
@@ -699,8 +698,8 @@
              ['left       (buffer-backward-word! b)]
              ['right      (buffer-forward-word! b)]
              
-             [#\b         (displayln 'insert-bold)
-                          (buffer-insert-property! b (property 'bold))]
+             [#\b         (buffer-insert-property! b (property 'bold))]
+             [#\i         (buffer-insert-property! b (property 'italics))]
              [#\d         (buffer-display b)]
              [#\s         (save-buffer! b)]
              [#\w         (save-buffer! b)      ; todo: ask!
@@ -737,13 +736,13 @@
         ; draw line
         (for/fold ([y 0]) ([l (text-lines (buffer-text b))])
           (for/fold ([x 0]) ([s (line-strings l)])
-            (cond 
-              [(string? s) (define-values (w h _ __) (send dc get-text-extent s))
+            (match s 
+              [(? string?) (define-values (w h _ __) (send dc get-text-extent s))
                            (send dc draw-text s x y)
                            (+ x w)]
-              [else        (toggle-bold)
-                           (send dc set-font (get-font))
-                           x]))
+              [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) x]
+              [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
+              [_ (displayln (~a "Warning: Got " s)) x]))
           (+ y (font-size) 1))
         ; draw points
         (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
