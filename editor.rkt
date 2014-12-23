@@ -869,7 +869,14 @@
          [_           #f])]
       [_ #f])))
 
+;;;
+;;; STATUS LINE
+;;;
 
+; The status line is shown at the bottom om a buffer window.
+(define (status-line-hook)
+  (define-values (row col) (mark-row+column (buffer-point (current-buffer))))
+  (~a "Buffer: " (buffer-name) "    " "(" row "," col ")"))
 
 ;;;
 ;;; GUI
@@ -934,7 +941,7 @@
   (define text-color       base03)
   
   (define frame (new frame% [label "Editor"]))
-  (define msg   (new message% [parent frame] [label "No news"]))
+  (define msg (new message% [parent frame] [label "No news"]))
   (send msg min-width min-width)
   (define subeditor-canvas%
     (class canvas%
@@ -985,11 +992,16 @@
           (define x (* c font-width))
           (define y (* r (+ font-height -2))) ; why -2 ?
           (send dc draw-line x y x (+ y font-height)))
-        #;(send dc set-background (make-object color% "white")))
+        ; uddate status line
+        (display-status-line (status-line-hook)))
       (super-new)))
   (define canvas (new subeditor-canvas% [parent frame]))
+  (define status-line (new message% [parent frame] [label "Welcome"]))
+  (send status-line min-width min-width)
+  (define (display-status-line s) (send status-line set-label s))
   (send canvas min-client-width  400)
   (send canvas min-client-height 400)
+  (display-status-line "Don't panic")
   (send frame show #t))
 
 (module+ test
