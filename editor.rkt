@@ -488,6 +488,11 @@
      ; j is now the index of the first word separator
      (mark-move! m (if j (- j col) col))]))
 
+(define (mark-move-to-position! m n)
+  ; todo: remove mark from the mark list of its current line
+  (set-mark-position! m n))
+
+
 ;;;
 ;;; WORDS
 ;;;
@@ -753,6 +758,10 @@
   (define-values (row col) (mark-row+column m))
   (line-insert-property! (dlist-ref (text-lines t) row) p col))
 
+(define (buffer-move-point-to-position! b n)
+  (define m (buffer-point b))
+  (mark-move-to-position! m n))
+
 
 ; buffer-point-marker! : buffer -> mark
 ;   set new mark at point (i.e. "copy point")
@@ -795,17 +804,19 @@
 
 ;; Names from emacs
 
-(define (beginning-of-line) (buffer-move-point-to-begining-of-line! (current-buffer)))
-(define (end-of-line)       (buffer-move-point-to-end-of-line! (current-buffer)))
-(define (backward-char)     (buffer-move-point! (current-buffer) -1))
-(define (forward-char)      (buffer-move-point! (current-buffer) +1))
-(define (previous-line)     (buffer-move-point-up! (current-buffer)))
-(define (next-line)         (buffer-move-point-down! (current-buffer)))
-(define (backward-word)     (buffer-backward-word! (current-buffer)))
-(define (forward-word)      (buffer-forward-word! (current-buffer)))
+(define (beginning-of-line)   (buffer-move-point-to-begining-of-line! (current-buffer)))
+(define (end-of-line)         (buffer-move-point-to-end-of-line! (current-buffer)))
+(define (backward-char)       (buffer-move-point! (current-buffer) -1))
+(define (forward-char)        (buffer-move-point! (current-buffer) +1))
+(define (previous-line)       (buffer-move-point-up! (current-buffer)))
+(define (next-line)           (buffer-move-point-down! (current-buffer)))
+(define (backward-word)       (buffer-backward-word! (current-buffer)))
+(define (forward-word)        (buffer-forward-word! (current-buffer)))
 
-(define (save-buffer)       (displayln "buffer saved!") (save-buffer! (current-buffer)))
-(define (save-some-buffers) (save-buffer)) ; todo : ask in minibuffer
+(define (save-buffer)         (displayln "buffer saved!") (save-buffer! (current-buffer)))
+(define (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
+(define (beginning-of-buffer) (buffer-move-point-to-position! (current-buffer) 0))
+
 
 ;;;
 ;;; KEYMAP
@@ -838,6 +849,7 @@
     (write (list prefix key)) (newline)
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
+    ; if unbound and not prefix, return #f
     (match prefix
       [(list "ESC") (match key
                       [#\b backward-word]
@@ -863,6 +875,8 @@
          ["C-p"       previous-line]
          ["C-n"       next-line]
          ; Cmd + something
+         ; tofo: Make M-< work
+         ["M-,"       beginning-of-buffer]
          ["M-left"    backward-word]
          ["M-right"   forward-word]
          ["M-b"       (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]
