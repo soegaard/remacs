@@ -671,6 +671,8 @@
 
 ; buffer-point-set! : buffer mark -> void
 ;   set the point at the position given by the mark m
+
+
 (define (buffer-move-point! b n)
   (mark-move! (buffer-point b) n))
 
@@ -802,6 +804,8 @@
 (define (backward-word)     (buffer-backward-word! (current-buffer)))
 (define (forward-word)      (buffer-forward-word! (current-buffer)))
 
+(define (save-buffer)       (displayln "buffer saved!") (save-buffer! (current-buffer)))
+(define (save-some-buffers) (save-buffer)) ; todo : ask in minibuffer
 
 ;;;
 ;;; KEYMAP
@@ -821,21 +825,32 @@
   (define ctrl? (send event get-control-down))
   (define alt?  (send event get-alt-down))
   (define meta? (send event get-meta-down))
-  (cond 
-    [(or ctrl? alt? meta?) (~a (if ctrl? "C-" "")
-                               (if alt?  "A-" "")
-                               (if meta? "M-" "")
-                               k)]
-    [else                  k]))
+  (let ([k (match k ['escape "ESC"] [_ k])])
+    (cond 
+      [(or ctrl? alt? meta?) (~a (if ctrl? "C-" "")
+                                 (if alt?  "A-" "")
+                                 (if meta? "M-" "")
+                                 k)]
+      [else                  k])))
 
 (define global-keymap
   (λ (prefix key)
-    ; (write key) (newline)
+    (write (list prefix key)) (newline)
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     (match prefix
+      [(list "ESC") (match key
+                      [#\b backward-word]
+                      [#\f forward-word]
+                      [_ #f])]
+      [(list "C-x") (match key
+                      [#\s   save-some-buffers]
+                      ["C-s" save-buffer]
+                      [_ #f])]
       [(list)
        (match key
+         ["ESC"       'prefix]
+         ["C-x"       'prefix]
          ['left       backward-char]
          ['right      forward-char]
          ['up         previous-line]
@@ -860,7 +875,6 @@
          [#\rubout    (λ () (error 'todo))]                     ; the delete key
          ['home       (λ () (buffer-move-point-to-begining-of-line! (current-buffer)))] ; fn+left
          ['end        (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
-         ['release    (λ () (void 'ignore))]
          ; place self inserting characters after #\return and friends
          [(? char? k) (λ () 
                         (define b (current-buffer))
@@ -943,6 +957,9 @@
   (define frame (new frame% [label "Editor"]))
   (define msg (new message% [parent frame] [label "No news"]))
   (send msg min-width min-width)
+  (define prefix '())
+  (define (add-prefix! key) (set! prefix (append prefix (list key))))
+  (define (clear-prefix!)   (set! prefix '()))
   (define subeditor-canvas%
     (class canvas%
       (define/override (on-char event)
@@ -950,12 +967,14 @@
         (define key (key-event->key event))
         (unless (equal? key 'release)
           (send msg set-label (~a "key: " key)))
-        (match (global-keymap '() key)
-          [(? procedure? thunk) (thunk)]
-          ['prefix              (error 'on-char "implement prefixes")]
+        (match (global-keymap prefix key)
+          [(? procedure? thunk) (clear-prefix!) (thunk)]
+          ['prefix              (add-prefix! key)]
           ['exit                (save-buffer! (current-buffer))
                                 (send frame on-exit)]
-          [_                    (void)])
+          ['release             (void)]
+          [_                    (unless (equal? (send event get-key-code) 'release)
+                                  (clear-prefix!))])
         ; todo: don't trigger repaint on every key stroke ...
         (send canvas on-paint))
       (define/override (on-paint)
