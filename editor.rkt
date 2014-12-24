@@ -816,7 +816,8 @@
 (define (save-buffer)         (displayln "buffer saved!") (save-buffer! (current-buffer)))
 (define (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
 (define (beginning-of-buffer) (buffer-move-point-to-position! (current-buffer) 0))
-
+(define (end-of-buffer)       (buffer-move-point-to-position! (current-buffer) 
+                                                              (buffer-length (current-buffer))))
 
 ;;;
 ;;; KEYMAP
@@ -831,11 +832,38 @@
 
 (struct keymap (bindings) #:transparent)
 
+(define (key-event/no-modifiers key-event)
+  (define e key-event)
+  (new key-event% 
+       [key-code   (send e get-key-code)]
+       [shift-down   #f]
+       [control-down #f]
+       [meta-down    #f]
+       [alt-down     #f]
+       [x            (send e get-x)]
+       [y            (send e get-y)]
+       [time-stamp   (send e get-time-stamp)]
+       [caps-down    #f]
+       [mod3-down    #f]
+       [mod4-down    #f]
+       [mod5-down    #f]
+       [control+meta-is-altgr #f]))
+
+(define (get-shift-key-code key-event)
+  (define e (key-event/no-modifiers key-event))
+  (send e set-shift-down #t)
+  (send e get-key-code))      
+  
+
 (define (key-event->key event)
-  (define k     (send event get-key-code))
-  (define ctrl? (send event get-control-down))
-  (define alt?  (send event get-alt-down))
-  (define meta? (send event get-meta-down))
+  (define shift? (send event get-shift-down))
+  (define c      (send event get-key-code))
+  (define k      (if shift?
+                     (or (send event get-other-shift-key-code) c)
+                     c))
+  (define ctrl?  (send event get-control-down))
+  (define alt?   (send event get-alt-down))
+  (define meta?  (send event get-meta-down))  
   (let ([k (match k ['escape "ESC"] [_ k])])
     (cond 
       [(or ctrl? alt? meta?) (~a (if ctrl? "C-" "")
@@ -851,14 +879,16 @@
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
     (match prefix
-      [(list "ESC") (match key
-                      [#\b backward-word]
-                      [#\f forward-word]
-                      [_ #f])]
-      [(list "C-x") (match key
-                      [#\s   save-some-buffers]
-                      ["C-s" save-buffer]
-                      [_ #f])]
+      [(list "ESC") 
+       (match key
+         [#\b         backward-word]
+         [#\f         forward-word]
+         [_           #f])]
+      [(list "C-x")
+       (match key
+         [#\s         save-some-buffers]
+         ["C-s"       save-buffer]
+         [_           #f])]
       [(list)
        (match key
          ["ESC"       'prefix]
@@ -875,8 +905,11 @@
          ["C-p"       previous-line]
          ["C-n"       next-line]
          ; Cmd + something
-         ; tofo: Make M-< work
-         ["M-,"       beginning-of-buffer]
+         ; todo: Make M-< and M-> work
+         ; ["M-<"       beginning-of-buffer]
+         ["C-<"       beginning-of-buffer]
+         ; ["M->"       end-of-buffer]
+         ["C->"       end-of-buffer]
          ["M-left"    backward-word]
          ["M-right"   forward-word]
          ["M-b"       (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]
@@ -979,6 +1012,7 @@
       (define/override (on-char event)
         ; TODO syntax  (with-temp-buffer body ...)
         (define key (key-event->key event))
+        (displayln (list 'key key 'shift (get-shift-key-code event)))
         (unless (equal? key 'release)
           (send msg set-label (~a "key: " key)))
         (match (global-keymap prefix key)
