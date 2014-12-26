@@ -1,6 +1,6 @@
 #lang racket
 (module+ test (require rackunit))
-(require "dlist.rkt" (for-syntax syntax/parse))
+(require "dlist.rkt" (for-syntax syntax/parse) framework)
 
 ;;;
 ;;; REPRESENTATION
@@ -1000,13 +1000,23 @@
   ;;; COLORS
   (define background-color base1)
   (define text-color       base03)
-  
+  ;;; FRAME
   (define frame (new frame% [label "Editor"] [style '(fullscreen-button)]))
   (define msg (new message% [parent frame] [label "No news"]))
   (send msg min-width min-width)
+  ;;; MENUBAR
+  (define (create-menubar)
+    (define mb (new menu-bar% (parent frame)))
+    (define file-menu (new menu% (label "File") (parent mb)))
+    (define help-menu (new menu% (label "Help") (parent mb)))
+    (new menu-item% [label "Open ..."] [parent file-menu] 
+         [callback (λ (item evt) (displayln (finder:get-file)))]))
+  (create-menubar)
+  ;;; PREFIX
   (define prefix '())
   (define (add-prefix! key) (set! prefix (append prefix (list key))))
   (define (clear-prefix!)   (set! prefix '()))
+  ;;; CANVAS
   (define subeditor-canvas%
     (class canvas%
       (define/override (on-char event)
