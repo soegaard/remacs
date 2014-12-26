@@ -1,6 +1,7 @@
 #lang racket
 (module+ test (require rackunit))
 (require "dlist.rkt" (for-syntax syntax/parse) framework)
+(require racket/gui/base)
 
 ;;;
 ;;; REPRESENTATION
@@ -613,6 +614,14 @@
   (define b buffer-or-name)
   (if (buffer? b) b (generate-new-buffer b)))
 
+(define (buffer-open-file-or-create file-path)
+  (define path (if (string? file-path) (string->path file-path) file-path))
+  (unless (file-exists? path)
+    (close-output-port (open-output-file path)))
+  (define filename (last (map path->string (explode-path path))))
+  (define text     (path->text path))
+  (new-buffer text path (generate-new-buffer-name filename)))
+
 
 ; save-buffer : buffer -> void
 ;   save contents of buffer to associated file
@@ -770,35 +779,6 @@
     ...)
 
 ;;;
-;;; WINDOWS
-;;;
-
-; A window is an area of the screen used to display a buffer.
-; Windows are grouped into frames.
-; Each frame contains at least one window.
-
-(define window-ht (make-hash))
-
-(struct window (buffer))
-
-; get-buffer-window : [buffer-or-name] -> window
-;   return first window in which buffer is displayed
-(define (get-buffer-window [buffer-or-name (current-buffer)])
-  (define b (get-buffer buffer-or-name))
-  (for/first ([w window-ht]
-              #:when (eq? (get-buffer (buffer-name (window-buffer w))) b))
-    w))
-
-; get-buffer-window-list : [buffer-or-name] -> list-of-windows
-;   get list of all windows in which buffer is displayed
-(define (get-buffer-window-list [buffer-or-name (current-buffer)])
-  (define b (get-buffer buffer-or-name))
-  (for/list ([w window-ht]
-             #:when (eq? (get-buffer (window-buffer w)) b))
-    w))
-
-
-;;;
 ;;; INTERACTIVE COMMANDS
 ;;;
 
@@ -818,6 +798,11 @@
 (define (beginning-of-buffer) (buffer-move-point-to-position! (current-buffer) 0))
 (define (end-of-buffer)       (buffer-move-point-to-position! (current-buffer) 
                                                               (buffer-length (current-buffer))))
+(define (open-file-or-create [path (finder:get-file)])
+  (define b (buffer-open-file-or-create path))
+  (set-window-buffer! (current-window) b)
+  (current-buffer b)
+  (refresh-frame (current-frame)))
 
 ;;;
 ;;; KEYMAP
@@ -853,7 +838,7 @@
   (define e (key-event/no-modifiers key-event))
   (send e set-shift-down #t)
   (send e get-key-code))      
-  
+
 
 (define (key-event->key event)
   (define shift? (send event get-shift-down))
@@ -940,12 +925,52 @@
   (~a "Buffer: " (buffer-name) "    " "(" row "," col ")"))
 
 ;;;
-;;; GUI
+;;; WINDOWS
 ;;;
 
-(require racket/gui/base)
+; A window is an area of the screen used to display a buffer.
+; Windows are grouped into frames.
+; Each frame contains at least one window.
 
+(define window-ht (make-hash))
+
+(struct window (buffer) #:mutable)
+(define current-window (make-parameter #f))
+
+; get-buffer-window : [buffer-or-name] -> window
+;   return first window in which buffer is displayed
+(define (get-buffer-window [buffer-or-name (current-buffer)])
+  (define b (get-buffer buffer-or-name))
+  (for/first ([w window-ht]
+              #:when (eq? (get-buffer (buffer-name (window-buffer w))) b))
+    w))
+
+; get-buffer-window-list : [buffer-or-name] -> list-of-windows
+;   get list of all windows in which buffer is displayed
+(define (get-buffer-window-list [buffer-or-name (current-buffer)])
+  (define b (get-buffer buffer-or-name))
+  (for/list ([w window-ht]
+             #:when (eq? (get-buffer (window-buffer w)) b))
+    w))
+
+;;;
+;;; FRAMES
+;;;
+
+; (struct window (buffer width height) #:mutable)
+(struct horizontal-split-window (left right) #:mutable)
+(struct   vertical-split-window (left right) #:mutable)
+
+(define current-frame (make-parameter #f))
+
+(define (refresh-frame f)
+  (when f
+    (send (frame-canvas f) on-paint)))
+
+
+;;;
 ;;; COLORS
+;;;
 
 (define (hex->color x)
   (define red   (remainder           x        256))
@@ -972,28 +997,75 @@
 (define cyan    (hex->color #x2aa198)) ; cyan       accent color
 (define green   (hex->color #x859900)) ; green      accent color
 
-(define (new-editor-frame b)
-  ;;; FONT
-  (define font-style  (make-parameter 'normal))  ; style  in '(normal italic)
-  (define font-weight (make-parameter 'normal))  ; weight in '(normal bold)
-  (define font-size   (make-parameter 16))
-  (define font-family (make-parameter 'modern))  ; fixed width
-  (define (use-default-font-settings)
-    (font-style  'normal)
-    (font-weight 'normal)
-    (font-size   16)
-    (font-family 'modern))
-  (define font-ht (make-hash))                   ; (list size family style weight) -> font  
-  (define (get-font)
-    (define key (list (font-size) (font-family) (font-style) (font-weight)))
-    (define font (hash-ref font-ht key #f))
-    (unless font
-      (set! font (make-object font% (font-size) (font-family) (font-style) (font-weight)))
-      (hash-set! font-ht key font))
-    font)
-  (define default-fixed-font  (get-font))
-  (define (toggle-bold)    (font-weight (if (eq? (font-weight) 'normal) 'bold   'normal)))
-  (define (toggle-italics) (font-style  (if (eq? (font-style)  'normal) 'italic 'normal)))
+;;;
+;;; FONT
+;;;
+
+(define font-style  (make-parameter 'normal))  ; style  in '(normal italic)
+(define font-weight (make-parameter 'normal))  ; weight in '(normal bold)
+(define font-size   (make-parameter 16))
+(define font-family (make-parameter 'modern))  ; fixed width
+(define (use-default-font-settings)
+  (font-style  'normal)
+  (font-weight 'normal)
+  (font-size   16)
+  (font-family 'modern))
+(define font-ht (make-hash))                   ; (list size family style weight) -> font  
+(define (get-font)
+  (define key (list (font-size) (font-family) (font-style) (font-weight)))
+  (define font (hash-ref font-ht key #f))
+  (unless font
+    (set! font (make-object font% (font-size) (font-family) (font-style) (font-weight)))
+    (hash-set! font-ht key font))
+  font)
+(define (toggle-bold)    (font-weight (if (eq? (font-weight) 'normal) 'bold   'normal)))
+(define (toggle-italics) (font-style  (if (eq? (font-style)  'normal) 'italic 'normal)))
+(define default-fixed-font  (get-font))
+
+;;;
+;;; GUI
+;;;
+
+(struct frame (frame% canvas windows) #:mutable)
+
+(define (render-buffer b dc)
+  (for/fold ([y 0]) ([l (text-lines (buffer-text b))])
+    (define strings (line-strings l))
+    (define n (length strings))
+    (define (last-string? i) (= i (- n 1)))
+    (for/fold ([x 0]) ([s strings] [i (in-range n)])
+      (match s 
+        [(? string?) (define t ; remove final newline
+                       (if (last-string? i) (substring s 0(max 0 (- (string-length s) 1))) s))
+                     (define-values (w h _ __) (send dc get-text-extent t))
+                     (send dc draw-text t x y)
+                     (+ x w)]
+        [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) x]
+        [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
+        [_ (displayln (~a "Warning: Got " s)) x]))
+    (+ y (font-size) 1))
+  ; draw points
+  (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
+  (for ([p (buffer-points b)])
+    (define-values (r c) (mark-row+column p))
+    (define x (* c font-width))
+    (define y (* r (+ font-height -2))) ; why -2 ?
+    (send dc draw-line x y x (+ y font-height))))
+
+(define (render-window win dc)
+  (render-buffer (window-buffer win) dc))
+  
+(define (render-windows win dc)
+  (match win
+    [(horizontal-split-window left right)  (render-window left  dc)]
+    [(vertical-split-window upper lower)   (render-window upper dc)]
+    [(window buffer)                       (render-window win dc)]
+    [_ (error 'render-window "got ~a" win)]))
+
+(define (render-frame frame dc)
+  (render-window (frame-windows frame) dc))
+
+(define (new-editor-frame this-frame)
   ;;; WINDOW SIZE
   (define min-width  800)
   (define min-height 800)
@@ -1002,6 +1074,7 @@
   (define text-color       base03)
   ;;; FRAME
   (define frame (new frame% [label "Editor"] [style '(fullscreen-button)]))
+  (set-frame-frame%! this-frame frame)
   (define msg (new message% [parent frame] [label "No news"]))
   (send msg min-width min-width)
   ;;; MENUBAR
@@ -1009,8 +1082,7 @@
     (define mb (new menu-bar% (parent frame)))
     (define file-menu (new menu% (label "File") (parent mb)))
     (define help-menu (new menu% (label "Help") (parent mb)))
-    (new menu-item% [label "Open ..."] [parent file-menu] 
-         [callback (λ (item evt) (displayln (finder:get-file)))]))
+    (new menu-item% [label "Open ..."] [parent file-menu] [callback (λ (_ e) (open-file-or-create))]))
   (create-menubar)
   ;;; PREFIX
   (define prefix '())
@@ -1045,34 +1117,12 @@
         (send dc clear)
         (send dc set-text-background background-color)        
         (send dc set-text-foreground text-color)
-        ; (send msg set-label "on-paint")
-        ; draw line
-        (for/fold ([y 0]) ([l (text-lines (buffer-text b))])
-          (define strings (line-strings l))
-          (define n (length strings))
-          (define (last-string? i) (= i (- n 1)))
-          (for/fold ([x 0]) ([s strings] [i (in-range n)])
-            (match s 
-              [(? string?) (define t ; remove final newline
-                             (if (last-string? i) (substring s 0(max 0 (- (string-length s) 1))) s))
-                           (define-values (w h _ __) (send dc get-text-extent t))
-                           (send dc draw-text t x y)
-                           (+ x w)]
-              [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) x]
-              [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
-              [_ (displayln (~a "Warning: Got " s)) x]))
-          (+ y (font-size) 1))
-        ; draw points
-        (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
-        (for ([p (buffer-points b)])
-          (define-values (r c) (mark-row+column p))
-          (define x (* c font-width))
-          (define y (* r (+ font-height -2))) ; why -2 ?
-          (send dc draw-line x y x (+ y font-height)))
+        (render-frame this-frame dc)
         ; uddate status line
         (display-status-line (status-line-hook)))
       (super-new)))
   (define canvas (new subeditor-canvas% [parent frame]))
+  (set-frame-canvas! this-frame canvas)
   (define status-line (new message% [parent frame] [label "Welcome"]))
   (send status-line min-width min-width)
   (define (display-status-line s) (send status-line set-label s))
@@ -1082,8 +1132,13 @@
   (send frame show #t))
 
 (module+ test
-  (current-buffer illead-buffer)
-  (new-editor-frame illead-buffer))
+  (define ib illead-buffer)
+  (current-buffer ib)
+  (define w (window ib))
+  (current-window w)
+  (define f (frame #f #f w))
+  (current-frame f)
+  (new-editor-frame f))
 
 (define (display-file path)
   (with-input-from-file path
