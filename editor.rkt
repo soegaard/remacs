@@ -799,10 +799,11 @@
 (define (end-of-buffer)       (buffer-move-point-to-position! (current-buffer) 
                                                               (buffer-length (current-buffer))))
 (define (open-file-or-create [path (finder:get-file)])
-  (define b (buffer-open-file-or-create path))
-  (set-window-buffer! (current-window) b)
-  (current-buffer b)
-  (refresh-frame (current-frame)))
+  (when path ; #f = none selected
+    (define b (buffer-open-file-or-create path))
+    (set-window-buffer! (current-window) b)
+    (current-buffer b)
+    (refresh-frame (current-frame))))
 
 ;;;
 ;;; KEYMAP
@@ -889,18 +890,19 @@
          ["C-f"       forward-char]
          ["C-p"       previous-line]
          ["C-n"       next-line]
-         ; Cmd + something
          ; todo: Make M-< and M-> work
          ; ["M-<"       beginning-of-buffer]
          ["C-<"       beginning-of-buffer]
          ; ["M->"       end-of-buffer]
          ["C->"       end-of-buffer]
+         ; Cmd + something
          ["M-left"    backward-word]
          ["M-right"   forward-word]
          ["M-b"       (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]
          ["M-i"       (λ () (buffer-insert-property! (current-buffer) (property 'italics)))]
          ["M-d"       (λ () (buffer-display (current-buffer)))]
          ["M-s"       (λ () (save-buffer! (current-buffer)))]
+         ["M-o"       open-file-or-create]
          ["M-w"       'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
          [#\return    (λ () (buffer-break-line! (current-buffer)))]
          [#\backspace (λ () (buffer-delete-backward-char (current-buffer) 1))] ; the backspace key
@@ -1094,7 +1096,7 @@
       (define/override (on-char event)
         ; TODO syntax  (with-temp-buffer body ...)
         (define key (key-event->key event))
-        (displayln (list 'key key 'shift (get-shift-key-code event)))
+        ; (displayln (list 'key key 'shift (get-shift-key-code event)))
         (unless (equal? key 'release)
           (send msg set-label (~a "key: " key)))
         (match (global-keymap prefix key)
