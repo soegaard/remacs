@@ -1001,7 +1001,7 @@
   (define background-color base1)
   (define text-color       base03)
   
-  (define frame (new frame% [label "Editor"]))
+  (define frame (new frame% [label "Editor"] [style '(fullscreen-button)]))
   (define msg (new message% [parent frame] [label "No news"]))
   (send msg min-width min-width)
   (define prefix '())
