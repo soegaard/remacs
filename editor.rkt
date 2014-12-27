@@ -734,6 +734,8 @@
 (module+ test
   #;(buffer-display illead-buffer))
 
+; buffer-insert-char! : buffer char -> void
+;   insert char after point, move point
 (define (buffer-insert-char! b c)
   (define m (buffer-point b))
   (define t (buffer-text b))
@@ -1050,6 +1052,8 @@
   (define first-row-on-screen (max 0 (- row num-lines-on-screen)))
   (define num-lines-to-skip first-row-on-screen)
   (displayln (list first-row-on-screen last-row-on-screen))
+  ; suspend flush
+  (send dc suspend-flush)
   ; draw text
   (for/fold ([y 0]) ([l #;(drop (dlist->list (text-lines (buffer-text b))) num-lines-to-skip)
                         (text-lines (buffer-text b))])
@@ -1073,7 +1077,9 @@
     (define-values (r c) (mark-row+column p))
     (define x (* c font-width))
     (define y (* r (+ font-height -2))) ; why -2 ?
-    (send dc draw-line x y x (+ y font-height))))
+    (send dc draw-line x y x (+ y font-height -1)))
+  ; resume flush
+  (send dc resume-flush))
 
 (define (render-window win dc)
   (render-buffer (window-buffer win) dc))
@@ -1137,7 +1143,7 @@
         (use-default-font-settings)
         (send dc set-font default-fixed-font)
         (send dc set-text-mode 'solid) ; solid -> use text background color
-        (send dc set-background "white")
+        ; (send dc set-background "white")
         (send dc clear)
         (send dc set-text-background background-color)        
         (send dc set-text-foreground text-color)
