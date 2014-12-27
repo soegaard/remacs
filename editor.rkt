@@ -585,7 +585,7 @@
   (new-buffer (new-text) #f (generate-new-buffer-name name)))
 
 (define current-buffer 
-  (make-parameter (new-buffer (new-text (list->lines '("The scratch buffer"))) #f "*scratch*")))
+  (make-parameter (new-buffer (new-text (list->lines '("The scratch buffer\n"))) #f "*scratch*")))
 
 ; syntax: (save-current-buffer body ...)
 ;   store current-buffer while evaluating body ...
@@ -947,9 +947,9 @@
 ; The status line is shown at the bottom om a buffer window.
 (define (status-line-hook)
   (define-values (row col) (mark-row+column (buffer-point (current-buffer))))
-  (~a "Buffer: " (buffer-name) "    " "(" row "," col ")"
+  (~a "Buffer: "          (buffer-name) "    " "(" row "," col ")"
       "    " "Position: " (mark-position (buffer-point (current-buffer)))
-      "    " "Buffer length: " (buffer-length (current-buffer))))
+      "    " "Length: "   (buffer-length (current-buffer))))
 
 ;;;
 ;;; WINDOWS
@@ -1081,8 +1081,8 @@
   (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
   (for ([p (buffer-points b)])
     (define-values (r c) (mark-row+column p))
-    (define x (* c font-width))
-    (define y (* r (+ font-height -2))) ; why -2 ?
+    (define x (+ xmin (* c font-width)))
+    (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
     (send dc draw-line x y x (+ y font-height -1)))
   ; resume flush
   (send dc resume-flush))
@@ -1096,8 +1096,10 @@
   (define ymid (mid ymin ymax))
   (match win
     [(horizontal-split-window left  right) (render-windows left  dc xmin xmid ymin ymax)
+                                           (send dc draw-line xmid ymin xmid ymax)
                                            (render-windows right dc xmid xmax ymin ymax)]
     [(vertical-split-window   upper lower) (render-windows upper dc xmin xmax ymin ymid)
+                                           (send dc draw-line xmin ymid xmax ymid)
                                            (render-windows lower dc xmin xmax ymid ymax)]
     [(window buffer)                       (render-window  win   dc xmin xmax ymin ymax)]
     [_ (error 'render-window "got ~a" win)]))
