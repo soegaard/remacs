@@ -219,6 +219,8 @@
   (define-values (j us vs) (skip-strings (line-strings l) i))  
   (cond
     [(empty? vs) (values l (line '("\n") 0))]
+    [(= j 0)     (values (line (append us (list "\n")) (+ i 1))
+                         (line vs (- n i)))]
     [else        (define s (first vs))
                  (define sn (string-length s))
                  (define s1 (substring s 0 j))
@@ -232,8 +234,10 @@
   (define ws (let loop ([us (line-strings l1)])
                ; we must remove the newline of the last string of us
                (if (null? (rest us))
-                   (cons (substring (first us) 0 (- (string-length (first us)) 1))
-                         (line-strings l2))
+                   (let ([s (substring (first us) 0 (- (string-length (first us)) 1))])
+                     (if (equal? "" s)
+                         (line-strings l2)
+                         (cons s (line-strings l2))))
                    (cons (first us)
                          (loop (rest us))))))
   (line ws (+ (line-length l1) -1 (line-length l2))))
@@ -247,11 +251,15 @@
   (unless (> i 0) (error 'line-delete-backward-char! "got ~a" i))
   (define-values (j us vs) (skip-strings (line-strings l) (- i 1)))
   ; (write (list 'back-char l i 'j j 'us us 'vs vs)) (newline)
-  (define s (first vs))
-  (define n (string-length s))
-  (define s1 (substring s 0 j)) 
-  (define s2 (substring s (+ j 1) n))
-  (define ws (append us (cons (string-append s1 s2) (rest vs))))
+  (define s    (first vs))
+  (define n    (string-length s))
+  (define s1   (substring s 0 j)) 
+  (define s2   (substring s (+ j 1) n))
+  (define s1s2 (string-append s1 s2))
+  (displayln (list 's1s2 s1s2))
+  (define ws   (if (equal? "" s1s2)
+                   (append us (rest vs))
+                   (append us (cons s1s2 (rest vs)))))
   (set-line-strings! l ws)
   (set-line-length! l (- (line-length l) 1)))
 
@@ -317,7 +325,6 @@
     (line-length line)))
 
 (define (text-stats t)
-  (displayln (list 'text-stats t))
   (define-values (nlines nchars)
     (for/fold ([nl 0] [nc 0]) ([l (text-lines t)])
       (values (+ nl 1) (+ nc (line-length l)))))
@@ -326,7 +333,8 @@
 (define (text-insert-char-at-mark! t m b c)
   (define-values (row col) (mark-row+column m))
   (define l (dlist-ref (text-lines t) row))
-  (line-insert-char! l c col))
+  (line-insert-char! l c col)
+  (set-text-length! t (+ (text-length t) 1)))
 
 ; text-break-line! : text natural natural -> void
 ;   break line number row into two at index col
@@ -391,6 +399,7 @@
   (define-values (row col)
     (let/ec return
       (for/fold ([r 0] [q 0]) ([l (text-lines (buffer-text b))])
+        ; q is the first position on line r
         (define n (line-length l))
         (if (> (+ q n) p)
             (return r (- p q))
@@ -686,6 +695,8 @@
 ; buffer-point-set! : buffer mark -> void
 ;   set the point at the position given by the mark m
 
+(define (point [b (current-buffer)])
+  (buffer-point b))
 
 (define (buffer-move-point! b n)
   (mark-move! (buffer-point b) n))
@@ -860,7 +871,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    (write (list prefix key)) (newline)
+    ; (write (list prefix key)) (newline)
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -924,7 +935,9 @@
 ; The status line is shown at the bottom om a buffer window.
 (define (status-line-hook)
   (define-values (row col) (mark-row+column (buffer-point (current-buffer))))
-  (~a "Buffer: " (buffer-name) "    " "(" row "," col ")"))
+  (~a "Buffer: " (buffer-name) "    " "(" row "," col ")"
+      "    " "Position: " (mark-position (buffer-point (current-buffer)))
+      "    " "Buffer length: " (buffer-length (current-buffer))))
 
 ;;;
 ;;; WINDOWS
@@ -962,13 +975,13 @@
 ; (struct window (buffer width height) #:mutable)
 (struct horizontal-split-window (left right) #:mutable)
 (struct   vertical-split-window (left right) #:mutable)
+(struct frame (frame% canvas windows) #:mutable)
 
 (define current-frame (make-parameter #f))
 
 (define (refresh-frame f)
   (when f
     (send (frame-canvas f) on-paint)))
-
 
 ;;;
 ;;; COLORS
@@ -1028,10 +1041,18 @@
 ;;; GUI
 ;;;
 
-(struct frame (frame% canvas windows) #:mutable)
-
 (define (render-buffer b dc)
-  (for/fold ([y 0]) ([l (text-lines (buffer-text b))])
+  (define-values (width height) (send dc get-size))
+  (define fs (font-size))
+  (define num-lines-on-screen (quotient height fs))
+  (define-values (row col) (mark-row+column (buffer-point  b)))
+  (define last-row-on-screen  (min row num-lines-on-screen))
+  (define first-row-on-screen (max 0 (- row num-lines-on-screen)))
+  (define num-lines-to-skip first-row-on-screen)
+  (displayln (list first-row-on-screen last-row-on-screen))
+  ; draw text
+  (for/fold ([y 0]) ([l #;(drop (dlist->list (text-lines (buffer-text b))) num-lines-to-skip)
+                        (text-lines (buffer-text b))])
     (define strings (line-strings l))
     (define n (length strings))
     (define (last-string? i) (= i (- n 1)))
@@ -1045,7 +1066,7 @@
         [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) x]
         [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
         [_ (displayln (~a "Warning: Got " s)) x]))
-    (+ y (font-size) 1))
+    (+ y fs 1))
   ; draw points
   (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
   (for ([p (buffer-points b)])
@@ -1056,7 +1077,7 @@
 
 (define (render-window win dc)
   (render-buffer (window-buffer win) dc))
-  
+
 (define (render-windows win dc)
   (match win
     [(horizontal-split-window left right)  (render-window left  dc)]
@@ -1065,7 +1086,7 @@
     [_ (error 'render-window "got ~a" win)]))
 
 (define (render-frame frame dc)
-  (render-window (frame-windows frame) dc))
+  (render-windows (frame-windows frame) dc))
 
 (define (new-editor-frame this-frame)
   ;;; WINDOW SIZE
@@ -1082,9 +1103,10 @@
   ;;; MENUBAR
   (define (create-menubar)
     (define mb (new menu-bar% (parent frame)))
-    (define file-menu (new menu% (label "File") (parent mb)))
-    (define help-menu (new menu% (label "Help") (parent mb)))
-    (new menu-item% [label "Open ..."] [parent file-menu] [callback (λ (_ e) (open-file-or-create))]))
+    (define fm (new menu% (label "File") (parent mb)))
+    (new menu% (label "Help") (parent mb))
+    (new menu-item% [label "Open ..."] [parent fm] [shortcut #\o]
+         [callback (λ (_ e) (open-file-or-create))]))
   (create-menubar)
   ;;; PREFIX
   (define prefix '())
