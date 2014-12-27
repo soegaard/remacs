@@ -1052,7 +1052,8 @@
   (define width  (- xmax xmin))
   (define height (- ymax ymin))
   (define fs (font-size))
-  (define num-lines-on-screen (quotient height fs))
+  (define ls (+ fs 1)) ; 1 pixel for spacing
+  (define num-lines-on-screen (max 0 (quotient height ls)))
   (define-values (row col)    (mark-row+column (buffer-point  b)))
   (define last-row-on-screen  (min row num-lines-on-screen))
   (define first-row-on-screen (max 0 (- row num-lines-on-screen)))
@@ -1062,7 +1063,8 @@
   (send dc suspend-flush)
   ; draw text
   (for/fold ([y ymin]) ([l #;(drop (dlist->list (text-lines (buffer-text b))) num-lines-to-skip)
-                        (text-lines (buffer-text b))])
+                           (text-lines (buffer-text b))]
+                        [i num-lines-on-screen])
     (define strings (line-strings l))
     (define n (length strings))
     (define (last-string? i) (= i (- n 1)))
@@ -1076,12 +1078,12 @@
         [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) x]
         [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
         [_ (displayln (~a "Warning: Got " s)) x]))
-    (+ y fs 1))
+    (+ y ls))
   ; draw points
   (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
   (for ([p (buffer-points b)])
     (define-values (r c) (mark-row+column p))
-    (define x (+ xmin (* c font-width)))
+    (define x (+ xmin (* c    font-width)))
     (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
     (send dc draw-line x y x (+ y font-height -1)))
   ; resume flush
@@ -1170,8 +1172,8 @@
   (define status-line (new message% [parent frame] [label "Welcome"]))
   (send status-line min-width min-width)
   (define (display-status-line s) (send status-line set-label s))
-  (send canvas min-client-width  400)
-  (send canvas min-client-height 400)
+  (send canvas min-client-width  200)
+  (send canvas min-client-height 200)
   (display-status-line "Don't panic")
   (send frame show #t))
 
