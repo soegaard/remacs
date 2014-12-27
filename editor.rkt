@@ -531,9 +531,11 @@
 
 ; all buffers are registered in buffers-ht
 (define buffers-ht (make-hash))  ; string -> buffer
+(define all-buffers '())
 
 ; register-buffer : buffer [thunk-or-#f] -> void
-;   associate (buffer-name b) to b in buffers-ht
+;   associate (buffer-name b) to b in buffers-ht,
+;   and put it all-buffers
 (define (register-buffer b [on-error #f])
   (define name (buffer-name b))
   (if (hash-ref buffers-ht name #f)
@@ -541,7 +543,8 @@
         [on-error (on-error)]
         [else (error 'register-buffer 
                      "attempt to register buffer with name already in use: ~a" name)])
-      (hash-set! buffers-ht name b)))
+      (hash-set! buffers-ht name b))
+  (set! all-buffers (cons b all-buffers)))
 
 ; get-buffer : buffer-or-string -> buffer-or-#f
 ;   return buffer specified by buffer-or-name
@@ -584,8 +587,8 @@
   (unless (string? name) (error 'generate-new-buffer "string expected, got ~a" name))
   (new-buffer (new-text) #f (generate-new-buffer-name name)))
 
-(define current-buffer 
-  (make-parameter (new-buffer (new-text (list->lines '("The scratch buffer\n"))) #f "*scratch*")))
+(define scratch-buffer (new-buffer (new-text (list->lines '("The scratch buffer\n"))) #f "*scratch*"))
+(define current-buffer (make-parameter scratch-buffer))
 
 ; syntax: (save-current-buffer body ...)
 ;   store current-buffer while evaluating body ...
@@ -795,6 +798,17 @@
   (mark-move-to-position! m n))
 
 
+; next-buffer : buffer -> buffer
+;   all buffers are in all-buffers, return the one following b
+(define (get-next-buffer [b (current-buffer)])
+  (define first-buffer (first all-buffers))
+  (let loop ([bs all-buffers])
+    (cond
+      [(null? bs)         first-buffer]
+      [(eq? (first bs) b) (if (null? (rest bs)) first-buffer (first (rest bs)))]
+      [else               (loop (rest bs))])))
+                              
+
 ; buffer-point-marker! : buffer -> mark
 ;   set new mark at point (i.e. "copy point")
 #;(define (buffer-point-marker! b)
@@ -827,6 +841,12 @@
     (set-window-buffer! (current-window) b)
     (current-buffer b)
     (refresh-frame (current-frame))))
+
+(define (next-buffer)        
+  (define w (current-window))
+  (define b (get-next-buffer))
+  (set-window-buffer! w b)
+  (current-buffer b))
 
 ;;;
 ;;; KEYMAP
@@ -897,6 +917,7 @@
        (match key
          [#\s         save-some-buffers]
          ["C-s"       save-buffer]
+         ['right      next-buffer]
          [_           #f])]
       [(list)
        (match key
