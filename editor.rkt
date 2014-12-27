@@ -398,15 +398,16 @@
   ; (define link (text-lines (buffer-text b)))
   (define link (text-lines (buffer-text b)))
   (define m (mark b link pos name fixed?))
+  (displayln link)
   ; (set-linked-line-marks! link (cons m (linked-line-marks link)))
   m)
 
 ; mark-move! : mark integer -> void
 ;  move the mark n characters
 (define (mark-move! m n)
-  (define b (mark-buffer m))
-  (define p (mark-position m))
-  (define l (dfirst (mark-link m)))
+  (define b  (mark-buffer m))
+  (define p  (mark-position m))
+  (define l  (dfirst (mark-link m)))
   (define ln (line-length l))
   (define-values (old-r old-c) (mark-row+column m))
   ; new position
@@ -421,7 +422,9 @@
     (set-linked-line-marks! link (set-remove (linked-line-marks link) m))
     ; insert mark in new line
     (define new-link (dlist-move (first-dcons link) r))
-    (set-linked-line-marks! new-link (set-add (linked-line-marks new-link) m))))
+    (set-linked-line-marks! new-link (set-add (linked-line-marks new-link) m))
+    ; the mark must point to the new line
+    (set-mark-link! m new-link)))
 
 ; mark-row+column : mark- > integer integer
 ;   return row and column number for the mark m
@@ -891,6 +894,18 @@
   (current-window w)
   (current-buffer (window-buffer w)))
 
+(define (command-set-mark)
+  (displayln (list 'command-set-mark))
+  (define b (current-buffer))
+  (define p (buffer-point b))
+  (define fixed? #f)
+  (define name "*mark*")
+  (define l (mark-link p))
+  (define m (mark b l (mark-position p) name fixed?))
+  (set-linked-line-marks! l (set-add (linked-line-marks l) m))
+  (set-buffer-marks! b (set-add (buffer-marks b) m))
+  m)
+
 ;;;
 ;;; KEYMAP
 ;;;
@@ -936,7 +951,7 @@
   (define ctrl?  (send event get-control-down))
   (define alt?   (send event get-alt-down))
   (define meta?  (send event get-meta-down))  
-  (let ([k (match k ['escape "ESC"] [_ k])])
+  (let ([k (match k ['escape "ESC"] [#\space "space"][_ k])])
     (cond 
       [(or ctrl? alt? meta?) (~a (if ctrl? "C-" "")
                                  (if alt?  "A-" "")
@@ -997,6 +1012,7 @@
          [#\rubout    (λ () (error 'todo))]                     ; the delete key
          ['home       (λ () (buffer-move-point-to-begining-of-line! (current-buffer)))] ; fn+left
          ['end        (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
+         ["C-space"   command-set-mark]
          ; place self inserting characters after #\return and friends
          [(? char? k) (λ () 
                         (define b (current-buffer))
@@ -1060,7 +1076,6 @@
       [(vertical-split-window   u l) (append (loop u) (loop l))]
       [(window buffer)               (list w)]))
   (flatten (loop (frame-windows f))))
-
 
 
 ;;;
@@ -1172,11 +1187,11 @@
   (define ymid (mid ymin ymax))
   (match win
     [(horizontal-split-window left  right) (render-windows left  dc xmin xmid ymin ymax)
-                                           (send dc draw-line xmid ymin xmid ymax)
-                                           (render-windows right dc xmid xmax ymin ymax)]
+                                           (render-windows right dc xmid xmax ymin ymax)
+                                           (send dc draw-line xmid ymin xmid ymax)]
     [(vertical-split-window   upper lower) (render-windows upper dc xmin xmax ymin ymid)
-                                           (send dc draw-line xmin ymid xmax ymid)
-                                           (render-windows lower dc xmin xmax ymid ymax)]
+                                           (render-windows lower dc xmin xmax ymid ymax)
+                                           (send dc draw-line xmin ymid xmax ymid)]
     [(window buffer)                       (render-window  win   dc xmin xmax ymin ymax)]
     [_ (error 'render-window "got ~a" win)]))
 
