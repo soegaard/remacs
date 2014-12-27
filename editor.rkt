@@ -20,7 +20,7 @@
 
 (struct linked-line dcons (version marks) #:transparent #:mutable)
 ; the element of a linked-line is a line struct
-; marks is a list of marks located on the line
+; marks is a set of marks located on the line
 ; version will be used for the redisplay code
 
 (struct text (lines length) #:transparent #:mutable)
@@ -29,6 +29,7 @@
 (struct stats (num-lines num-chars) #:transparent)
 ; The number of lines and number of characters in a text.
 
+#;(struct buffer (text name path points marks modes cur-line num-chars num-lines modified?))
 (module buffer-struct racket/base
   ; buffer-name and buffer-modified? are extendeded to handle current-buffer later on
   (provide (except-out (struct-out buffer) buffer-name buffer-modified?) 
@@ -383,6 +384,15 @@
 ;;; MARKS
 ;;;
 
+(define (mark-compare m1 m2 cmp)
+  (define (pos m) (if (mark? m) (mark-position m) m))
+  (cmp (pos m1) (pos m2)))
+(define (mark<  m1 m2) (mark-compare m1 m2 <))
+(define (mark<= m1 m2) (mark-compare m1 m2 <=))
+(define (mark>  m1 m2) (mark-compare m1 m2 >))
+(define (mark>= m1 m2) (mark-compare m1 m2 >=))
+(define (mark=  m1 m2) (mark-compare m1 m2 =))
+
 ; new-mark : buffer string integer boolean -> mark
 (define (new-mark b name [pos 0] [fixed? #f])
   ; (define link (text-lines (buffer-text b)))
@@ -396,10 +406,22 @@
 (define (mark-move! m n)
   (define b (mark-buffer m))
   (define p (mark-position m))
+  (define l (dfirst (mark-link m)))
+  (define ln (line-length l))
+  (define-values (old-r old-c) (mark-row+column m))
+  ; new position
   (define q (if (> n 0)
                 (min (+ p n) (max 0 (- (buffer-length b) 1)))
                 (max (+ p n) 0)))
-  (set-mark-position! m q))
+  (set-mark-position! m q)
+  (define-values (r c) (mark-row+column m))
+  (unless (= old-r r)
+    ; remove mark from old line
+    (define link (mark-link m))
+    (set-linked-line-marks! link (set-remove (linked-line-marks link) m))
+    ; insert mark in new line
+    (define new-link (dlist-move (first-dcons link) r))
+    (set-linked-line-marks! new-link (set-add (linked-line-marks new-link) m))))
 
 ; mark-row+column : mark- > integer integer
 ;   return row and column number for the mark m
@@ -1136,7 +1158,7 @@
     (define-values (r c) (mark-row+column p))
     (define x (+ xmin (* c    font-width)))
     (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
-    (when (and (<= xmin x xmax) (<= ymin y ymax))
+    (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
       (send dc draw-line x y x (min ymax (+ y font-height -1)))))
   ; resume flush
   (send dc resume-flush))
