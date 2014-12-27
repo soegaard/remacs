@@ -797,16 +797,31 @@
   (define m (buffer-point b))
   (mark-move-to-position! m n))
 
+; list-next : list any (any any -> boolean)
+;   return the element after x,
+;   if x is the last element, then return the first element of xs,
+;   if x is not found in the list, return #f
+(define (list-next xs x =?)
+  (match xs
+    ['() #f]
+    [_   (define first-x (first xs))
+         (let loop ([xs xs])
+           (cond 
+             [(empty? xs)       #f]
+             [(=? (first xs) x) (if (empty? (rest xs)) first-x (first (rest xs)))]
+             [else              (loop (rest xs))]))]))
+
+(module+ test
+  (check-equal? (list-next '(a b c) 'a eq?) 'b)
+  (check-equal? (list-next '(a b c) 'b eq?) 'c)
+  (check-equal? (list-next '(a b c) 'c eq?) 'a)
+  (check-equal? (list-next '(a b c) 'd eq?) #f))
+  
 
 ; next-buffer : buffer -> buffer
 ;   all buffers are in all-buffers, return the one following b
 (define (get-next-buffer [b (current-buffer)])
-  (define first-buffer (first all-buffers))
-  (let loop ([bs all-buffers])
-    (cond
-      [(null? bs)         first-buffer]
-      [(eq? (first bs) b) (if (null? (rest bs)) first-buffer (first (rest bs)))]
-      [else               (loop (rest bs))])))
+  (list-next all-buffers b eq?))
                               
 
 ; buffer-point-marker! : buffer -> mark
@@ -842,11 +857,17 @@
     (current-buffer b)
     (refresh-frame (current-frame))))
 
-(define (next-buffer)        
+(define (next-buffer) ; show next buffer in current window
   (define w (current-window))
   (define b (get-next-buffer))
   (set-window-buffer! w b)
   (current-buffer b))
+
+(define (other-window) ; switch current window and buffer
+  (define ws (frame-window-tree (current-frame)))
+  (define w (list-next ws (current-window) eq?))
+  (current-window w)
+  (current-buffer (window-buffer w)))
 
 ;;;
 ;;; KEYMAP
@@ -916,6 +937,7 @@
       [(list "C-x")
        (match key
          [#\s         save-some-buffers]
+         [#\o         other-window]
          ["C-s"       save-buffer]
          ['right      next-buffer]
          [_           #f])]
@@ -1003,13 +1025,21 @@
 ;;; FRAMES
 ;;;
 
-
-
 (define current-frame (make-parameter #f))
 
 (define (refresh-frame f)
   (when f
     (send (frame-canvas f) on-paint)))
+
+(define (frame-window-tree [f (current-frame)])
+  (define (loop w)
+    (match w
+      [(horizontal-split-window l r) (append (loop l) (loop r))]
+      [(vertical-split-window   u l) (append (loop u) (loop l))]
+      [(window buffer)               (list w)]))
+  (flatten (loop (frame-windows f))))
+
+
 
 ;;;
 ;;; COLORS
