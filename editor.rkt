@@ -104,7 +104,7 @@
       [(null? xs) dempty]
       [else       (define s (car xs))
                   (define l (new-line s))
-                  (define d (linked-line l p #f #f '()))
+                  (define d (linked-line l p #f #f (seteq)))
                   (define n (recur d (cdr xs)))
                   (set-dcons-n! d n)
                   d]))
@@ -112,7 +112,7 @@
     [(null? xs)   (dlist (new-line "\n") dempty dempty)]
     [else         (define s (car xs))
                   (define l (new-line s))
-                  (define d (linked-line l dempty #f #f '()))
+                  (define d (linked-line l dempty #f #f (seteq)))
                   (define n (recur d (cdr xs)))
                   (set-dcons-n! d n)
                   d]))
@@ -352,9 +352,9 @@
 (define (text-break-line! t row col)
   (define d (dlist-move (text-lines t) row))
   (define l (dfirst d))
-  (define-values (pre post) (line-split l col))
+  (define-values (pre post) (line-split l col)) ; xxx
   (set-dcons-a! d pre)
-  (dinsert-after! d post)
+  (dinsert-after! d post (λ (a p n) (linked-line a p n #f (seteq))))
   (set-text-length! t (+ 1 (text-length t))))
 
 ; text-delete-backward-char! : text natural natural -> void
@@ -399,7 +399,7 @@
   (define link (text-lines (buffer-text b)))
   (define m (mark b link pos name fixed?))
   (displayln link)
-  ; (set-linked-line-marks! link (cons m (linked-line-marks link)))
+  (set-linked-line-marks! link (set-add (linked-line-marks link) m))
   m)
 
 ; mark-move! : mark integer -> void
@@ -422,6 +422,7 @@
     (set-linked-line-marks! link (set-remove (linked-line-marks link) m))
     ; insert mark in new line
     (define new-link (dlist-move (first-dcons link) r))
+    (displayln new-link)
     (set-linked-line-marks! new-link (set-add (linked-line-marks new-link) m))
     ; the mark must point to the new line
     (set-mark-link! m new-link)))
@@ -541,9 +542,16 @@
      (mark-move! m (if j (- j col) col))]))
 
 (define (mark-move-to-position! m n)
-  ; todo: remove mark from the mark list of its current line
+  ; remove mark from its current line
+  (define l (mark-link m))
+  (set-linked-line-marks! l (set-remove (linked-line-marks l) m))
+  ; find the new line
+  (define-values (row col) (mark-row+column m))
+  (define d (dlist-move (text-lines (buffer-text (mark-buffer m))) n))
+  ; add mark to the new line
+  (set-linked-line-marks! d (set-add (linked-line-marks d) m))
+  ; store the new position
   (set-mark-position! m n))
-
 
 ;;;
 ;;; WORDS
@@ -596,12 +604,12 @@
 ;   create fresh buffer without an associated file
 (define (new-buffer [text (new-text)] [path #f] [name (generate-new-buffer-name "buffer")])
   (define b (buffer text name path 
-                    '() ; points
-                    '() ; marks
-                    '() ; modes 
-                    0   ; cur-line
-                    0   ; num-chars
-                    0   ; num-lines
+                    '()   ; points
+                    '()   ; marks
+                    '()   ; modes 
+                    0     ; cur-line
+                    0     ; num-chars
+                    0     ; num-lines
                     #f))  ; modified?
   (define point (new-mark b "*point*"))
   (define points (list point))
@@ -809,6 +817,7 @@
   (define m (buffer-point b))
   (define-values (row col) (mark-row+column m))
   (text-break-line! (buffer-text b) row col)
+  (displayln b)
   (mark-move! m 1))
 
 (define (buffer-delete-backward-char b [count 1])
@@ -848,13 +857,13 @@
   (check-equal? (list-next '(a b c) 'b eq?) 'c)
   (check-equal? (list-next '(a b c) 'c eq?) 'a)
   (check-equal? (list-next '(a b c) 'd eq?) #f))
-  
+
 
 ; next-buffer : buffer -> buffer
 ;   all buffers are in all-buffers, return the one following b
 (define (get-next-buffer [b (current-buffer)])
   (list-next all-buffers b eq?))
-                              
+
 
 ; buffer-point-marker! : buffer -> mark
 ;   set new mark at point (i.e. "copy point")
