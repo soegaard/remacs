@@ -62,6 +62,17 @@
 (struct mode (name) #:transparent)
 ; A mode has a name (displayed in the status bar).
 
+(struct window (buffer) #:mutable)
+; A window is an area in which a buffer is displayed.
+
+(struct frame (frame% canvas windows) #:mutable)
+; A frame contains one or multiple windows.
+; The frame is render onto its canvas.
+
+(struct horizontal-split-window (left right) #:mutable)
+(struct   vertical-split-window (left right) #:mutable)
+
+
 ;;;
 ;;; LINES
 ;;;
@@ -256,7 +267,6 @@
   (define s1   (substring s 0 j)) 
   (define s2   (substring s (+ j 1) n))
   (define s1s2 (string-append s1 s2))
-  (displayln (list 's1s2 s1s2))
   (define ws   (if (equal? "" s1s2)
                    (append us (rest vs))
                    (append us (cons s1s2 (rest vs)))))
@@ -265,9 +275,9 @@
 
 (module+ test
   (define del-char line-delete-backward-char!)
-  (check-equal? (let ([l (line '("abc\n") 4)]) (del-char l 1) l) (line '("bc\n") 3))
-  (check-equal? (let ([l (line '("abc\n") 4)]) (del-char l 2) l) (line '("ac\n") 3))
-  (check-equal? (let ([l (line '("abc\n") 4)]) (del-char l 3) l) (line '("ab\n") 3))
+  (check-equal? (let ([l (line '("abc\n") 4)])     (del-char l 1) l) (line '("bc\n") 3))
+  (check-equal? (let ([l (line '("abc\n") 4)])     (del-char l 2) l) (line '("ac\n") 3))
+  (check-equal? (let ([l (line '("abc\n") 4)])     (del-char l 3) l) (line '("ab\n") 3))
   (check-equal? (let ([l (line '("ab" "cd\n") 5)]) (del-char l 1) l) (line '("b" "cd\n") 4))
   (check-equal? (let ([l (line '("ab" "cd\n") 5)]) (del-char l 2) l) (line '("a" "cd\n") 4))
   (check-equal? (let ([l (line '("ab" "cd\n") 5)]) (del-char l 3) l) (line '("ab" "d\n") 4))
@@ -950,8 +960,6 @@
 ; Each frame contains at least one window.
 
 (define window-ht (make-hash))
-
-(struct window (buffer) #:mutable)
 (define current-window (make-parameter #f))
 
 ; get-buffer-window : [buffer-or-name] -> window
@@ -974,10 +982,7 @@
 ;;; FRAMES
 ;;;
 
-; (struct window (buffer width height) #:mutable)
-(struct horizontal-split-window (left right) #:mutable)
-(struct   vertical-split-window (left right) #:mutable)
-(struct frame (frame% canvas windows) #:mutable)
+
 
 (define current-frame (make-parameter #f))
 
@@ -1043,24 +1048,25 @@
 ;;; GUI
 ;;;
 
-(define (render-buffer b dc)
-  (define-values (width height) (send dc get-size))
+(define (render-buffer b dc xmin xmax ymin ymax)
+  (define width  (- xmax xmin))
+  (define height (- ymax ymin))
   (define fs (font-size))
   (define num-lines-on-screen (quotient height fs))
-  (define-values (row col) (mark-row+column (buffer-point  b)))
+  (define-values (row col)    (mark-row+column (buffer-point  b)))
   (define last-row-on-screen  (min row num-lines-on-screen))
   (define first-row-on-screen (max 0 (- row num-lines-on-screen)))
-  (define num-lines-to-skip first-row-on-screen)
-  (displayln (list first-row-on-screen last-row-on-screen))
+  (define num-lines-to-skip   first-row-on-screen)
+  ; (displayln (list first-row-on-screen last-row-on-screen))
   ; suspend flush
   (send dc suspend-flush)
   ; draw text
-  (for/fold ([y 0]) ([l #;(drop (dlist->list (text-lines (buffer-text b))) num-lines-to-skip)
+  (for/fold ([y ymin]) ([l #;(drop (dlist->list (text-lines (buffer-text b))) num-lines-to-skip)
                         (text-lines (buffer-text b))])
     (define strings (line-strings l))
     (define n (length strings))
     (define (last-string? i) (= i (- n 1)))
-    (for/fold ([x 0]) ([s strings] [i (in-range n)])
+    (for/fold ([x xmin]) ([s strings] [i (in-range n)])
       (match s 
         [(? string?) (define t ; remove final newline
                        (if (last-string? i) (substring s 0(max 0 (- (string-length s) 1))) s))
@@ -1081,18 +1087,24 @@
   ; resume flush
   (send dc resume-flush))
 
-(define (render-window win dc)
-  (render-buffer (window-buffer win) dc))
+(define (render-window win dc xmin xmax ymin ymax)
+  (render-buffer (window-buffer win) dc xmin xmax ymin ymax))
 
-(define (render-windows win dc)
+(define (render-windows win dc xmin xmax ymin ymax)
+  (define (mid a b) (quotient (+ a b) 2))
+  (define xmid (mid xmin xmax))
+  (define ymid (mid ymin ymax))
   (match win
-    [(horizontal-split-window left right)  (render-window left  dc)]
-    [(vertical-split-window upper lower)   (render-window upper dc)]
-    [(window buffer)                       (render-window win dc)]
+    [(horizontal-split-window left  right) (render-windows left  dc xmin xmid ymin ymax)
+                                           (render-windows right dc xmid xmax ymin ymax)]
+    [(vertical-split-window   upper lower) (render-windows upper dc xmin xmax ymin ymid)
+                                           (render-windows lower dc xmin xmax ymid ymax)]
+    [(window buffer)                       (render-window  win   dc xmin xmax ymin ymax)]
     [_ (error 'render-window "got ~a" win)]))
 
 (define (render-frame frame dc)
-  (render-windows (frame-windows frame) dc))
+  (define-values (xmax ymax) (send dc get-size))
+  (render-windows (frame-windows frame) dc 0 xmax 0 ymax))
 
 (define (new-editor-frame this-frame)
   ;;; WINDOW SIZE
@@ -1166,7 +1178,8 @@
   (current-buffer ib)
   (define w (window ib))
   (current-window w)
-  (define f (frame #f #f w))
+  (define w2 (window (get-buffer "*scratch*")))
+  (define f (frame #f #f (vertical-split-window w w2)))
   (current-frame f)
   (new-editor-frame f))
 
