@@ -1136,7 +1136,8 @@
     (define-values (r c) (mark-row+column p))
     (define x (+ xmin (* c    font-width)))
     (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
-    (send dc draw-line x y x (+ y font-height -1)))
+    (when (and (<= xmin x xmax) (<= ymin y ymax))
+      (send dc draw-line x y x (min ymax (+ y font-height -1)))))
   ; resume flush
   (send dc resume-flush))
 
@@ -1178,7 +1179,7 @@
     (define mb (new menu-bar% (parent frame)))
     (define fm (new menu% (label "File") (parent mb)))
     (new menu% (label "Help") (parent mb))
-    (new menu-item% [label "Open ..."] [parent fm] [shortcut #\o]
+    (new menu-item% [label "Open..."] [parent fm] [shortcut #\o]
          [callback (λ (_ e) (open-file-or-create))]))
   (create-menubar)
   ;;; PREFIX
