@@ -463,10 +463,14 @@
   (define p (mark-position m))
   (define-values (row col) (mark-row+column m))
   (unless (= row 0)
-    (define l (text-line (buffer-text (mark-buffer m)) (- row 1)))
+    (define link (dlist-move (first-dcons (text-lines (buffer-text (mark-buffer m)))) (- row 1)))
+    (define l (dfirst link)) ; line
     (define new-col (min (line-length l) col))
     (define new-pos (- p col (line-length l) (- new-col)))
-    (set-mark-position! m new-pos)))
+    (set-mark-position! m new-pos)
+    (set-linked-line-marks! link (set-add (linked-line-marks link) m))
+    (define old-link (dlist-move link 1))
+    (set-linked-line-marks! old-link (set-remove (linked-line-marks link) m))))
 
 ; mark-move-down! : mark -> void
 ;  move mark down one line
@@ -476,11 +480,14 @@
   (define t (buffer-text (mark-buffer m)))
   (unless (= (+ row 1) (text-num-lines t))
     (define d (dlist-move (text-lines t) row))
+    (set-linked-line-marks! d (set-remove (linked-line-marks d) m))
     (define l1 (dfirst d))
     (define l2 (dlist-ref d 1))
     (define new-col (min (line-length l2) col))
     (define new-pos (+ p (- (line-length l1) col) new-col))
-    (set-mark-position! m new-pos)))
+    (set-mark-position! m new-pos)
+    (define d+ (dlist-move d 1))
+    (set-linked-line-marks! d+ (set-add (linked-line-marks d+) m))))
 
 ; mark-backward-word! : mark -> void
 ;   move mark backward until a word separator is found
