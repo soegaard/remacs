@@ -318,8 +318,9 @@
 ; path->text : path -> text
 ;   create a text with contents from the file given by path
 (define (path->text path)
+  (define (DCons a p n) (linked-line a p n #f (seteq)))
   (with-input-from-file path 
-    (λ () (new-text (for/dlist ([s (in-lines)])
+    (λ () (new-text (for/dlist #:dcons DCons ([s (in-lines)])
                       (string->line (string-append s "\n")))))))
 
 (module+ test
@@ -403,7 +404,7 @@
   ; (define link (text-lines (buffer-text b)))
   (define link (text-lines (buffer-text b)))
   (define m (mark b link pos name fixed?))
-  (displayln link)
+  (displayln (list 'new-mark link)) ; xxx
   (set-linked-line-marks! link (set-add (linked-line-marks link) m))
   m)
 
@@ -626,6 +627,8 @@
   (set-buffer-num-chars! b num-chars)
   (register-buffer b)
   b)
+
+
 
 ; generate-new-buffer : string -> buffer
 (define (generate-new-buffer name)
@@ -891,7 +894,7 @@
 (define (backward-word)       (buffer-backward-word! (current-buffer)))
 (define (forward-word)        (buffer-forward-word! (current-buffer)))
 
-(define (save-buffer)         (displayln "buffer saved!") (save-buffer! (current-buffer)))
+(define (save-buffer)         (save-buffer! (current-buffer)))
 (define (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
 (define (beginning-of-buffer) (buffer-move-point-to-position! (current-buffer) 0))
 (define (end-of-buffer)       (buffer-move-point-to-position! (current-buffer) 
@@ -926,6 +929,14 @@
   (set-linked-line-marks! l (set-add (linked-line-marks l) m))
   (set-buffer-marks! b (set-add (buffer-marks b) m))
   m)
+
+; create-new-buffer :  -> void
+;   create new buffer and switch to it
+(define (create-new-buffer)
+  (define b (new-buffer (new-text) #f (generate-new-buffer-name "Untitled")))
+  (set-window-buffer! (current-window) b)
+  (current-buffer b)
+  (refresh-frame (current-frame)))
 
 ;;;
 ;;; KEYMAP
@@ -1026,7 +1037,7 @@
          ["M-b"       (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]
          ["M-i"       (λ () (buffer-insert-property! (current-buffer) (property 'italics)))]
          ["M-d"       (λ () (buffer-display (current-buffer)))]
-         ["M-s"       (λ () (save-buffer! (current-buffer)))]
+         ["M-s"       save-buffer]
          ["M-o"       open-file-or-create]
          ["M-w"       'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
          [#\return    (λ () (buffer-break-line! (current-buffer)))]
@@ -1081,6 +1092,8 @@
              #:when (eq? (get-buffer (window-buffer w)) b))
     w))
 
+; split-window-right : [window] -> void
+;   split the window in two, place the new window at the right
 (define (split-window-right [w (current-window)])
   (define f (window-frame w))
   (define p (window-parent w))
@@ -1088,7 +1101,8 @@
   (define sp (horizontal-split-window f p #f w #f))
   (set-window-parent! w sp)
   (define w2 (window f sp b))
-  (set-horizontal-split-window-right! sp w2)  
+  (set-horizontal-split-window-right! sp w2)
+  ; replace the parent window with the new split window
   (cond 
     [(eq? f p) ; root window?
      (set-frame-windows! f sp)]
@@ -1257,11 +1271,17 @@
   (send msg min-width min-width)
   ;;; MENUBAR
   (define (create-menubar)
+    (define-syntax (new-menu-item stx)
+      (syntax-parse stx  ; add menu item to menu
+        [(_ par l sc cb) #'(new menu-item% [label l] [parent par] [shortcut sc] [callback cb])]))
     (define mb (new menu-bar% (parent frame)))
+    ;; File Menu
     (define fm (new menu% (label "File") (parent mb)))
-    (new menu% (label "Help") (parent mb))
-    (new menu-item% [label "Open..."] [parent fm] [shortcut #\o]
-         [callback (λ (_ e) (open-file-or-create))]))
+    (new-menu-item fm "New File" #\n (λ (_ e) (create-new-buffer)))
+    (new-menu-item fm "Open"     #\o (λ (_ e) (open-file-or-create)))
+    (new-menu-item fm "Save"     #\s (λ (_ e) (save-buffer)))
+    ;; Help Menu
+    (new menu% (label "Help") (parent mb)))
   (create-menubar)
   ;;; PREFIX
   (define prefix '())
