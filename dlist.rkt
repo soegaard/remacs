@@ -2,7 +2,9 @@
 (provide dcons              ; (dcons element prev next)   like cons
          dempty             ; empty dlist
          dempty?            ; empty predicate
-         dfirst             ; first element
+         dfirst             ; first element  (car)
+         dnext              ; next dcons     (cdr)
+         dprev              ; previous dcons (cdr the other way)
          last-dcons?        ; is next dempty?
          first-dcons?       ; is prev dempty?
          dlist?             ; is input part of a dlist?
@@ -58,6 +60,14 @@
 ;   return first element
 (define (dfirst xs)
   (dcons-a xs))
+
+; dnext : dcons -> dlist
+(define (dnext xs)
+  (dcons-n xs))
+
+; dprev : dcons -> dlist
+(define (dprev xs)
+  (dcons-p xs))
 
 ; last-dcons? : any -> boolean
 ;   is xs the last dcons in a doubly linked list?
@@ -188,17 +198,17 @@
 ; dinsert-after! dlist any -> dcons
 ;   insert the element a after the dcons xs
 ;   the doncs allocated for a is returned
-(define (dinsert-after! xs a)
+(define (dinsert-after! xs a [Dcons dcons])
   (cond
     [(dempty? xs)
-     (dcons a dempty dempty)]
+     (Dcons a dempty dempty)]
     [(last-dcons? xs)
-     (define d (dcons a xs dempty))
+     (define d (Dcons a xs dempty))
      (set-dcons-n! xs d)
      d]
     [else
      (define n (dcons-n xs))
-     (define d (dcons a xs n))
+     (define d (Dcons a xs n))
      (set-dcons-p! n d)
      (set-dcons-n! xs d)
      d]))
@@ -382,7 +392,13 @@
 
 (define-syntax (for/dlist stx)
   (syntax-parse stx
-    [(_ clauses . defs+exprs)
+    [(_ #:dcons Dcons clauses . defs+exprs)
+     #'(let ()
+         (define xs (for/fold/derived stx ([xs dempty]) clauses
+                                      (define a (let () . defs+exprs))
+                                      (dinsert-after! xs a Dcons)))
+         (if (dempty? xs) xs (first-dcons xs)))]
+    #;[(_ clauses . defs+exprs)
      #'(let ()
          (define xs (for/fold/derived stx ([xs dempty]) clauses
                                       (define a (let () . defs+exprs))
