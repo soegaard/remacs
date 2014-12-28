@@ -1,4 +1,8 @@
 #lang racket
+;;;
+;;; TODO  Adjust marks at char insertion and deletion.
+;;;
+
 (module+ test (require rackunit))
 (require "dlist.rkt" (for-syntax syntax/parse) framework)
 (require racket/gui/base)
@@ -63,16 +67,17 @@
 (struct mode (name) #:transparent)
 ; A mode has a name (displayed in the status bar).
 
-(struct window (buffer) #:mutable)
+(struct window (frame parent buffer) #:mutable)
 ; A window is an area in which a buffer is displayed.
+; Multiple windows are shown together in a frame.
 
 (struct frame (frame% canvas windows) #:mutable)
 ; A frame contains one or multiple windows.
 ; The frame is render onto its canvas.
 
-(struct horizontal-split-window (left right) #:mutable)
-(struct   vertical-split-window (left right) #:mutable)
-
+(struct horizontal-split-window window (left  right) #:mutable)
+(struct   vertical-split-window window (above below) #:mutable)
+; The buffer of a split window is #f.
 
 ;;;
 ;;; LINES
@@ -989,6 +994,7 @@
          [_           #f])]
       [(list "C-x")
        (match key
+         [#\3         split-window-right]
          [#\s         save-some-buffers]
          [#\o         other-window]
          ["C-s"       save-buffer]
@@ -1075,6 +1081,28 @@
              #:when (eq? (get-buffer (window-buffer w)) b))
     w))
 
+(define (split-window-right [w (current-window)])
+  (define f (window-frame w))
+  (define p (window-parent w))
+  (define b (window-buffer w))
+  (define sp (horizontal-split-window f p #f w #f))
+  (set-window-parent! w sp)
+  (define w2 (window f sp b))
+  (set-horizontal-split-window-right! sp w2)  
+  (cond 
+    [(eq? f p) ; root window?
+     (set-frame-windows! f sp)]
+    [(horizontal-split-window? p)
+     ; is w a left or a right window?
+     (if (eq? (horizontal-split-window-left p) w) 
+         (set-horizontal-split-window-left!  p sp)
+         (set-horizontal-split-window-right! p sp))]
+    [(vertical-split-window? p)
+     ; is w above or below?
+     (if (eq? (vertical-split-window-above p) w) 
+         (set-vertical-split-window-above!  p sp)
+         (set-vertical-split-window-below!  p sp))]))
+
 ;;;
 ;;; FRAMES
 ;;;
@@ -1088,9 +1116,9 @@
 (define (frame-window-tree [f (current-frame)])
   (define (loop w)
     (match w
-      [(horizontal-split-window l r) (append (loop l) (loop r))]
-      [(vertical-split-window   u l) (append (loop u) (loop l))]
-      [(window buffer)               (list w)]))
+      [(horizontal-split-window f p b l r) (append (loop l) (loop r))]
+      [(vertical-split-window   f p b u l) (append (loop u) (loop l))]
+      [(window frame parent buffer)        (list w)]))
   (flatten (loop (frame-windows f))))
 
 
@@ -1202,13 +1230,13 @@
   (define xmid (mid xmin xmax))
   (define ymid (mid ymin ymax))
   (match win
-    [(horizontal-split-window left  right) (render-windows left  dc xmin xmid ymin ymax)
-                                           (render-windows right dc xmid xmax ymin ymax)
-                                           (send dc draw-line xmid ymin xmid ymax)]
-    [(vertical-split-window   upper lower) (render-windows upper dc xmin xmax ymin ymid)
-                                           (render-windows lower dc xmin xmax ymid ymax)
-                                           (send dc draw-line xmin ymid xmax ymid)]
-    [(window buffer)                       (render-window  win   dc xmin xmax ymin ymax)]
+    [(horizontal-split-window _ _ _ left  right) (render-windows left  dc xmin xmid ymin ymax)
+                                                 (render-windows right dc xmid xmax ymin ymax)
+                                                 (send dc draw-line xmid ymin xmid ymax)]
+    [(vertical-split-window _ _ _ upper lower)   (render-windows upper dc xmin xmax ymin ymid)
+                                                 (render-windows lower dc xmin xmax ymid ymax)
+                                                 (send dc draw-line xmin ymid xmax ymid)]
+    [(window frame parent buffer)                (render-window  win   dc xmin xmax ymin ymax)]
     [_ (error 'render-window "got ~a" win)]))
 
 (define (render-frame frame dc)
@@ -1285,10 +1313,15 @@
 (module+ test
   (define ib illead-buffer)
   (current-buffer ib)
-  (define w (window ib))
+  (define f  (frame #f #f #f))
+  (define sp (vertical-split-window f f #f #f #f))
+  (define w  (window f sp ib))
+  (define w2 (window f sp (get-buffer "*scratch*")))
+  (set-vertical-split-window-above! sp w)
+  (set-vertical-split-window-below! sp w2)
+  (set-frame-windows! f sp)
   (current-window w)
-  (define w2 (window (get-buffer "*scratch*")))
-  (define f (frame #f #f (vertical-split-window w w2)))
+  
   (current-frame f)
   (new-editor-frame f))
 
