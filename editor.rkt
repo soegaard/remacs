@@ -1,7 +1,5 @@
 #lang racket
-;;;
 ;;; TODO  Adjust marks at char insertion and deletion.
-;;;
 
 (module+ test (require rackunit))
 (require "dlist.rkt" (for-syntax syntax/parse) framework)
@@ -671,6 +669,8 @@
 (define (buffer-modified? [b (current-buffer)])
   (-buffer-modified? b))
 
+(define (buffer-dirty! [b (current-buffer)])
+  (set-buffer-modified?! b #t))
 
 ; set-buffer-modified! : any [buffer] -> void
 ;   set modified?, redisplay mode line
@@ -698,6 +698,8 @@
 ;   do nothing if no file is associated
 (define (save-buffer! b)
   (define file (buffer-path b))
+  (unless file
+    (set! file (finder:put-file)))
   (when file
     (with-output-to-file file
       (λ () (for ([line (text-lines (buffer-text b))])
@@ -722,7 +724,8 @@
   (set-buffer-text! b text)
   (set-buffer-num-lines! b (stats-num-lines stats))
   (set-buffer-num-chars! b (stats-num-chars stats))
-  (set-buffer-modified?! b #f))
+  (set-buffer-modified?! b #f)
+  (buffer-dirty! b))
 
 (module+ test
   (void (create-new-test-file "illead.txt"))
@@ -738,7 +741,8 @@
   (set-buffer-text! b (text-append! (buffer-text b) text-to-append))
   (set-buffer-num-lines! b (+ (buffer-num-lines b) (stats-num-lines stats)))
   (set-buffer-num-chars! b (+ (buffer-num-chars b) (stats-num-chars stats)))
-  (set-buffer-modified?! b #t))
+  (set-buffer-modified?! b #t)
+  (buffer-dirty! b))
 
 (module+ test
   (void (create-new-test-file "illead.txt"))
@@ -800,7 +804,8 @@
 (define (buffer-insert-char! b c)
   (define m (buffer-point b))
   (define t (buffer-text b))
-  (text-insert-char-at-mark! t m b c))
+  (text-insert-char-at-mark! t m b c)
+  (buffer-dirty! b))
 
 ; buffer-move-point-to-begining-of-line! : buffer -> void
 ;   move the point to the beginning of the line
@@ -826,7 +831,8 @@
   (define-values (row col) (mark-row+column m))
   (text-break-line! (buffer-text b) row col)
   (displayln b)
-  (mark-move! m 1))
+  (mark-move! m 1)
+  (buffer-dirty! b))
 
 (define (buffer-delete-backward-char b [count 1])
   ; emacs: delete-backward-char
@@ -834,13 +840,15 @@
   (define t (buffer-text b))
   (define-values (row col) (mark-row+column m))
   (text-delete-backward-char! t row col)
-  (mark-move! m -1))
+  (mark-move! m -1)
+  (buffer-dirty! b))
 
 (define (buffer-insert-property! b p)
   (define m (buffer-point b))
   (define t (buffer-text b))
   (define-values (row col) (mark-row+column m))
-  (line-insert-property! (dlist-ref (text-lines t) row) p col))
+  (line-insert-property! (dlist-ref (text-lines t) row) p col)
+  #;(buffer-dirty! b)) ; xxx
 
 (define (buffer-move-point-to-position! b n)
   (define m (buffer-point b))
@@ -894,7 +902,7 @@
 (define (backward-word)       (buffer-backward-word! (current-buffer)))
 (define (forward-word)        (buffer-forward-word! (current-buffer)))
 
-(define (save-buffer)         (save-buffer! (current-buffer)))
+(define (save-buffer)         (save-buffer! (current-buffer)) (refresh-frame))
 (define (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
 (define (beginning-of-buffer) (buffer-move-point-to-position! (current-buffer) 0))
 (define (end-of-buffer)       (buffer-move-point-to-position! (current-buffer) 
@@ -1060,10 +1068,13 @@
 
 ; The status line is shown at the bottom om a buffer window.
 (define (status-line-hook)
-  (define-values (row col) (mark-row+column (buffer-point (current-buffer))))
-  (~a "Buffer: "          (buffer-name) "    " "(" row "," col ")"
-      "    " "Position: " (mark-position (buffer-point (current-buffer)))
-      "    " "Length: "   (buffer-length (current-buffer))))
+  (define b (current-buffer))
+  (define-values (row col) (mark-row+column (buffer-point b)))
+  (define save-status (if (buffer-modified? b) "***" "---"))
+  (~a save-status  
+      "  " "Buffer: "          (buffer-name) "    " "(" row "," col ")"
+      "  " "Position: " (mark-position (buffer-point (current-buffer)))
+      "  " "Length: "   (buffer-length (current-buffer))))
 
 ;;;
 ;;; WINDOWS
@@ -1123,7 +1134,7 @@
 
 (define current-frame (make-parameter #f))
 
-(define (refresh-frame f)
+(define (refresh-frame [f (current-frame)])
   (when f
     (send (frame-canvas f) on-paint)))
 
@@ -1299,8 +1310,9 @@
         (match (global-keymap prefix key)
           [(? procedure? thunk) (clear-prefix!) (thunk)]
           ['prefix              (add-prefix! key)]
-          ['exit                (save-buffer! (current-buffer))
-                                (send frame on-exit)]
+          ['exit                ; (save-buffer! (current-buffer))
+           ; TODO : Ask how to handle unsaved buffers
+           (send frame on-exit)]
           ['release             (void)]
           [_                    (unless (equal? (send event get-key-code) 'release)
                                   (clear-prefix!))])
