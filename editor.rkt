@@ -1,5 +1,7 @@
 #lang racket
-;;; TODO  Adjust marks at char insertion and deletion.
+;;; TODO Adjust marks at char insertion and deletion.
+;;; TODO Finish eval-buffer
+;;; TODO Implement open-input-buffer and open-output-buffer
 
 (module+ test (require rackunit))
 (require "dlist.rkt" (for-syntax syntax/parse) framework)
@@ -302,7 +304,6 @@
     [else            (text lines (for/sum ([l lines]) 
                                    (line-length l)))]))
 
-
 ; text-line : text integer -> line
 ;   the the ith line
 (define (text-line t i)
@@ -312,6 +313,13 @@
 (define (text-append! t1 t2)
   (text (dappend! (text-lines t1) (text-lines t2))
         (+ (text-length t1) (text-length t2))))
+
+; text->string : text -> string
+;   convert the text to a string
+(define (text->string t)
+  (apply string-append
+    (for/list ([l (text-lines t)])
+      (line->string l))))
 
 ; path->text : path -> text
 ;   create a text with contents from the file given by path
@@ -946,6 +954,15 @@
   (current-buffer b)
   (refresh-frame (current-frame)))
 
+(define (eval-buffer)
+  (define b (current-buffer))
+  (define t (buffer-text b))
+  (define s (text->string t))
+  (define in (open-input-string s))
+  (for ([s-exp (in-port read in)])
+    (displayln (eval s-exp))))
+
+
 ;;;
 ;;; KEYMAP
 ;;;
@@ -1001,7 +1018,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    ; (write (list prefix key)) (newline)
+    (write (list prefix key)) (newline)
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -1047,6 +1064,7 @@
          ["M-d"       (λ () (buffer-display (current-buffer)))]
          ["M-s"       save-buffer]
          ["M-o"       open-file-or-create]
+         ["M-e"       eval-buffer]         
          ["M-w"       'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
          [#\return    (λ () (buffer-break-line! (current-buffer)))]
          [#\backspace (λ () (buffer-delete-backward-char (current-buffer) 1))] ; the backspace key
@@ -1055,6 +1073,10 @@
          ['end        (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
          ["C-space"   command-set-mark]
          ; place self inserting characters after #\return and friends
+         ["space"     (λ ()  (define k #\space)
+                        (define b (current-buffer))
+                        (buffer-insert-char! b k) 
+                        (buffer-move-point! b 1))]
          [(? char? k) (λ () 
                         (define b (current-buffer))
                         (buffer-insert-char! b k)
