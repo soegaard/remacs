@@ -456,6 +456,30 @@
     ; the insertion was before the mark
     (mark-move! m a)))
 
+; mark-adjust-deletion-before! : mark integer natural -> void
+;   adjust the position of the mark - an amount of a characters were deleted before position p
+(define (mark-adjust-deletion-before! m p a)
+  (define mp (mark-position m))
+  (cond 
+    ; the entire deletion was before the mark
+    [(<= p mp)      (mark-move! m (- a))]
+    ; the entire deletion was after the mark
+    [(< mp (- p a)) (void)]
+    ; overlap
+    [else           (mark-move! m (- a (- p mp)))]))
+
+; mark-adjust-deletion-after! : mark integer natural -> void
+;   adjust the position of the mark - an amount of a characters were after before position p
+(define (mark-adjust-deletion-after! m p a)
+  (define mp (mark-position m))
+  (cond 
+    ; the entire deletion was after the mark
+    [(<= mp p)       (void)]
+    ; the entire deletion was before the mark
+    [(<= (+ p a) mp) (mark-move! m (- a))]
+    ; overlap
+    [else            (mark-move! m (- mp p))]))
+
 ; clamp : number number number -> number
 ;   if minimum <= x <= maximum, return x
 ;   if x < minimum, return minimum
@@ -937,14 +961,20 @@
   (mark-move! m 1)
   (buffer-dirty! b))
 
-(define (buffer-delete-backward-char b [count 1])
+; buffer-delete-backward-char! : buffer [natural] -> void
+(define (buffer-delete-backward-char! b [count 1])
   ; emacs: delete-backward-char
   (define m (buffer-point b))
   (define t (buffer-text b))
   (define-values (row col) (mark-row+column m))
   (text-delete-backward-char! t row col)
-  (mark-move! m -1)
+  (buffer-adjust-marks-due-to-deletion-before! b (mark-position m) 1)
+  (mark-move! m -1) ; point
   (buffer-dirty! b))
+
+(define (buffer-adjust-marks-due-to-deletion-before! b p a)
+  (for ([m (buffer-marks b)])
+    (mark-adjust-deletion-before! m p a)))
 
 (define (buffer-insert-property! b p)
   (define m (buffer-point b))
@@ -1181,7 +1211,7 @@
          ["M-e"       eval-buffer]         
          ["M-w"       'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
          [#\return    (λ () (buffer-break-line! (current-buffer)))]
-         [#\backspace (λ () (buffer-delete-backward-char (current-buffer) 1))] ; the backspace key
+         [#\backspace (λ () (buffer-delete-backward-char! (current-buffer) 1))] ; the backspace key
          [#\rubout    (λ () (error 'todo))]                     ; the delete key
          ['home       (λ () (buffer-move-point-to-begining-of-line! (current-buffer)))] ; fn+left
          ['end        (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
@@ -1366,8 +1396,22 @@
         [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
         [_ (displayln (~a "Warning: Got " s)) x]))
     (+ y ls))
-  ; draw points
+  ; get point and mark height
   (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
+  ; draw marks (for debug)
+  (begin
+    (define old-pen (send dc get-pen))
+    (define new-pen (new pen% [color base00]))
+    (send dc set-pen new-pen)
+    (for ([p (buffer-marks b)])
+      (define-values (r c) (mark-row+column p))
+      (define x (+ xmin (* c    font-width)))
+      (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
+      (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
+        (send dc draw-line x y x (min ymax (+ y font-height -1)))))
+    (send dc set-pen old-pen))
+  ; draw points
+  
   (for ([p (buffer-points b)])
     (define-values (r c) (mark-row+column p))
     (define x (+ xmin (* c    font-width)))
