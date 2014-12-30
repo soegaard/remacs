@@ -2,6 +2,7 @@
 ;;; TODO Adjust marks at char insertion and deletion.
 ;;; TODO Finish eval-buffer
 ;;; TODO Implement open-input-buffer and open-output-buffer
+;;; TODO Allow negative numeric prefix
 
 (module+ test (require rackunit))
 (require "dlist.rkt" (for-syntax syntax/parse) framework)
@@ -439,6 +440,14 @@
     ; the mark must point to the new line
     (set-mark-link! m new-link)))
 
+; mark-move-to-column! : mark integer -> void
+;   move mark to column n (stay at line)
+(define (mark-move-to-column! m n)
+  (define-values (r c) (mark-row+column m))
+  (displayln (list 'mark-move-to-column n r c (- n c)))
+  (unless (= n c)
+    (mark-move! m (- n c))))
+
 ; mark-row+column : mark- > integer integer
 ;   return row and column number for the mark m
 (define (mark-row+column m)
@@ -716,6 +725,42 @@
       #:exists 'replace)
     (set-buffer-modified?! b #f)))
 
+
+;(define (make-output-buffer b)
+;  ;; State
+;  (define count-lines? #f)
+;  ;; Setup port
+;  (define name (buffer-name b)) ; name for output port
+;  (define evt  always-evt)      ; writes never block
+;  (define write-out             ; handles writes to port
+;    (λ (out-bytes start end buffered? enable-breaks?)
+;      ; write bytes from out-bytes from index start (inclusive) to index end (exclusive)
+;      ...))
+;  (define close                 ; closes port
+;    (λ () (void)))
+;  (define write-out-special     ; handles specials?
+;    #f)                         ; (not yet)
+;  (define get-write-evt         ; #f or procedure that returns synchronizable event
+;    #f)
+;  (define get-write-special-evt ; same for specials
+;    #f)
+;  (define get-location          ; #f or procedure that returns 
+;    (λ ()                       ; line number, column number, and position
+;      (when count-lines?
+;        (values #f #f (buffer-position (buffer-point b))))))
+;  
+;(make-output-port	 	name	 	 	 	 
+; 	 	evt	 	 	 	 
+; 	 	write-out	 	 	 	 
+; 	 	close	 	 	 	 
+; 	 [	write-out-special	 	 	 	 
+; 	 	get-write-evt	 	 	 	 
+; 	 	get-write-special-evt	 	 	 	 
+; 	 	get-location	 	 	 	 
+; 	 	count-lines!	 	 	 	 
+; 	 	init-position	 	 	 	 
+; 	 	buffer-mode])
+
 (module+ test
   (provide illead-buffer)
   (define illead-buffer (new-buffer illead-text "illead.txt" (generate-new-buffer-name "illead")))
@@ -779,6 +824,9 @@
 
 (define (buffer-move-point-down! b)
   (mark-move-down! (buffer-point b)))
+
+(define (buffer-move-to-column! b n)
+  (mark-move-to-column! (buffer-point b) n))
 
 ; buffer-backward-word! : buffer -> void
 ;   move point forward until a word separator is found
@@ -909,6 +957,7 @@
 (define (next-line)           (buffer-move-point-down! (current-buffer)))
 (define (backward-word)       (buffer-backward-word! (current-buffer)))
 (define (forward-word)        (buffer-forward-word! (current-buffer)))
+(define (move-to-column n)    (buffer-move-to-column! (current-buffer) n)) ; n = prefix numeric arg
 
 (define (save-buffer)         (save-buffer! (current-buffer)) (refresh-frame))
 (define (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
@@ -954,6 +1003,10 @@
   (current-buffer b)
   (refresh-frame (current-frame)))
 
+; eval-buffer : -> void
+;   read the s-expression in the current buffer one at a time,
+;   evaluate each ine
+;   TODO: Note done: Introduce namespace for each buffer
 (define (eval-buffer)
   (define b (current-buffer))
   (define t (buffer-text b))
@@ -961,7 +1014,6 @@
   (define in (open-input-string s))
   (for ([s-exp (in-port read in)])
     (displayln (eval s-exp))))
-
 
 ;;;
 ;;; KEYMAP
@@ -1022,7 +1074,15 @@
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
+    (define (digits->number ds) (string->number (list->string ds)))
+    (define (digit-char? x) (and (char? x) (char<=? #\0 x #\9)))
+    ; todo: allow negativ numeric prefix
     (match prefix
+      [(list "C-u" (? digit-char? ds) ...)
+       (match key
+         [(? digit-char?) 'prefix]
+         [#\c             (λ () (move-to-column (digits->number ds)))]
+         [else            #f])]
       [(list "ESC") 
        (match key
          [#\b         backward-word]
@@ -1040,6 +1100,7 @@
        (match key
          ["ESC"       'prefix]
          ["C-x"       'prefix]
+         ["C-u"       'prefix]
          ['left       backward-char]
          ['right      forward-char]
          ['up         previous-line]
@@ -1325,19 +1386,20 @@
     (class canvas%
       (define/override (on-char event)
         ; TODO syntax  (with-temp-buffer body ...)
-        (define key (key-event->key event))
-        ; (displayln (list 'key key 'shift (get-shift-key-code event)))
-        (unless (equal? key 'release)
-          (send msg set-label (~a "key: " key)))
-        (match (global-keymap prefix key)
-          [(? procedure? thunk) (clear-prefix!) (thunk)]
-          ['prefix              (add-prefix! key)]
-          ['exit                ; (save-buffer! (current-buffer))
-           ; TODO : Ask how to handle unsaved buffers
-           (send frame on-exit)]
-          ['release             (void)]
-          [_                    (unless (equal? (send event get-key-code) 'release)
-                                  (clear-prefix!))])
+        (define key-code (send event get-key-code))
+        (unless (equal? key-code 'release)
+          (define key (key-event->key event))
+          ; (displayln (list 'key key 'shift (get-shift-key-code event)))
+          (send msg set-label (~a "key: " key))
+          (match (global-keymap prefix key)
+            [(? procedure? thunk) (clear-prefix!) (thunk)]
+            ['prefix              (add-prefix! key)]
+            ['exit                ; (save-buffer! (current-buffer))
+             ; TODO : Ask how to handle unsaved buffers
+             (send frame on-exit)]
+            ['release             (void)]
+            [_                    (unless (equal? (send event get-key-code) 'release)
+                                    (clear-prefix!))]))
         ; todo: don't trigger repaint on every key stroke ...
         (send canvas on-paint))
       (define/override (on-paint)
