@@ -440,13 +440,36 @@
     ; the mark must point to the new line
     (set-mark-link! m new-link)))
 
+; mark-adjust-insertion-after! : mark integer natural -> void
+;   adjust the position of the mark - an amount of a characters were inserted at position p
+(define (mark-adjust-insertion-after! m p a)
+  (define mp (mark-position m))
+  (when (> mp p)
+    ; the insertion was before the mark
+    (mark-move! m a)))
+
+; mark-adjust-insertion-before! : mark integer natural -> void
+;   adjust the position of the mark - an amount of a characters were inserted at position p
+(define (mark-adjust-insertion-before! m p a)
+  (define mp (mark-position m))
+  (when (>= mp p)
+    ; the insertion was before the mark
+    (mark-move! m a)))
+
+; clamp : number number number -> number
+;   if minimum <= x <= maximum, return x
+;   if x < minimum, return minimum
+;   if x > maximum, return maximum
+(define (clamp minimum x maximum)
+  (max minimum (min x maximum)))
+
 ; mark-move-to-column! : mark integer -> void
 ;   move mark to column n (stay at line)
 (define (mark-move-to-column! m n)
   (define-values (r c) (mark-row+column m))
-  (displayln (list 'mark-move-to-column n r c (- n c)))
   (unless (= n c)
-    (mark-move! m (- n c))))
+    (let ([n (clamp 0 n c)]) ; stay on same line
+      (mark-move! m (- n c)))))
 
 ; mark-row+column : mark- > integer integer
 ;   return row and column number for the mark m
@@ -856,12 +879,36 @@
   #;(buffer-display illead-buffer))
 
 ; buffer-insert-char! : buffer char -> void
-;   insert char after point, move point
+;   insert char after point (does not move point)
 (define (buffer-insert-char! b c)
   (define m (buffer-point b))
   (define t (buffer-text b))
   (text-insert-char-at-mark! t m b c)
   (buffer-dirty! b))
+
+; buffer-insert-char-after-point! : buffer char -> void
+;   insert character and move point
+(define (buffer-insert-char-after-point! b k)
+  ; note: the position of a single point does not change, but given multiple points...
+  (define m (buffer-point b))
+  (buffer-insert-char! b k)
+  (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) 1))
+
+; buffer-insert-char-before-point! : buffer char -> void
+;   insert character and move point
+(define (buffer-insert-char-before-point! b k)
+  (define m (buffer-point b))
+  (buffer-insert-char! b k)
+  (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) 1)
+  (buffer-move-point! b 1))
+
+(define (buffer-adjust-marks-due-to-insertion-after! b n a)
+  (for ([m (buffer-marks b)])
+    (mark-adjust-insertion-after! m n a)))
+
+(define (buffer-adjust-marks-due-to-insertion-before! b n a)
+  (for ([m (buffer-marks b)])
+    (mark-adjust-insertion-before! m n a)))
 
 ; buffer-move-point-to-begining-of-line! : buffer -> void
 ;   move the point to the beginning of the line
@@ -1015,6 +1062,12 @@
   (for ([s-exp (in-port read in)])
     (displayln (eval s-exp))))
 
+; (self-insert-command k) : -> void
+;    insert character k and move point
+(define ((self-insert-command k))
+  (define b (current-buffer))
+  (buffer-insert-char-before-point! b k))
+
 ;;;
 ;;; KEYMAP
 ;;;
@@ -1134,14 +1187,8 @@
          ['end        (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
          ["C-space"   command-set-mark]
          ; place self inserting characters after #\return and friends
-         ["space"     (λ ()  (define k #\space)
-                        (define b (current-buffer))
-                        (buffer-insert-char! b k) 
-                        (buffer-move-point! b 1))]
-         [(? char? k) (λ () 
-                        (define b (current-buffer))
-                        (buffer-insert-char! b k)
-                        (buffer-move-point! b 1))]
+         ["space"     (self-insert-command #\space)]
+         [(? char? k) (self-insert-command k)]
          [_           #f])]
       [_ #f])))
 
