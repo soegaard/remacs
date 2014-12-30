@@ -1378,24 +1378,65 @@
   ; (displayln (list first-row-on-screen last-row-on-screen))
   ; suspend flush
   (send dc suspend-flush)
+  
+  ; draw-string : string real real -> real
+  ;   draw string t at (x,y), return point to draw next string
+  (define (draw-string t x y)
+    (define-values (w h _ __) (send dc get-text-extent t))
+    (send dc draw-text t x y)
+    (+ x w))
   ; draw text
-  (for/fold ([y ymin]) ([l #;(drop (dlist->list (text-lines (buffer-text b))) num-lines-to-skip)
-                           (text-lines (buffer-text b))]
-                        [i num-lines-on-screen])
+  (for/fold ([y ymin] [p 0]) ; p the position of start of line
+            ([l #;(drop (dlist->list (text-lines (buffer-text b))) num-lines-to-skip)
+                (text-lines (buffer-text b))]
+             [i num-lines-on-screen])
     (define strings (line-strings l))
     (define n (length strings))
     (define (last-string? i) (= i (- n 1)))
-    (for/fold ([x xmin]) ([s strings] [i (in-range n)])
-      (match s 
-        [(? string?) (define t ; remove final newline
+    (define (sort-numbers xs) (sort xs <))
+    (for/fold ([x xmin] [p p]) ([s strings] [i (in-range n)])
+      ; p is the start position of the string s
+      (match s
+        [(? string?)
+         (define sn (string-length s))
+         ; find mark positions in the string
+         (define mark-positions-in-string
+           (sort-numbers
+            (for/list ([m (buffer-marks b)] #:when (<= p (mark-position m) (+ p sn)))
+              (mark-position m))))
+         ; split the string at the mark positions (there might be a color change)
+         (define start-positions (cons p mark-positions-in-string))
+         (define end-positions   (append mark-positions-in-string (list (+ p sn))))
+         (define substrings      (map (λ (start end) (substring s (- start p) (- end p)))
+                                      start-positions end-positions))
+         ; draw the strings one at a time
+         (define-values (next-x next-p)
+           (for/fold ([x x] [p p]) ([t substrings])
+             (define u ; remove final newline if present
+               (or (and (not (equal? t ""))
+                        (char=? (string-ref t (- (string-length t) 1)) #\n)
+                        (substring t 0 (max 0 (- (string-length t) 1))))
+                   t))
+             (values (draw-string u x y) (+ p (string-length t)))))
+         ; return the next x position
+         (values next-x next-p)]
+        ; draw text one string at a time
+        #;[(? string?) (define t ; remove final newline
                        (if (last-string? i) (substring s 0(max 0 (- (string-length s) 1))) s))
-                     (define-values (w h _ __) (send dc get-text-extent t))
-                     (send dc draw-text t x y)
-                     (+ x w)]
+                     (values (draw-string t x y) (+ p (string-length s)))]
+        ; draw text one character at a time
+        #;[(? string?)
+           (for/fold ([x x]) ([c s])
+             (unless (char=? c #\newline)
+               (define t (string c))
+               (define-values (w h _ __) (send dc get-text-extent t))
+               (send dc draw-text t x y)
+               (values (+ x w) (+ p (string-length s)))))]        
         [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) x]
         [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
         [_ (displayln (~a "Warning: Got " s)) x]))
-    (+ y ls))
+    (values (+ y ls)
+            (+ p (line-length l))))
   ; get point and mark height
   (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
   ; draw marks (for debug)
@@ -1411,7 +1452,6 @@
         (send dc draw-line x y x (min ymax (+ y font-height -1)))))
     (send dc set-pen old-pen))
   ; draw points
-  
   (for ([p (buffer-points b)])
     (define-values (r c) (mark-row+column p))
     (define x (+ xmin (* c    font-width)))
