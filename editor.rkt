@@ -1072,6 +1072,7 @@
 ;;; provide completions for the user.
 
 ; (require "trie.rkt")
+(require (only-in srfi/13 string-prefix-length))
 (define completions '())
 (define (add-name-to-completions name)
   (set! completions (sort (cons (~a name) completions) string<?)))
@@ -1079,6 +1080,12 @@
   (define r (regexp (~a "^" partial-name)))
   (filter (λ (name) (regexp-match r name))
           completions))
+(define (common-prefix xs)
+  (match xs
+    ['()                ""]
+    [(list x)            x]
+    [(list "" y zs ...) ""]
+    [(list x  y zs ...) (common-prefix (cons (substring x 0 (string-prefix-length x y)) zs))]))
 
 (define-syntax (define-interactive stx)
   (syntax-parse stx
@@ -1091,9 +1098,6 @@
          (add-name-to-completions 'name)
          (define (name . args) expr ...))]
     [_ (raise-syntax-error 'define-interactive "bad syntax" stx)]))
-                           
-
-
 
 ;; Names from emacs
 
@@ -1107,31 +1111,31 @@
 (define-interactive (forward-word)        (buffer-forward-word! (current-buffer)))
 (define-interactive (move-to-column n)    (buffer-move-to-column! (current-buffer) n)) ; n=num prefix 
 
-(define (save-buffer)         (save-buffer! (current-buffer)) (refresh-frame))
-(define (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
-(define (beginning-of-buffer) (buffer-move-point-to-position! (current-buffer) 0))
-(define (end-of-buffer)       (buffer-move-point-to-position! (current-buffer) 
+(define-interactive (save-buffer)         (save-buffer! (current-buffer)) (refresh-frame))
+(define-interactive (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
+(define-interactive (beginning-of-buffer) (buffer-move-point-to-position! (current-buffer) 0))
+(define-interactive (end-of-buffer)       (buffer-move-point-to-position! (current-buffer) 
                                                               (buffer-length (current-buffer))))
-(define (open-file-or-create [path (finder:get-file)])
+(define-interactive (open-file-or-create [path (finder:get-file)])
   (when path ; #f = none selected
     (define b (buffer-open-file-or-create path))
     (set-window-buffer! (current-window) b)
     (current-buffer b)
     (refresh-frame (current-frame))))
 
-(define (next-buffer) ; show next buffer in current window
+(define-interactive (next-buffer) ; show next buffer in current window
   (define w (current-window))
   (define b (get-next-buffer))
   (set-window-buffer! w b)
   (current-buffer b))
 
-(define (other-window) ; switch current window and buffer
+(define-interactive (other-window) ; switch current window and buffer
   (define ws (frame-window-tree (current-frame)))
   (define w (list-next ws (current-window) eq?))
   (current-window w)
   (current-buffer (window-buffer w)))
 
-(define (command-set-mark)
+(define-interactive (command-set-mark)
   (displayln (list 'command-set-mark))
   (define b (current-buffer))
   (define p (buffer-point b))
@@ -1145,7 +1149,7 @@
 
 ; create-new-buffer :  -> void
 ;   create new buffer and switch to it
-(define (create-new-buffer)
+(define-interactive (create-new-buffer)
   (define b (new-buffer (new-text) #f (generate-new-buffer-name "Untitled")))
   (set-window-buffer! (current-window) b)
   (current-buffer b)
@@ -1155,7 +1159,7 @@
 ;   read the s-expression in the current buffer one at a time,
 ;   evaluate each ine
 ;   TODO: Note done: Introduce namespace for each buffer
-(define (eval-buffer)
+(define-interactive (eval-buffer)
   (define b (current-buffer))
   (define t (buffer-text b))
   (define s (text->string t))
