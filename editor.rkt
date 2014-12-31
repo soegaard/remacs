@@ -1,5 +1,4 @@
 #lang racket
-;;; TODO Adjust marks at char insertion and deletion.
 ;;; TODO Finish eval-buffer
 ;;; TODO Implement open-input-buffer and open-output-buffer
 ;;; TODO Allow negative numeric prefix
@@ -773,29 +772,37 @@
     (set-buffer-modified?! b #f)))
 
 
-;(define (make-output-buffer b)
-;  ;; State
-;  (define count-lines? #f)
-;  ;; Setup port
-;  (define name (buffer-name b)) ; name for output port
-;  (define evt  always-evt)      ; writes never block
-;  (define write-out             ; handles writes to port
-;    (λ (out-bytes start end buffered? enable-breaks?)
-;      ; write bytes from out-bytes from index start (inclusive) to index end (exclusive)
-;      ...))
-;  (define close                 ; closes port
-;    (λ () (void)))
-;  (define write-out-special     ; handles specials?
-;    #f)                         ; (not yet)
-;  (define get-write-evt         ; #f or procedure that returns synchronizable event
-;    #f)
-;  (define get-write-special-evt ; same for specials
-;    #f)
-;  (define get-location          ; #f or procedure that returns 
-;    (λ ()                       ; line number, column number, and position
-;      (when count-lines?
-;        (values #f #f (buffer-position (buffer-point b))))))
-;  
+(define (make-output-buffer b)
+  ;; State
+  (define count-lines? #f)
+  ;; Setup port
+  (define name (buffer-name b)) ; name for output port
+  (define evt  always-evt)      ; writes never block
+  (define write-out             ; handles writes to port
+    (λ (out-bytes start end buffered? enable-breaks?)
+      ; write bytes from out-bytes from index start (inclusive) to index end (exclusive)
+      (define the-bytes (subbytes out-bytes start end))
+      (define as-string (bytes->string/utf-8 the-bytes))
+      (buffer-insert-string-before-point! b as-string)
+      (buffer-dirty! b)
+      (refresh-frame)   ; todo how to find the correct the frame?
+      ; number of bytes written
+      (- end start)))
+  (define close                 ; closes port
+    (λ () (void)))
+  (define write-out-special     ; handles specials?
+    #f)                         ; (not yet)
+  (define get-write-evt         ; #f or procedure that returns synchronizable event
+    #f)
+  (define get-write-special-evt ; same for specials
+    #f)
+  (define get-location          ; #f or procedure that returns 
+    (λ ()                       ; line number, column number, and position
+      (when count-lines?
+        (values #f #f (mark-position (buffer-point b))))))
+  (make-output-port name evt write-out close))
+  
+  
 ;(make-output-port	 	name	 	 	 	 
 ; 	 	evt	 	 	 	 
 ; 	 	write-out	 	 	 	 
@@ -925,6 +932,15 @@
   (buffer-insert-char! b k)
   (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) 1)
   (buffer-move-point! b 1))
+
+; buffer-insert-string-before-point! : buffer string -> void
+;   insert string before point (and move point)
+(define (buffer-insert-string-before-point! b s)
+  ; todo: rewrite to insert entire string in one go
+  (for ([c s])
+    (if (char=? c #\newline)
+        (buffer-break-line! b)
+        (buffer-insert-char-before-point! b c))))
 
 (define (buffer-adjust-marks-due-to-insertion-after! b n a)
   (for ([m (buffer-marks b)])
@@ -1305,7 +1321,6 @@
       [(vertical-split-window   f p b u l) (append (loop u) (loop l))]
       [(window frame parent buffer)        (list w)]))
   (flatten (loop (frame-windows f))))
-
 
 ;;;
 ;;; COLORS
