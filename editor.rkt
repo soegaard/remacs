@@ -799,21 +799,15 @@
   (define get-location          ; #f or procedure that returns 
     (λ ()                       ; line number, column number, and position
       (when count-lines?
-        (values #f #f (mark-position (buffer-point b))))))
-  (make-output-port name evt write-out close))
-  
-  
-;(make-output-port	 	name	 	 	 	 
-; 	 	evt	 	 	 	 
-; 	 	write-out	 	 	 	 
-; 	 	close	 	 	 	 
-; 	 [	write-out-special	 	 	 	 
-; 	 	get-write-evt	 	 	 	 
-; 	 	get-write-special-evt	 	 	 	 
-; 	 	get-location	 	 	 	 
-; 	 	count-lines!	 	 	 	 
-; 	 	init-position	 	 	 	 
-; 	 	buffer-mode])
+        (define m (buffer-point b))
+        (define-values (row col) (mark-row+column m))
+        (values (+ 1 row) col (+ 1 (mark-position m))))))
+  (define count-lines!
+    (λ () (set! count-lines? #t)))
+  (define init-position (+ 1 (mark-position (buffer-point b)))) ; 
+  (define buffer-mode #f)
+  (make-output-port name evt write-out close write-out-special get-write-evt
+                    get-write-special-evt get-location count-lines! init-position buffer-mode))
 
 (module+ test
   (provide illead-buffer)
@@ -1037,20 +1031,81 @@
     ...)
 
 ;;;
+;;; REGIONS
+;;;
+
+; The text between point and the first mark is known as the region.
+
+(define (region-beginning b)
+  (define marks (buffer-marks b))
+  (and (not (empty? marks))
+       (let ()
+         (define mark (first marks))
+         (define point (buffer-point b))
+         (min (mark-position mark)
+              (mark-position point)))))
+
+(define (region-end b)
+  (define marks (buffer-marks b))
+  (and (not (empty? marks))
+       (let ()
+         (define mark (first marks))
+         (define point (buffer-point b))
+         (max (mark-position mark)
+              (mark-position point)))))
+
+(define (use-region? b)
+  (and #t ; (transient-mode-on? b)
+       #t ; (mark-active? b)
+       (let ()
+         (define beg (region-beginning b))
+         (define end (region-end b))
+         (and beg end (> end beg)))))
+
+;;;
 ;;; INTERACTIVE COMMANDS
 ;;;
 
+;;; Interactive commands are user commands. I.e. the user can
+;;; call them via key-bindings or via M-x.
+;;; Names of interactive commands are registered in order to 
+;;; provide completions for the user.
+
+; (require "trie.rkt")
+(define completions '())
+(define (add-name-to-completions name)
+  (set! completions (sort (cons (~a name) completions) string<?)))
+(define (completions-lookup partial-name)
+  (define r (regexp (~a "^" partial-name)))
+  (filter (λ (name) (regexp-match r name))
+          completions))
+
+(define-syntax (define-interactive stx)
+  (syntax-parse stx
+    [(d-i name:id expr)
+     #'(begin
+         (add-name-to-completions 'name)
+         (define name expr))]
+    [(d-i (name:id . args) expr ...)
+     #'(begin
+         (add-name-to-completions 'name)
+         (define (name . args) expr ...))]
+    [_ (raise-syntax-error 'define-interactive "bad syntax" stx)]))
+                           
+
+
+
 ;; Names from emacs
 
-(define (beginning-of-line)   (buffer-move-point-to-begining-of-line! (current-buffer)))
-(define (end-of-line)         (buffer-move-point-to-end-of-line! (current-buffer)))
-(define (backward-char)       (buffer-move-point! (current-buffer) -1))
-(define (forward-char)        (buffer-move-point! (current-buffer) +1))
-(define (previous-line)       (buffer-move-point-up! (current-buffer)))
-(define (next-line)           (buffer-move-point-down! (current-buffer)))
-(define (backward-word)       (buffer-backward-word! (current-buffer)))
-(define (forward-word)        (buffer-forward-word! (current-buffer)))
-(define (move-to-column n)    (buffer-move-to-column! (current-buffer) n)) ; n = prefix numeric arg
+(define-interactive (beginning-of-line)   (buffer-move-point-to-begining-of-line! (current-buffer)))
+(define-interactive (end-of-line)         (buffer-move-point-to-end-of-line! (current-buffer)))
+(define-interactive (backward-char)       (buffer-move-point! (current-buffer) -1))
+(define-interactive (forward-char)        (buffer-move-point! (current-buffer) +1))
+(define-interactive (previous-line)       (buffer-move-point-up! (current-buffer)))
+(define-interactive (next-line)           (buffer-move-point-down! (current-buffer)))
+(define-interactive (backward-word)       (buffer-backward-word! (current-buffer)))
+(define-interactive (forward-word)        (buffer-forward-word! (current-buffer)))
+(define-interactive (move-to-column n)    (buffer-move-to-column! (current-buffer) n)) ; n=num prefix 
 
 (define (save-buffer)         (save-buffer! (current-buffer)) (refresh-frame))
 (define (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
@@ -1381,19 +1436,29 @@
 ;;;
 
 (define (render-buffer b dc xmin xmax ymin ymax)
+  ;; Highlightning for region between mark and point
+  (define text-background-color  (send dc get-text-background))
+  (define region-highlighted-color  magenta)
+  (define (set-text-background-color highlight?)
+    (define background-color (if highlight? region-highlighted-color text-background-color))
+    (send dc set-text-background background-color))
+  ;; Dimensions
   (define width  (- xmax xmin))
   (define height (- ymax ymin))
   (define fs (font-size))
-  (define ls (+ fs 1)) ; 1 pixel for spacing
+  (define ls (+ fs 1)) ; linesize -- 1 pixel for spacing
+  ;; Placement of point relative to lines on screen
   (define num-lines-on-screen (max 0 (quotient height ls)))
   (define-values (row col)    (mark-row+column (buffer-point  b)))
   (define last-row-on-screen  (min row num-lines-on-screen))
   (define first-row-on-screen (max 0 (- row num-lines-on-screen)))
   (define num-lines-to-skip   first-row-on-screen)
+  ;; Placement of region
+  (define-values (reg-begin reg-end)
+    (if (use-region? b) (values (region-beginning b) (region-end b)) (values #f #f)))
   ; (displayln (list first-row-on-screen last-row-on-screen))
   ; suspend flush
-  (send dc suspend-flush)
-  
+  (send dc suspend-flush)  
   ; draw-string : string real real -> real
   ;   draw string t at (x,y), return point to draw next string
   (define (draw-string t x y)
@@ -1414,22 +1479,26 @@
       (match s
         [(? string?)
          (define sn (string-length s))
-         ; find mark positions in the string
-         (define mark-positions-in-string
+         ; find positions of points and marks in the string
+         (define positions-in-string
            (sort-numbers
-            (for/list ([m (buffer-marks b)] #:when (<= p (mark-position m) (+ p sn)))
-              (mark-position m))))
+            (append (for/list ([m (buffer-marks b)] #:when (<= p (mark-position m) (+ p sn)))
+                      (mark-position m))
+                    (for/list ([m (buffer-points b)] #:when (<= p (mark-position m) (+ p sn)))
+                      (mark-position m)))))
          ; split the string at the mark positions (there might be a color change)
-         (define start-positions (cons p mark-positions-in-string))
-         (define end-positions   (append mark-positions-in-string (list (+ p sn))))
+         (define start-positions (cons p positions-in-string))
+         (define end-positions   (append positions-in-string (list (+ p sn))))
          (define substrings      (map (λ (start end) (substring s (- start p) (- end p)))
                                       start-positions end-positions))
          ; draw the strings one at a time
          (define-values (next-x next-p)
            (for/fold ([x x] [p p]) ([t substrings])
+             (when (equal? reg-begin p) (set-text-background-color #t))
+             (when (equal? reg-end   p) (set-text-background-color #f))
              (define u ; remove final newline if present
                (or (and (not (equal? t ""))
-                        (char=? (string-ref t (- (string-length t) 1)) #\n)
+                        (char=? (string-ref t (- (string-length t) 1)) #\newline)
                         (substring t 0 (max 0 (- (string-length t) 1))))
                    t))
              (values (draw-string u x y) (+ p (string-length t)))))
@@ -1556,7 +1625,7 @@
         (send dc set-text-mode 'solid) ; solid -> use text background color
         ; (send dc set-background "white")
         (send dc clear)
-        (send dc set-text-background background-color)        
+        (send dc set-text-background background-color)
         (send dc set-text-foreground text-color)
         (render-frame this-frame dc)
         ; uddate status line
