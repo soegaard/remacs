@@ -44,7 +44,10 @@
 ; where as (list #\c #\a) is associated to a 1.
 
 ; Here is one way to represent the finite map:
-
+;(define (fm:empty)      (make-hasheqv))
+;(define (fm:empty? m)   (hash-empty? m))
+;(define (fm:lookup k m) (hash-ref m k #f))
+;(define (fm:bind k v m) (hash-set! m k v) m)
 (define (fm:empty)      '())
 (define (fm:empty? m)   (null? m))
 (define (fm:lookup k m)
@@ -167,9 +170,9 @@
   (make-empty-trie))
 
 (define (completions-insert-string t s)
-  (insert-word s t))
+  (insert-word s 'ignore t))
 
-(define (completions-lookup s t)
+(define (completions-lookup t s)
   (map list->string 
        (trie-completions (string->list s) t)))
 
