@@ -1080,23 +1080,32 @@
   (define r (regexp (~a "^" partial-name)))
   (filter (λ (name) (regexp-match r name))
           completions))
-(define (common-prefix xs)
+(define (longest-common-prefix xs)
   (match xs
     ['()                ""]
     [(list x)            x]
     [(list "" y zs ...) ""]
-    [(list x  y zs ...) (common-prefix (cons (substring x 0 (string-prefix-length x y)) zs))]))
+    [(list x  y zs ...) (longest-common-prefix 
+                         (cons (substring x 0 (string-prefix-length x y)) zs))]))
+
+(define all-interactice-commands-ht (make-hash))
+(define (add-interactive-command name cmd)
+  (hash-set! all-interactice-commands-ht (~a name) cmd))
+(define (lookup-interactive-command cmd-name)
+  (hash-ref all-interactice-commands-ht (~a cmd-name) #f))
 
 (define-syntax (define-interactive stx)
   (syntax-parse stx
     [(d-i name:id expr)
      #'(begin
          (add-name-to-completions 'name)
-         (define name expr))]
+         (define name expr)
+         (add-interactive-command 'name name))]
     [(d-i (name:id . args) expr ...)
      #'(begin
          (add-name-to-completions 'name)
-         (define (name . args) expr ...))]
+         (define (name . args) expr ...)
+         (add-interactive-command 'name name))]
     [_ (raise-syntax-error 'define-interactive "bad syntax" stx)]))
 
 ;; Names from emacs
@@ -1201,6 +1210,7 @@
        [mod3-down    #f]
        [mod4-down    #f]
        [mod5-down    #f]
+   
        [control+meta-is-altgr #f]))
 
 (define (get-shift-key-code key-event)
@@ -1236,6 +1246,18 @@
     (define (digit-char? x) (and (char? x) (char<=? #\0 x #\9)))
     ; todo: allow negativ numeric prefix
     (match prefix
+      [(list "M-x" more ...)
+       (match key
+         [#\tab     (define so-far (string-append* (map ~a more)))
+                    (define cs     (completions-lookup so-far))
+                    (cond [(empty? cs) 'ignore]
+                          [else        (define pre (string->list (longest-common-prefix cs)))
+                                       (displayln pre)
+                                       (list 'replace (cons "M-x" pre))])]
+         [#\return  (define cmd-name (string-append* (map ~a more)))
+                    (define cmd      (lookup-interactive-command cmd-name))
+                    cmd]
+         [_         'prefix])]
       [(list "C-u" (? digit-char? ds) ...)
        (match key
          [(? digit-char?) 'prefix]
@@ -1259,6 +1281,7 @@
          ["ESC"       'prefix]
          ["C-x"       'prefix]
          ["C-u"       'prefix]
+         ["M-x"       'prefix]
          ['left       backward-char]
          ['right      forward-char]
          ['up         previous-line]
@@ -1611,8 +1634,10 @@
           ; (displayln (list 'key key 'shift (get-shift-key-code event)))
           (send msg set-label (~a "key: " key))
           (match (global-keymap prefix key)
-            [(? procedure? thunk) (clear-prefix!) (thunk)]
-            ['prefix              (add-prefix! key)]
+            [(? procedure? thunk)  (clear-prefix!) (thunk)]
+            [(list 'replace pre)   (set! prefix pre)]
+            ['prefix               (add-prefix! key)]
+            ['ignore               (void)]
             ['exit                ; (save-buffer! (current-buffer))
              ; TODO : Ask how to handle unsaved buffers
              (send frame on-exit)]
