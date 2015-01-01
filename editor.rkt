@@ -1250,6 +1250,10 @@
                                  k)]
       [else                  k])))
 
+(define (remove-last xs)
+  (if (null? xs) xs
+      (reverse (rest (reverse xs)))))
+
 (define global-keymap
   (λ (prefix key)
     (write (list prefix key)) (newline)
@@ -1262,19 +1266,22 @@
     (match prefix
       [(list "M-x" more ...)
        (match key
-         [#\tab     (define so-far (string-append* (map ~a more)))
-                    (define cs     (completions-lookup so-far))
-                    (cond [(empty? cs) (message (~a "M-x " so-far key))
-                                       'ignore]
-                          [else        (define pre (longest-common-prefix cs))
-                                       (message (~a "M-x " pre))
-                                       (list 'replace (cons "M-x" (string->list pre)))])]
-         [#\return  (define cmd-name (string-append* (map ~a more)))
-                    (define cmd      (lookup-interactive-command cmd-name))
-                    (message "")
-                    cmd]
-         [_         (message (string-append* `("M-x " ,@(map ~a more) ,(~a key))))
-                    'prefix])]
+         [#\backspace (define new (remove-last more))
+                      (message (string-append* `("M-x " ,@(map ~a new))))
+                      `(replace ,(cons "M-x" new))]
+         [#\tab       (define so-far (string-append* (map ~a more)))
+                      (define cs     (completions-lookup so-far))
+                      (cond [(empty? cs) (message (~a "M-x " so-far key))
+                                         'ignore]
+                            [else        (define pre (longest-common-prefix cs))
+                                         (message (~a "M-x " pre))
+                                         (list 'replace (cons "M-x" (string->list pre)))])]
+         [#\return    (define cmd-name (string-append* (map ~a more)))
+                      (define cmd      (lookup-interactive-command cmd-name))
+                      (message "")
+                      cmd]
+         [_           (message (string-append* `("M-x " ,@(map ~a more) ,(~a key))))
+                      'prefix])]
       [(list "C-u" (? digit-char? ds) ...)
        (match key
          [(? digit-char?) 'prefix]
