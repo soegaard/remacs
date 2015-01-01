@@ -1,7 +1,9 @@
 #lang racket
 ;;; TODO Finish eval-buffer
-;;; TODO Implement open-input-buffer and open-output-buffer
+;;; TODO Implement open-input-buffer
 ;;; TODO Allow negative numeric prefix
+;;; TODO Holding M and typing a number should create a numeric prefix.
+;;; TODO Visual feedback for M-x and friends  =>  minibuffer !
 
 (module+ test (require rackunit))
 (require "dlist.rkt" (for-syntax syntax/parse) framework)
@@ -71,7 +73,7 @@
 ; A window is an area in which a buffer is displayed.
 ; Multiple windows are shown together in a frame.
 
-(struct frame (frame% canvas windows) #:mutable)
+(struct frame (frame% canvas windows mini-window) #:mutable)
 ; A frame contains one or multiple windows.
 ; The frame is render onto its canvas.
 
@@ -1063,6 +1065,16 @@
          (and beg end (> end beg)))))
 
 ;;;
+;;; MESSAGES
+;;;
+
+(define current-message (make-parameter #f))
+
+(define (message str [msg (current-message)])
+  (displayln (list 'message msg))
+  (send msg set-label str))
+
+;;;
 ;;; INTERACTIVE COMMANDS
 ;;;
 
@@ -1123,8 +1135,8 @@
 (define-interactive (save-buffer)         (save-buffer! (current-buffer)) (refresh-frame))
 (define-interactive (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
 (define-interactive (beginning-of-buffer) (buffer-move-point-to-position! (current-buffer) 0))
-(define-interactive (end-of-buffer)       (buffer-move-point-to-position! (current-buffer) 
-                                                              (buffer-length (current-buffer))))
+(define-interactive (end-of-buffer)       (buffer-move-point-to-position! 
+                                           (current-buffer) (buffer-length (current-buffer))))
 (define-interactive (open-file-or-create [path (finder:get-file)])
   (when path ; #f = none selected
     (define b (buffer-open-file-or-create path))
@@ -1182,6 +1194,8 @@
   (define b (current-buffer))
   (buffer-insert-char-before-point! b k))
 
+
+
 ;;;
 ;;; KEYMAP
 ;;;
@@ -1210,7 +1224,7 @@
        [mod3-down    #f]
        [mod4-down    #f]
        [mod5-down    #f]
-   
+       
        [control+meta-is-altgr #f]))
 
 (define (get-shift-key-code key-event)
@@ -1250,14 +1264,17 @@
        (match key
          [#\tab     (define so-far (string-append* (map ~a more)))
                     (define cs     (completions-lookup so-far))
-                    (cond [(empty? cs) 'ignore]
-                          [else        (define pre (string->list (longest-common-prefix cs)))
-                                       (displayln pre)
-                                       (list 'replace (cons "M-x" pre))])]
+                    (cond [(empty? cs) (message (~a "M-x " so-far key))
+                                       'ignore]
+                          [else        (define pre (longest-common-prefix cs))
+                                       (message (~a "M-x " pre))
+                                       (list 'replace (cons "M-x" (string->list pre)))])]
          [#\return  (define cmd-name (string-append* (map ~a more)))
                     (define cmd      (lookup-interactive-command cmd-name))
+                    (message "")
                     cmd]
-         [_         'prefix])]
+         [_         (message (string-append* `("M-x " ,@(map ~a more) ,(~a key))))
+                    'prefix])]
       [(list "C-u" (? digit-char? ds) ...)
        (match key
          [(? digit-char?) 'prefix]
@@ -1281,7 +1298,7 @@
          ["ESC"       'prefix]
          ["C-x"       'prefix]
          ["C-u"       'prefix]
-         ["M-x"       'prefix]
+         ["M-x"       (message "M-x ") 'prefix]
          ['left       backward-char]
          ['right      forward-char]
          ['up         previous-line]
@@ -1333,6 +1350,7 @@
       "  " "Buffer: "          (buffer-name) "    " "(" row "," col ")"
       "  " "Position: " (mark-position (buffer-point (current-buffer)))
       "  " "Length: "   (buffer-length (current-buffer))))
+
 
 ;;;
 ;;; WINDOWS
@@ -1533,8 +1551,8 @@
          (values next-x next-p)]
         ; draw text one string at a time
         #;[(? string?) (define t ; remove final newline
-                       (if (last-string? i) (substring s 0(max 0 (- (string-length s) 1))) s))
-                     (values (draw-string t x y) (+ p (string-length s)))]
+                         (if (last-string? i) (substring s 0(max 0 (- (string-length s) 1))) s))
+                       (values (draw-string t x y) (+ p (string-length s)))]
         ; draw text one character at a time
         #;[(? string?)
            (for/fold ([x x]) ([c s])
@@ -1593,6 +1611,31 @@
   (define-values (xmax ymax) (send dc get-size))
   (render-windows (frame-windows frame) dc 0 xmax 0 ymax))
 
+;;; Mini Canvas
+; The bottom line of each frame is a small canvas.
+; The mini canvas can be used to display either the Echo Area 
+; or a Mini Buffer.
+
+;;; ECHO AREA
+
+; The Echo Area uses the the mini canvas at the bottom of the 
+; frame to give messages to the user.
+
+;;; MINI BUFFER
+
+; The mini buffer is a buffer displayed in the mini canvas.
+; Most buffer operations are avaialble, but it can not be split.
+; <tab>, <space> and <return> are usually bound to completion 
+; operations in a minibuffer.
+
+#;(define (message format-string . arguments)
+  ; TODO
+  ; Display the message in the mini-buffer,
+  ; add the message to the *Messages* buffer.
+  (define msg (apply format format-string arguments))
+  #;(send (frame-echo-area f) set-message s)
+  1)
+
 (define (new-editor-frame this-frame)
   ;;; WINDOW SIZE
   (define min-width  800)
@@ -1600,10 +1643,11 @@
   ;;; COLORS
   (define background-color base1)
   (define text-color       base03)
-  ;;; FRAME
+  ;;; FRAME  
   (define frame (new frame% [label "Editor"] [style '(fullscreen-button)]))
   (set-frame-frame%! this-frame frame)
   (define msg (new message% [parent frame] [label "No news"]))
+  (current-message msg)
   (send msg min-width min-width)
   ;;; MENUBAR
   (define (create-menubar)
@@ -1624,42 +1668,50 @@
   (define (add-prefix! key) (set! prefix (append prefix (list key))))
   (define (clear-prefix!)   (set! prefix '()))
   ;;; CANVAS
-  (define subeditor-canvas%
-    (class canvas%
-      (define/override (on-char event)
-        ; TODO syntax  (with-temp-buffer body ...)
-        (define key-code (send event get-key-code))
-        (unless (equal? key-code 'release)
-          (define key (key-event->key event))
-          ; (displayln (list 'key key 'shift (get-shift-key-code event)))
-          (send msg set-label (~a "key: " key))
-          (match (global-keymap prefix key)
-            [(? procedure? thunk)  (clear-prefix!) (thunk)]
-            [(list 'replace pre)   (set! prefix pre)]
-            ['prefix               (add-prefix! key)]
-            ['ignore               (void)]
-            ['exit                ; (save-buffer! (current-buffer))
-             ; TODO : Ask how to handle unsaved buffers
-             (send frame on-exit)]
-            ['release             (void)]
-            [_                    (unless (equal? (send event get-key-code) 'release)
-                                    (clear-prefix!))]))
-        ; todo: don't trigger repaint on every key stroke ...
-        (send canvas on-paint))
-      (define/override (on-paint)
-        (define dc (send canvas get-dc))
-        ; reset drawing context
-        (use-default-font-settings)
-        (send dc set-font default-fixed-font)
-        (send dc set-text-mode 'solid) ; solid -> use text background color
-        ; (send dc set-background "white")
-        (send dc clear)
-        (send dc set-text-background background-color)
-        (send dc set-text-foreground text-color)
-        (render-frame this-frame dc)
-        ; uddate status line
-        (display-status-line (status-line-hook)))
-      (super-new)))
+; All buffers, mini buffers and the echo area are rendered into an remacs-canvas%
+(define subeditor-canvas%
+  (class canvas%
+    ;; Buffer
+    (define the-buffer #f)
+    (define (set-buffer b) (set! the-buffer b))
+    (define (get-buffer b) the-buffer)
+    ;; Key Events
+    (define/override (on-char event)
+      ; TODO syntax  (with-temp-buffer body ...)
+      (define key-code (send event get-key-code))
+      (unless (equal? key-code 'release)
+        (define key (key-event->key event))
+        ; (displayln (list 'key key 'shift (get-shift-key-code event)))
+        ; (send msg set-label (~a "key: " key))
+        (match (global-keymap prefix key)
+          [(? procedure? thunk)  (clear-prefix!) (thunk)]
+          [(list 'replace pre)   (set! prefix pre)]
+          ['prefix               (add-prefix! key)]
+          ['ignore               (void)]
+          ['exit                ; (save-buffer! (current-buffer))
+           ; TODO : Ask how to handle unsaved buffers
+           (send frame on-exit)]
+          ['release             (void)]
+          [_                    (unless (equal? (send event get-key-code) 'release)
+                                  (clear-prefix!))]))
+      ; todo: don't trigger repaint on every key stroke ...
+      (send canvas on-paint))
+    ;; Rendering
+    (define/override (on-paint)
+      (define dc (send canvas get-dc))
+      ; reset drawing context
+      (use-default-font-settings)
+      (send dc set-font default-fixed-font)
+      (send dc set-text-mode 'solid) ; solid -> use text background color
+      ; (send dc set-background "white")
+      (send dc clear)
+      (send dc set-text-background background-color)
+      (send dc set-text-foreground text-color)
+      (render-frame this-frame dc)
+      ; uddate status line
+      (display-status-line (status-line-hook)))
+    (super-new)))
+  ;;; ---
   (define canvas (new subeditor-canvas% [parent frame]))
   (set-frame-canvas! this-frame canvas)
   (define status-line (new message% [parent frame] [label "Welcome"]))
@@ -1673,7 +1725,7 @@
 (module+ test
   (define ib illead-buffer)
   (current-buffer ib)
-  (define f  (frame #f #f #f))
+  (define f  (frame #f #f #f #f))
   (define sp (vertical-split-window f f #f #f #f))
   (define w  (window f sp ib))
   (define w2 (window f sp (get-buffer "*scratch*")))
