@@ -72,9 +72,11 @@
         (modifierKeyState    : _uint32)
         (keyboardType        : _uint32)
         (keyTranslateOptions : _OptionBits)            ; uint32
-        (deadKeyState        : (_ptr i _uint32))
+        ; (deadKeyState        : (_ptr i _uint32))
+        (deadKeyState        : (_box _uint32))
         (maxStringLength     : _UniCharCount)
-        (actualStringLength  : _UniCharCountPointer)
+        ; (actualStringLength  : _UniCharCountPointer)
+        (actualStringLength  : (_box _UniCharCount))
         (unicodeString       : _pointer)
         -> _OSStatus))
 
@@ -357,7 +359,7 @@
 ;;; Racket interface to UCKeyTranslate
 ;;;
 
-(require mred/private/wx/cocoa/keycode)
+
 
 (define cached-keyboard-layout #f)
 
@@ -368,16 +370,30 @@
   (cpointer-push-tag! layout 'UCKeyboardLayout) ; cast to UCKeyboardLayout
   layout)
 
+; Note: 
+;     dead-key-state 
+;       A pointer to an unsigned 32-bit value, initialized to zero. 
+;       The UCKeyTranslate function uses this value to store private 
+;       information about the current dead key state.
+;       (deadKeyState : (_ptr i _uint32))
+
+(define max-string-length 255) 
+(define output-chars (malloc _UniChar max-string-length)) ; allocate once only
+
 (define (key-translate virtual-key-code 
                        #:key-action            [key-action         kUCKeyActionDown]
                        #:modifier-key-state    [modifier-key-state                0]  ; no modifier
                        #:keyboard-type         [keyboard-type        (LMGetKbdType)]
-                       #:key-translate-options [key-translate-options kUCKeyTranslateNoDeadKeysFlag]
-                       #:dead-key-state        [dead-key-state                    0]  ; no prev state
+                       #:key-translate-options [key-translate-options            #f]
+                       #:dead-key-state        [dead-key-state                   #f]  ; no prev state
                        #:keyboard-layout       [layout-in                   'cached]) ; use cached
-  (define max-string-length 4) 
-  (define chars (malloc _UniChar 4))
-  (define actual-string-length 0)
+  (define actual-string-length (box 0))
+  (set! key-translate-options
+        (or key-translate-options                ; use user settins if provided
+            (if dead-key-state                   ; otherwise if user has set dead-key-state,
+                0                                ; then take dead-keys into account
+                kUCKeyTranslateNoDeadKeysFlag))) ; else ignore dead keys
+  (set! dead-key-state (or dead-key-state (box 0)))        ; 0 means no prior key strokes
   (define layout
     (match layout-in
       ; use cached
@@ -388,32 +404,50 @@
       ; refresh cache
       [#f         (set! cached-keyboard-layout (get-current-keyboard-layout))
                   cached-keyboard-layout]
-      ; use as is
+      ; use provided
       [_          layout-in]))
-
+  
   (UCKeyTranslate layout 
                   virtual-key-code
                   key-action
-                  (>> modifier-key-state 8)
+                  (bitwise-and (>> modifier-key-state 8) #xFF)
                   keyboard-type
                   key-translate-options
                   dead-key-state
                   max-string-length
                   actual-string-length
-                  chars)
-  (integer->char (ptr-ref chars _UniChar 0)))
+                  output-chars)
+  ; get the number of characters returned, and convert to string
+  (define n (max 0 (min max-string-length (unbox actual-string-length))))
+  (list->string (for/list ([i (in-range n)]) 
+                  (integer->char (ptr-ref output-chars _UniChar i)))))
+
+;;;
+;;; RACKET KEY-CODE TO VIRTUAL KEYCODE
+;;;
+
+(require mred/private/wx/cocoa/keycode)
+
+(define racket-to-osx-key-code-ht (make-hash))
+(for ([c (in-range 256)])
+  (define r (map-key-code c))
+  (hash-set! racket-to-osx-key-code-ht r c))
+;(define (racket-to-osx-key-code k)
+;  (define c (hash-ref racket-to-osx-key-code-ht k #f))
+  
+
 
 
 (module+ test (require rackunit)
   ; These tests are for an US keyboard  
   ; no modifiers
-  (check-equal? (key-translate kVK_ANSI_A)      #\a)
-  (check-equal? (key-translate kVK_ANSI_Period) #\.)
+  (check-equal? (key-translate kVK_ANSI_A)      "a")
+  (check-equal? (key-translate kVK_ANSI_Period) ".")
   ; shift
-  (check-equal? (key-translate kVK_ANSI_A      #:modifier-key-state modifier-shift-key) #\A)
-  (check-equal? (key-translate kVK_ANSI_Period #:modifier-key-state modifier-shift-key) #\>)
+  (check-equal? (key-translate kVK_ANSI_A      #:modifier-key-state modifier-shift-key) "A")
+  (check-equal? (key-translate kVK_ANSI_Period #:modifier-key-state modifier-shift-key) ">")
   ; option
-  (check-equal? (key-translate kVK_ANSI_A      #:modifier-key-state modifier-option-key) #\å))
+  (check-equal? (key-translate kVK_ANSI_A      #:modifier-key-state modifier-option-key) "å"))
 
 (module+ danish-test (require rackunit)
   ; These tests are for a DK keyboard  
@@ -421,10 +455,54 @@
   ;   Make sure you enable the easy access to switching (flags in the menu bar)
   
   ; no modifiers
-  (check-equal? (key-translate kVK_ANSI_A)         #\a)
-  (check-equal? (key-translate kVK_ANSI_Period)    #\.)
-  (check-equal? (key-translate kVK_ANSI_Semicolon) #\æ)
+  (check-equal? (key-translate kVK_ANSI_A)         "a")
+  (check-equal? (key-translate kVK_ANSI_Period)    ".")
+  (check-equal? (key-translate kVK_ANSI_Semicolon) "æ")
   ; shift
-  (check-equal? (key-translate kVK_ANSI_A         #:modifier-key-state modifier-shift-key) #\A)
-  (check-equal? (key-translate kVK_ANSI_Semicolon #:modifier-key-state modifier-shift-key) #\Æ))
+  (check-equal? (key-translate kVK_ANSI_A         #:modifier-key-state modifier-shift-key) "A")
+  (check-equal? (key-translate kVK_ANSI_Semicolon #:modifier-key-state modifier-shift-key) "Æ"))
+
+(module+ chinese-pinyin-test (require rackunit)
+  ; These tests are for writing Chinese with the pinyin input method
+  ;   Use international settings to add a danish keyboard as an extra text input source.
+  ;   Make sure you enable the easy access to switching (flags in the menu bar)
+  
+  ; no modifiers
+  (check-equal? (key-translate kVK_ANSI_A)         "锕")
+  (check-equal? (key-translate kVK_ANSI_Period)    ".")
+  (check-equal? (key-translate kVK_ANSI_Semicolon) "æ")
+  ; shift
+  (check-equal? (key-translate kVK_ANSI_A         #:modifier-key-state modifier-shift-key) "A")
+  (check-equal? (key-translate kVK_ANSI_Semicolon #:modifier-key-state modifier-shift-key) "Æ"))
+
+(define (make-initial-dead-key-state)
+  (box 0))
+
+; Ignore dead keys if dead-key-state isn't provided as optional argument:
+(key-translate kVK_ANSI_E #:modifier-key-state modifier-option-key) ; #\́
+
+; A dead key should return an empty string:
+(let ([dks (make-initial-dead-key-state)])
+  (key-translate kVK_ANSI_E #:dead-key-state dks #:modifier-key-state modifier-option-key)) ; ""
+
+; A dead key ´ followed by e should produce é.
+(let ([dks (make-initial-dead-key-state)])
+  (key-translate kVK_ANSI_E #:dead-key-state dks #:modifier-key-state modifier-option-key)
+  (key-translate kVK_ANSI_E #:dead-key-state dks)) ; "é"
+
+(let ([dks (make-initial-dead-key-state)])
+  (key-translate kVK_ANSI_P #:dead-key-state dks)
+  (key-translate kVK_ANSI_V #:dead-key-state dks)
+  (key-translate kVK_Space  #:dead-key-state dks))
+
+(let ([dks (make-initial-dead-key-state)])
+  (list (key-translate kVK_ANSI_A #:dead-key-state dks)
+        (key-translate kVK_ANSI_B #:dead-key-state dks)
+        (key-translate kVK_Space  #:dead-key-state dks)))
+
+; A dead key ˆ followed by u should produce û.
+(let ([dks (make-initial-dead-key-state)])
+  (key-translate kVK_ANSI_I #:dead-key-state dks #:modifier-key-state modifier-option-key)
+  (key-translate kVK_ANSI_U #:dead-key-state dks)) ; "û"
+
 
