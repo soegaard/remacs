@@ -1,11 +1,9 @@
-#lang racket
-(require (for-syntax syntax/parse racket/syntax))
-(require ffi/unsafe/objc)
+#lang racket/base
+(require (for-syntax syntax/parse racket/syntax racket/base))
 (require ffi/unsafe
          ffi/unsafe/objc
          ffi/unsafe/define
-         mred/private/wx/cocoa/image
-         mred/private/wx/cocoa/types)
+         mred/private/wx/cocoa/types) ; _NSString
 
 ;;; Bit operations
 (define (<< x y) (arithmetic-shift x y))
@@ -17,30 +15,23 @@
 (define carbon-core-lib 
   (ffi-lib (string-append "/System/Library/Frameworks/CoreServices.framework/"
                           "Frameworks/CarbonCore.framework/Versions/Current/CarbonCore")))
-(define cf-lib 
-  (case (system-type)
-    [(macosx) (ffi-lib "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")]
-    [else #f]))
+(define cf-lib (ffi-lib "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"))
 
 (define-ffi-definer define-quartz      quartz-lib)
 (define-ffi-definer define-carbon-core carbon-core-lib)
 (define-ffi-definer define-carbon      carbon-lib)
 (define-ffi-definer define-cf          cf-lib #:default-make-fail make-not-available)
 
-
-;;; API CONSTANTS
-(define-carbon kTISPropertyUnicodeKeyLayoutData _NSString)
-
 ;;; CORE FOUNDATION
 
 (import-class NSString)
 (define _CFStringRef _NSString)
 
-; (define _OSStatus _sint32) ; already imported
-
+; (define _OSStatus _sint32)       ; already imported
 (define-cpointer-type _CFDataRef)
-(define-cf CFDataGetBytePtr
-  (_fun _CFDataRef -> _pointer))
+
+
+;;; Unicode Characters
 
 ;;; Types from MacTypes.h
 (define _UniChar              _uint16)
@@ -51,19 +42,41 @@
 
 ;;; TEXT INPUT SOURCES
 
-;;; Get the current text input source (read: the keyboard)
+; Most text input sources are keyboards.
 (define _TISInputSourceRef (_cpointer 'TISInputSourceRef))
-(define-carbon TISCopyCurrentKeyboardLayoutInputSource (_fun -> _TISInputSourceRef))
 
-;;; Used to get the layout of the keyboard from an text input source
+; Each physical key on a keyboard sends a keycode.
+; Example: the key label labelled A on a US keyboard sends kVK_ANSI_A=0.
+
+; A keyboard layout determines which character corresponds to a physical key.
+
+; To get a layout, one must first get a reference to the input source:
+(define-carbon TISCopyCurrentKeyboardLayoutInputSource             (_fun -> _TISInputSourceRef))
+(define-carbon TISCopyCurrentASCIICapableKeyboardLayoutInputSource (_fun -> _TISInputSourceRef))
+; Note: These days TISCopyCurrentKeyboardLayoutInputSource ought to work for all keyboards.
+
+; The input source has several properties, one of is:
+(define-carbon kTISPropertyUnicodeKeyLayoutData _NSString)
+
+; Getting the property is done by:
 (define-carbon TISGetInputSourceProperty
   (_fun (_inputSource : _TISInputSourceRef)
         (_propertyKey : _CFStringRef)           
         -> (_or-null _CFDataRef)))
 
+; The value returned by TISGetInputSourceProperty is a CFDataRef,
+; so one mus call CFDataGetBytePtr to get the actual layout.
+(define-cf CFDataGetBytePtr (_fun _CFDataRef -> _pointer))
+
+; The return value can be cast to:
+(define _UCKeyboardLayout (_cpointer 'UCKeyboardLayout))
+
+; Before translating key codes to characters, one must option
+; the physical type of keyboard.
 (define-carbon LMGetKbdType (_fun -> _uint8))
 
-(define _UCKeyboardLayout (_cpointer 'UCKeyboardLayout))
+; Given a layout and a keyboard type, one can translate
+; keycodes to characters using UCKeyTranslate.
 
 (define-carbon UCKeyTranslate
   (_fun (keyboardLayoutPtr   : _UCKeyboardLayout)
@@ -72,7 +85,6 @@
         (modifierKeyState    : _uint32)
         (keyboardType        : _uint32)
         (keyTranslateOptions : _OptionBits)            ; uint32
-        ; (deadKeyState        : (_ptr i _uint32))
         (deadKeyState        : (_box _uint32))
         (maxStringLength     : _UniCharCount)
         ; (actualStringLength  : _UniCharCountPointer)
@@ -80,44 +92,32 @@
         (unicodeString       : _pointer)
         -> _OSStatus))
 
-;;;
-;;; EventModifiers (UInt16)
-;;;
+; Meaning of parameters:
+;   keyAction            what happened to the key?     - usually kUCKeyActionDown
+;   modifierKeyState     which modifier keys are down? - shift, alt, ctrl, cmd or combinations
+;   keyTranslateOptions  is previous input handled?    - used to disable/enable dead keys
+;   deadKeyState         integer encoding of prev keys - none is encoded as 0
+;   unicodeString        array into which the result is stored
+;   actualStringLength   how many characters were stored in unicodeString
 
-; From (file dates 2008):
-; /System/Library/Frameworks/Carbon.framework/Versions/A/
-; Frameworks/HIToolbox.framework/Versions/A/Headers/Events.h 
-
-; The definitions indicate which bit controls what.
-(define modifier-active-flag-bit     0) ; activeFlagBit = 0,  /* activate?(activateEvt and mouseDown)
-(define modifier-btn-state-bit       7) ; btnStateBit  = 7,   /* state of button?*/
-(define modifier-cmd-key-bit         8) ;                     /* command key down?*/
-(define modifier-shift-key-bit       9) ; shiftKeyBit   = 9,  /* shift key down?*/
-(define modifier-alpha-lock-bit     10) ; alphaLockBit  = 10, /* alpha lock down?*/
-(define modifier-option-bit         11) ; optionKeyBit  = 11, /* option key down?*/
-(define modifier-control-key-bit    12) ; controlKeyBit = 12, /* control key down?*/
-; NOTE: The following 3 modifiers are not supported on OS X
-(define modifier-right-shift-key-bit   13) ; rightShiftKeyBit   = 13, /* right shift key down? */
-(define modifier-right-option-key-bit  14) ; rightOptionKeyBit  = 14, /* right Option key down? */
-(define modifier-right-control-key-bit 15) ; rightControlKeyBit = 15  /* right Control key down? */
-
-
-(define modifier-active-flag       (<< 1  0))
-(define modifier-btn-state         (<< 1  7))
-(define modifier-cmd-key           (<< 1  8))
-(define modifier-shift-key         (<< 1  9))
-(define modifier-alpha-lock        (<< 1 10)) 
-(define modifier-option-key        (<< 1 11)) 
-(define modifier-control-key       (<< 1 12)) 
-; NOTE: The following 3 modifiers are not supported on OS X
-(define modifier-right-shift-key   (<< 1 13))
-(define modifier-right-option-key  (<< 1 14))
-(define modifier-right-control-key (<< 1 15))
-
+; See key-translate below for a more convenient interface for UCKeyTranslate.
 
 ;;;
-;;; MacRoman character codes
+;;; Constants and there symbolic representation.
 ;;;
+
+; In order to define a lot of constants and keep their symbols
+; around it is convenient a little help.
+
+; SYNTAX (define-name/value-definer category)
+;   Defines two hash-tables
+;     category-name-to-value-ht    from symbolic name to value
+;     category-value-to-name-ht    from value to symbolic name
+;   It also defines
+;     SYNTAX (define-category name val)
+;       which defines name as val, provides val 
+;       and store the pairing in the hashtables.
+;   Example: See key actions below.
 (define-syntax (define-name/value-definer stx)
   (syntax-parse stx
     [(_ prefix)
@@ -144,56 +144,66 @@
                     (hash-set! prefix-name-to-value-ht 'name name)
                     (hash-set! prefix-value-to-name-ht name 'name))]))))]))
 
-(define-name/value-definer mac-roman)
-
-(define-mac-roman kNullCharCode                0)
-(define-mac-roman kHomeCharCode                1)
-(define-mac-roman kEnterCharCode               3)
-(define-mac-roman kEndCharCode                 4)
-(define-mac-roman kHelpCharCode                5)
-(define-mac-roman kBellCharCode                7)
-(define-mac-roman kBackspaceCharCode           8)
-(define-mac-roman kTabCharCode                 9)
-(define-mac-roman kLineFeedCharCode            10)
-(define-mac-roman kVerticalTabCharCode         11)
-(define-mac-roman kPageUpCharCode              11)
-(define-mac-roman kFormFeedCharCode            12)
-(define-mac-roman kPageDownCharCode            12)
-(define-mac-roman kReturnCharCode              13)
-(define-mac-roman kFunctionKeyCharCode         16)
-(define-mac-roman kCommandCharCode             17)  ; /* glyph available only in system fonts*/
-(define-mac-roman kCheckCharCode               18)  ; /* glyph available only in system fonts*/
-(define-mac-roman kDiamondCharCode             19)  ; /* glyph available only in system fonts*/
-(define-mac-roman kAppleLogoCharCode           20)  ; /* glyph available only in system fonts*/
-(define-mac-roman kEscapeCharCode              27)
-(define-mac-roman kClearCharCode               27)
-(define-mac-roman kLeftArrowCharCode           28)
-(define-mac-roman kRightArrowCharCode          29)
-(define-mac-roman kUpArrowCharCode             30)
-(define-mac-roman kDownArrowCharCode           31)
-(define-mac-roman kSpaceCharCode               32)
-(define-mac-roman kDeleteCharCode              127)
-(define-mac-roman kBulletCharCode              165)
-(define-mac-roman kNonBreakingSpaceCharCode    202)
-
 ;;;
-;;; Useful Unicode key points
+;;; Key Actions
 ;;;
 
-(define-name/value-definer unicode-key)
+(define-name/value-definer key-action)
+(define-key-action kUCKeyActionDown    0) ; /* key is going down*/
+(define-key-action kUCKeyActionUp      1) ; /* key is going up*/
+(define-key-action kUCKeyActionAutoKey 2) ; /* auto-key down*/
+(define-key-action kUCKeyActionDisplay 3) ; /* get information for key display (as in Key Caps) */
 
-(define-unicode-key kShiftUnicode      #x21E7) ;/* Unicode UPWARDS WHITE ARROW*/
-(define-unicode-key kControlUnicode    #x2303) ;/* Unicode UP ARROWHEAD*/
-(define-unicode-key kOptionUnicode     #x2325) ;/* Unicode OPTION KEY*/
-(define-unicode-key kCommandUnicode    #x2318) ;/* Unicode PLACE OF INTEREST SIGN*/
-(define-unicode-key kPencilUnicode     #x270E) ;/* Unicode LOWER RIGHT PENCIL; 
-;                                                         actually pointed left until Mac OS X 10.3*/
-(define-unicode-key kPencilLeftUnicode #xF802) ;/* Unicode LOWER LEFT PENCIL; 
-;                                                         available in Mac OS X 10.3 and later*/
-(define-unicode-key kCheckUnicode      #x2713) ;/* Unicode CHECK MARK*/
-(define-unicode-key kDiamondUnicode    #x25C6) ;/* Unicode BLACK DIAMOND*/
-(define-unicode-key kBulletUnicode     #x2022) ;/* Unicode BULLET*/
-(define-unicode-key kAppleLogoUnicode  #xF8FF) ;/* Unicode APPLE LOGO*/
+;;;
+;;; Key Translate Options
+;;;
+; There is only one option. Should dead keys have an effect or not?
+(define kUCKeyTranslateNoDeadKeysBit  0) ; /* Prevents setting any new dead-key states*/
+(define kUCKeyTranslateNoDeadKeysFlag 1)
+(define kUCKeyTranslateNoDeadKeysMask 1)
+
+
+;;;
+;;; EventModifiers (UInt16)
+;;;
+
+; The constants are "event modifiers". Some of them
+; are traditional key modiers, such as a modifier-shift-key-bit.
+
+; From (file dates 2008):
+; /System/Library/Frameworks/Carbon.framework/Versions/A/
+; Frameworks/HIToolbox.framework/Versions/A/Headers/Events.h 
+
+; The definitions indicate which bit controls what.
+(define modifier-active-flag-bit        0) ; activeFlagBit = 0,  /* activate window?
+;                                                                  (activateEvt and mouseDown)
+(define modifier-btn-state-bit          7) ; btnStateBit  = 7,   /* state of mouse! button?*/
+(define modifier-cmd-key-bit            8) ;                     /* command key down?*/
+(define modifier-shift-key-bit          9) ; shiftKeyBit   = 9,  /* shift key down?*/
+(define modifier-alpha-lock-bit        10) ; alphaLockBit  = 10, /* alpha lock down?*/
+(define modifier-option-bit            11) ; optionKeyBit  = 11, /* option key down?*/
+(define modifier-control-key-bit       12) ; controlKeyBit = 12, /* control key down?*/
+; NOTE: The following 3 modifiers are not supported on OS X
+(define modifier-right-shift-key-bit   13) ; rightShiftKeyBit   = 13, /* right shift key down? */
+(define modifier-right-option-key-bit  14) ; rightOptionKeyBit  = 14, /* right Option key down? */
+(define modifier-right-control-key-bit 15) ; rightControlKeyBit = 15  /* right Control key down? */
+
+; In actual use, we use the flags:
+(define modifier-active-flag       (<< 1  0))
+(define modifier-btn-state         (<< 1  7))
+(define modifier-cmd-key           (<< 1  8))
+(define modifier-shift-key         (<< 1  9))
+(define modifier-alpha-lock        (<< 1 10)) 
+(define modifier-option-key        (<< 1 11)) 
+(define modifier-control-key       (<< 1 12)) 
+; NOTE: The following 3 modifiers are not supported on OS X
+(define modifier-right-shift-key   (<< 1 13))
+(define modifier-right-option-key  (<< 1 14))
+(define modifier-right-control-key (<< 1 15))
+
+;;;
+;;; Virtual Keycodes
+;;; 
 
 ;/*
 ; *  Summary:
@@ -338,74 +348,128 @@
 (define-virtual-key-code kVK_JIS_Kana                 #x68)
 
 ;;;
-;;; Key Actions
+;;; MacRoman character codes
 ;;;
 
-(define-name/value-definer key-action)
-(define-key-action kUCKeyActionDown    0) ; /* key is going down*/
-(define-key-action kUCKeyActionUp      1) ; /* key is going up*/
-(define-key-action kUCKeyActionAutoKey 2) ; /* auto-key down*/
-(define-key-action kUCKeyActionDisplay 3) ; /* get information for key display (as in Key Caps) */
+; The following may or may not be useful at another time.
+(define-name/value-definer mac-roman)
+
+(define-mac-roman kNullCharCode                0)
+(define-mac-roman kHomeCharCode                1)
+(define-mac-roman kEnterCharCode               3)
+(define-mac-roman kEndCharCode                 4)
+(define-mac-roman kHelpCharCode                5)
+(define-mac-roman kBellCharCode                7)
+(define-mac-roman kBackspaceCharCode           8)
+(define-mac-roman kTabCharCode                 9)
+(define-mac-roman kLineFeedCharCode            10)
+(define-mac-roman kVerticalTabCharCode         11)
+(define-mac-roman kPageUpCharCode              11)
+(define-mac-roman kFormFeedCharCode            12)
+(define-mac-roman kPageDownCharCode            12)
+(define-mac-roman kReturnCharCode              13)
+(define-mac-roman kFunctionKeyCharCode         16)
+(define-mac-roman kCommandCharCode             17)  ; /* glyph available only in system fonts*/
+(define-mac-roman kCheckCharCode               18)  ; /* glyph available only in system fonts*/
+(define-mac-roman kDiamondCharCode             19)  ; /* glyph available only in system fonts*/
+(define-mac-roman kAppleLogoCharCode           20)  ; /* glyph available only in system fonts*/
+(define-mac-roman kEscapeCharCode              27)
+(define-mac-roman kClearCharCode               27)
+(define-mac-roman kLeftArrowCharCode           28)
+(define-mac-roman kRightArrowCharCode          29)
+(define-mac-roman kUpArrowCharCode             30)
+(define-mac-roman kDownArrowCharCode           31)
+(define-mac-roman kSpaceCharCode               32)
+(define-mac-roman kDeleteCharCode              127)
+(define-mac-roman kBulletCharCode              165)
+(define-mac-roman kNonBreakingSpaceCharCode    202)
 
 ;;;
-;;; Key Translate Options
+;;; Useful Unicode key points
 ;;;
-; only one option ...
-(define kUCKeyTranslateNoDeadKeysBit  0) ; /* Prevents setting any new dead-key states*/
-(define kUCKeyTranslateNoDeadKeysFlag 1)
-(define kUCKeyTranslateNoDeadKeysMask 1)
+
+(define-name/value-definer unicode-key)
+
+(define-unicode-key kShiftUnicode      #x21E7) ;/* Unicode UPWARDS WHITE ARROW*/
+(define-unicode-key kControlUnicode    #x2303) ;/* Unicode UP ARROWHEAD*/
+(define-unicode-key kOptionUnicode     #x2325) ;/* Unicode OPTION KEY*/
+(define-unicode-key kCommandUnicode    #x2318) ;/* Unicode PLACE OF INTEREST SIGN*/
+(define-unicode-key kPencilUnicode     #x270E) ;/* Unicode LOWER RIGHT PENCIL; 
+;                                                         actually pointed left until Mac OS X 10.3*/
+(define-unicode-key kPencilLeftUnicode #xF802) ;/* Unicode LOWER LEFT PENCIL; 
+;                                                         available in Mac OS X 10.3 and later*/
+(define-unicode-key kCheckUnicode      #x2713) ;/* Unicode CHECK MARK*/
+(define-unicode-key kDiamondUnicode    #x25C6) ;/* Unicode BLACK DIAMOND*/
+(define-unicode-key kBulletUnicode     #x2022) ;/* Unicode BULLET*/
+(define-unicode-key kAppleLogoUnicode  #xF8FF) ;/* Unicode APPLE LOGO*/
+
+
 
 ;;;
 ;;; Racket interface to UCKeyTranslate
 ;;;
 
-
-
+;; The physical keyboard typed is cached.
 (define cached-keyboard-layout #f)
 
 (define (get-current-keyboard-layout)
   (define keyboard     (TISCopyCurrentKeyboardLayoutInputSource))
   (define layout-data  (TISGetInputSourceProperty keyboard kTISPropertyUnicodeKeyLayoutData))
   (define layout       (CFDataGetBytePtr layout-data))
-  (cpointer-push-tag! layout 'UCKeyboardLayout) ; cast to UCKeyboardLayout
+  (cpointer-push-tag!  layout 'UCKeyboardLayout) ; cast
   layout)
 
-; Note: 
-;     dead-key-state 
-;       A pointer to an unsigned 32-bit value, initialized to zero. 
-;       The UCKeyTranslate function uses this value to store private 
-;       information about the current dead key state.
-;       (deadKeyState : (_ptr i _uint32))
-
+;; The strings used to store output from UCKeyTranslate is only allocated once:
 (define max-string-length 255) 
-(define output-chars (malloc _UniChar max-string-length)) ; allocate once only
+(define output-chars (malloc _UniChar max-string-length))
 
+;; Dead key state
+;    A pointer to an unsigned 32-bit value, initialized to zero. 
+;    The UCKeyTranslate function uses this value to store private 
+;    information about the current dead key state.
+(define (make-initial-dead-key-state)
+  (box 0))
+
+
+; key-translate : integer [<extra options>] -> string
+;    Translates a virtual keycode into a string.
+;    The default key action is kUCKeyActionDown.
+;    The default dead key state is none.
+;    The default translate options are to ignore dead keys, 
+;    unless a dead key state was provided, if so 
+;    dead keys are activated.
+;    The keyboard layout is the one returned by get-current-keyboard-layout;
+;    the default is to use a cached value. Override by
+;    passing #f which means to refresh the cache, or
+;    pass a layout to use.
 (define (key-translate virtual-key-code 
                        #:key-action            [key-action         kUCKeyActionDown]
                        #:modifier-key-state    [modifier-key-state                0]  ; no modifier
                        #:keyboard-type         [keyboard-type        (LMGetKbdType)]
-                       #:key-translate-options [key-translate-options            #f]
+                       #:key-translate-options [key-translate-options            #f]  
                        #:dead-key-state        [dead-key-state                   #f]  ; no prev state
                        #:keyboard-layout       [layout-in                   'cached]) ; use cached
   (define actual-string-length (box 0))
   (set! key-translate-options
-        (or key-translate-options                ; use user settins if provided
+        (or key-translate-options                ; use user settings if provided
             (if dead-key-state                   ; otherwise if user has set dead-key-state,
                 0                                ; then take dead-keys into account
                 kUCKeyTranslateNoDeadKeysFlag))) ; else ignore dead keys
-  (set! dead-key-state (or dead-key-state (box 0)))        ; 0 means no prior key strokes
+  
+  (set! dead-key-state (or dead-key-state (make-initial-dead-key-state)))
+  
   (define layout
-    (match layout-in
+    (case layout-in
       ; use cached
-      ['cached    (cond
+      [(cached)    (cond
                     [cached-keyboard-layout => values]
                     [else   (set! cached-keyboard-layout (get-current-keyboard-layout))
                             cached-keyboard-layout])]
       ; refresh cache
-      [#f         (set! cached-keyboard-layout (get-current-keyboard-layout))
-                  cached-keyboard-layout]
+      [(#f)         (set! cached-keyboard-layout (get-current-keyboard-layout))
+                    cached-keyboard-layout]
       ; use provided
-      [_          layout-in]))
+      [else          layout-in]))
   
   (UCKeyTranslate layout 
                   virtual-key-code
@@ -423,86 +487,216 @@
                   (integer->char (ptr-ref output-chars _UniChar i)))))
 
 ;;;
+;;; Conversions back and forth between characters and key codes.
+;;;
+
+; Given a char it is useful to know which key and modifiers must
+; be pressed to produce that character. Here a table is 
+; made storing all characters that can be produced without
+; using dead keys.
+
+(define char-to-osx-key-code-ht (make-hash))
+(define osx-key-code-to-char-ht (make-hash))
+(define char-without-shift-ht   (make-hash))
+
+;; All possible values for modifier combinations
+(define all-modifier-combinations ; 16 in all
+  (let ()
+    (define no-modifier '(()))
+    (define one-modifier
+      '((shift) ; "simplest" modifier first
+        (cmd) (control) (alt)))
+    (define two-modifiers 
+      '((cmd     shift)
+        (control shift)
+        (alt     shift)
+        (cmd     control)
+        (cmd     option)
+        (control option)))
+    (define four-modifiers  (list (apply append one-modifier)))
+    (define three-modifiers (for/list ([m (reverse one-modifier)]) (remove m (car four-modifiers))))
+    (append no-modifier one-modifier two-modifiers three-modifiers four-modifiers)))
+
+;; symbolic modifier to numeric value
+(define modifier-ht (make-hash))
+(hash-set! modifier-ht 'cmd     modifier-cmd-key)
+(hash-set! modifier-ht 'control modifier-control-key)
+(hash-set! modifier-ht 'alt     modifier-option-key)
+(hash-set! modifier-ht 'shift   modifier-shift-key)
+
+; combine list of modifiers to a single integer
+(define (modifier-symbol-list->integer ms)
+  (for/sum ([m (in-list ms)])
+    (hash-ref modifier-ht m 0)))
+
+;; The "main char key" is the character produced when no modifier is pressed.
+;; Example If #\> is produced by <shift>+<period> then the main char key of both > and <period> is #\.
+(define char-to-main-char-key-ht         (make-hash)) ; char -> char
+(define char-to-osx-keycode+modifiers-ht (make-hash)) ; char -> (list sym int (list sym) int)
+(define osx-keycode-to-main-char-key-ht  (make-hash)) ; int  -> char
+
+; hash-set-new! : hash-table key value -> void
+;   only sets if key has no previous value
+(define (hash-set-new! ht k v) (unless (hash-ref ht k #f) (hash-set! ht k v)))
+
+;; fill in hash tables
+(for* ([modsyms all-modifier-combinations]                            ; go through all physical key
+       [(kvc n) virtual-key-code-name-to-value-ht])                   ; and modifier combinations
+  (define modks (modifier-symbol-list->integer modsyms))
+  (define s (key-translate n #:modifier-key-state modks))             ; translate to a char
+  (unless (string=? s "")                                             ; unless key is dead
+    (define c (string-ref s 0))
+    (hash-set-new! char-to-osx-keycode+modifiers-ht c                 ; store where char is from
+                   (list kvc n modsyms modks))                        ; (simplest is kept)
+    (cond 
+      [(null? modsyms)                                               ; also, if it is a main char
+       (hash-set! char-to-main-char-key-ht c c)                       ;   store it as such
+       (hash-set! osx-keycode-to-main-char-key-ht n c)]               ;   
+      [else
+       (define mck (hash-ref osx-keycode-to-main-char-key-ht n #f))   ; otherwise find 
+       (when mck (hash-set-new! char-to-main-char-key-ht c mck))])))  ;   and store main char key
+
+(define (char->main-char-key+modifiers c)
+  (define mck (hash-ref char-to-main-char-key-ht c #f))
+  (and mck
+       (let ()
+         (define k+ms (hash-ref char-to-osx-keycode+modifiers-ht c #f))
+         (define mods (if (list? k+ms) (cadddr k+ms) #f))
+         (values mck mods))))
+
+;;;
 ;;; RACKET KEY-CODE TO VIRTUAL KEYCODE
 ;;;
 
+;;;
+;;; WARNING - CODE BELOW IS NOT DONE
+;;; 
+
 (require mred/private/wx/cocoa/keycode)
 
-(define racket-to-osx-key-code-ht (make-hash))
+(define racket-keycode-symbol-to-osx-numeric-key-code-ht (make-hash))
 (for ([c (in-range 256)])
   (define r (map-key-code c))
-  (hash-set! racket-to-osx-key-code-ht r c))
-;(define (racket-to-osx-key-code k)
-;  (define c (hash-ref racket-to-osx-key-code-ht k #f))
+  (hash-set! racket-keycode-symbol-to-osx-numeric-key-code-ht r c))
+
+(define unicode-to-racket-key-symbol-ht (make-hash))
+(define (unicode->racket-key-symbol u) (hash-ref unicode-to-racket-key-symbol-ht u #f))
+(define racket-key-symbol->unicode key-symbol-to-menu-key)
+; Some keys such as functions keys are received as unicode characters
+;     'escape 0 kVK_Escape
+;     'snapshot 0
+;     'numpad0 0
+;     'numpad1 0
+;     'numpad2 0
+;     'numpad3 0
+;     'numpad4 0
+;     'numpad5 0
+;     'numpad6 0
+;     'numpad7 0
+;     'numpad8 0
+;     'numpad9 0
+;     'numpad-enter 0
+;     'multiply 0
+;     'add 0
+;     'separator 0
+;     'subtract 0
+;     'decimal 0
+;     'divide 0
+(define symbols-with-unicode
+  '(start cancel clear menu pause prior next end home 
+          left up right down select print execute insert help 
+          f1  f2  f3  f4  f5  f6  f7  f8  f9  f10
+          f11 f12 f13 f14 f15 f16 f17 f18 f19 f20 
+          f21 f22 f23 f24
+          scroll))
+
+; invert table
+(for ([s symbols-with-unicode])
+  (hash-set! unicode-to-racket-key-symbol-ht
+             (racket-key-symbol->unicode s) s))
+
+#;(define unicode-symbols-to-osx-keycode-ht
+  (hasheq
+   'escape kVK_Escape
+   ; 'start NSResetFunctionKey
+   ; 'cancel NSStopFunctionKey
+   'clear kVK_ANSI_KeypadClear
+   ;'menu NSMenuFunctionKey
+   'pause NSPauseFunctionKey
+   ;'prior NSPrevFunctionKey
+   ;'next NSNextFunctionKey
+   ;'end NSEndFunctionKey
+   ;'home NSHomeFunctionKey
+   'left  kVK_LeftArrow
+   'up    kVK_UpArrow
+   'right kVK_RightArrow
+   'down  kVK_DownArrow
+   
+   ;'select  NSSelectFunctionKey
+   'print   NSPrintFunctionKey
+   'execute NSExecuteFunctionKey
+   'snapshot 0
+   'insert NSInsertFunctionKey
+   'help NSHelpFunctionKey
+   'numpad0 kVK_ANSI_Keypad0
+   'numpad1 kVK_ANSI_Keypad1
+   'numpad2 kVK_ANSI_Keypad2
+   'numpad3 kVK_ANSI_Keypad3
+   'numpad4 kVK_ANSI_Keypad4
+   'numpad5 kVK_ANSI_Keypad5
+   'numpad6 kVK_ANSI_Keypad6
+   'numpad7 kVK_ANSI_Keypad7
+   'numpad8 kVK_ANSI_Keypad8
+   'numpad9 kVK_ANSI_Keypad9
+   'numpad-enter kVK_ANSI_KeypadEnter
+   'multiply kVK_ANSI_KeypadMultiply
+   'add kVK_ANSI_KeypadPlus
+   ; 'separator  ; ?
+   'subtract kVK_ANSI_KeypadMinus
+   'decimal kVK_ANSI_KeypadDecimal
+   'divide kVK_ANSI_KeypadDivide
+   'f1 kVK_F1
+   'f2 kVK_F2
+   'f3 kVK_F3
+   'f4 kVK_F4
+   'f5 kVK_F5
+   'f6 kVK_F6
+   'f7 kVK_F7
+   'f8 kVK_F8
+   'f9 kVK_F9
+   'f10 kVK_F10
+   'f11 kVK_F11
+   'f12 kVK_F12
+   'f13 kVK_F13
+   'f14 kVK_F14
+   'f15 kVK_F15
+   'f16 kVK_F16
+   'f17 kVK_F17
+   'f18 kVK_F18
+   'f19 kVK_F19
+   'f20 kVK_F20
+   'f21 kVK_F21
+   'f22 kVK_F22
+   'f23 kVK_F23
+   'f24 kVK_F24
+   ;'scroll NSScrollLockFunctionKey
+   )) 
   
-
-
-
-(module+ test (require rackunit)
-  ; These tests are for an US keyboard  
-  ; no modifiers
-  (check-equal? (key-translate kVK_ANSI_A)      "a")
-  (check-equal? (key-translate kVK_ANSI_Period) ".")
-  ; shift
-  (check-equal? (key-translate kVK_ANSI_A      #:modifier-key-state modifier-shift-key) "A")
-  (check-equal? (key-translate kVK_ANSI_Period #:modifier-key-state modifier-shift-key) ">")
-  ; option
-  (check-equal? (key-translate kVK_ANSI_A      #:modifier-key-state modifier-option-key) "å"))
-
-(module+ danish-test (require rackunit)
-  ; These tests are for a DK keyboard  
-  ;   Use international settings to add a danish keyboard as an extra text input source.
-  ;   Make sure you enable the easy access to switching (flags in the menu bar)
   
-  ; no modifiers
-  (check-equal? (key-translate kVK_ANSI_A)         "a")
-  (check-equal? (key-translate kVK_ANSI_Period)    ".")
-  (check-equal? (key-translate kVK_ANSI_Semicolon) "æ")
-  ; shift
-  (check-equal? (key-translate kVK_ANSI_A         #:modifier-key-state modifier-shift-key) "A")
-  (check-equal? (key-translate kVK_ANSI_Semicolon #:modifier-key-state modifier-shift-key) "Æ"))
-
-(module+ chinese-pinyin-test (require rackunit)
-  ; These tests are for writing Chinese with the pinyin input method
-  ;   Use international settings to add a danish keyboard as an extra text input source.
-  ;   Make sure you enable the easy access to switching (flags in the menu bar)
+  (define (racket-key-symbol-to-osx-key-code k)
+    (cond 
+      [(symbol? k) 
+       (define n (hash-ref racket-keycode-symbol-to-osx-numeric-key-code-ht k #f))
+       (define s (hash-ref virtual-key-code-value-to-name-ht n #f))
+       (and (or n s) 
+            (list n s))]
+      [(char? k)
+       (or (hash-ref char-to-osx-keycode+modifiers-ht k #f)
+           (unicode->racket-key-symbol k))]
+      [else #f]))
   
-  ; no modifiers
-  (check-equal? (key-translate kVK_ANSI_A)         "锕")
-  (check-equal? (key-translate kVK_ANSI_Period)    ".")
-  (check-equal? (key-translate kVK_ANSI_Semicolon) "æ")
-  ; shift
-  (check-equal? (key-translate kVK_ANSI_A         #:modifier-key-state modifier-shift-key) "A")
-  (check-equal? (key-translate kVK_ANSI_Semicolon #:modifier-key-state modifier-shift-key) "Æ"))
-
-(define (make-initial-dead-key-state)
-  (box 0))
-
-; Ignore dead keys if dead-key-state isn't provided as optional argument:
-(key-translate kVK_ANSI_E #:modifier-key-state modifier-option-key) ; #\́
-
-; A dead key should return an empty string:
-(let ([dks (make-initial-dead-key-state)])
-  (key-translate kVK_ANSI_E #:dead-key-state dks #:modifier-key-state modifier-option-key)) ; ""
-
-; A dead key ´ followed by e should produce é.
-(let ([dks (make-initial-dead-key-state)])
-  (key-translate kVK_ANSI_E #:dead-key-state dks #:modifier-key-state modifier-option-key)
-  (key-translate kVK_ANSI_E #:dead-key-state dks)) ; "é"
-
-(let ([dks (make-initial-dead-key-state)])
-  (key-translate kVK_ANSI_P #:dead-key-state dks)
-  (key-translate kVK_ANSI_V #:dead-key-state dks)
-  (key-translate kVK_Space  #:dead-key-state dks))
-
-(let ([dks (make-initial-dead-key-state)])
-  (list (key-translate kVK_ANSI_A #:dead-key-state dks)
-        (key-translate kVK_ANSI_B #:dead-key-state dks)
-        (key-translate kVK_Space  #:dead-key-state dks)))
-
-; A dead key ˆ followed by u should produce û.
-(let ([dks (make-initial-dead-key-state)])
-  (key-translate kVK_ANSI_I #:dead-key-state dks #:modifier-key-state modifier-option-key)
-  (key-translate kVK_ANSI_U #:dead-key-state dks)) ; "û"
-
-
+  ;(module+ test
+  ;  (check-equal? (racket-to-osx-key-code 'subtract) 'kVK_ANSI_KeypadMinus)
+  
+  
+  
