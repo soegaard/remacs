@@ -1,4 +1,9 @@
 #lang racket/base
+(provide key-translate
+         make-initial-dead-key-state
+         copy-dead-key-state
+	 char->main-char-key+modifiers)
+
 (require (for-syntax syntax/parse racket/syntax racket/base))
 (require ffi/unsafe
          ffi/unsafe/objc
@@ -167,6 +172,9 @@
 ;;; EventModifiers (UInt16)
 ;;;
 
+(define-name/value-definer event-modifier-bits)
+(define-name/value-definer event-modifier-flag)
+
 ; The constants are "event modifiers". Some of them
 ; are traditional key modiers, such as a modifier-shift-key-bit.
 
@@ -175,31 +183,31 @@
 ; Frameworks/HIToolbox.framework/Versions/A/Headers/Events.h 
 
 ; The definitions indicate which bit controls what.
-(define modifier-active-flag-bit        0) ; activeFlagBit = 0,  /* activate window?
+(define-event-modifier-bits modifier-active-flag-bit 0) ; activeFlagBit = 0,  /* activate window?
 ;                                                                  (activateEvt and mouseDown)
-(define modifier-btn-state-bit          7) ; btnStateBit  = 7,   /* state of mouse! button?*/
-(define modifier-cmd-key-bit            8) ;                     /* command key down?*/
-(define modifier-shift-key-bit          9) ; shiftKeyBit   = 9,  /* shift key down?*/
-(define modifier-alpha-lock-bit        10) ; alphaLockBit  = 10, /* alpha lock down?*/
-(define modifier-option-bit            11) ; optionKeyBit  = 11, /* option key down?*/
-(define modifier-control-key-bit       12) ; controlKeyBit = 12, /* control key down?*/
+(define-event-modifier-bits modifier-btn-state-bit   7) ; btnStateBit  = 7,  state of mouse! button?
+(define-event-modifier-bits modifier-cmd-key-bit     8) ;                     /* command key down?*/
+(define-event-modifier-bits modifier-shift-key-bit   9) ; shiftKeyBit   = 9,  /* shift key down?*/
+(define-event-modifier-bits modifier-alpha-lock-bit  10) ; alphaLockBit  = 10, /* alpha lock down?*/
+(define-event-modifier-bits modifier-option-bit      11) ; optionKeyBit  = 11, /* option key down?*/
+(define-event-modifier-bits modifier-control-key-bit 12) ; controlKeyBit = 12, /* control key down?*/
 ; NOTE: The following 3 modifiers are not supported on OS X
-(define modifier-right-shift-key-bit   13) ; rightShiftKeyBit   = 13, /* right shift key down? */
-(define modifier-right-option-key-bit  14) ; rightOptionKeyBit  = 14, /* right Option key down? */
-(define modifier-right-control-key-bit 15) ; rightControlKeyBit = 15  /* right Control key down? */
+(define-event-modifier-bits modifier-right-shift-key-bit   13) ; /* right shift key down? */
+(define-event-modifier-bits modifier-right-option-key-bit  14) ; /* right Option key down? */
+(define-event-modifier-bits modifier-right-control-key-bit 15) ; /* right Control key down? */
 
 ; In actual use, we use the flags:
-(define modifier-active-flag       (<< 1  0))
-(define modifier-btn-state         (<< 1  7))
-(define modifier-cmd-key           (<< 1  8))
-(define modifier-shift-key         (<< 1  9))
-(define modifier-alpha-lock        (<< 1 10)) 
-(define modifier-option-key        (<< 1 11)) 
-(define modifier-control-key       (<< 1 12)) 
+(define-event-modifier-flag modifier-active-flag       (<< 1  0))
+(define-event-modifier-flag modifier-btn-state         (<< 1  7))
+(define-event-modifier-flag modifier-cmd-key           (<< 1  8))
+(define-event-modifier-flag modifier-shift-key         (<< 1  9))
+(define-event-modifier-flag modifier-alpha-lock        (<< 1 10)) 
+(define-event-modifier-flag modifier-option-key        (<< 1 11)) 
+(define-event-modifier-flag modifier-control-key       (<< 1 12)) 
 ; NOTE: The following 3 modifiers are not supported on OS X
-(define modifier-right-shift-key   (<< 1 13))
-(define modifier-right-option-key  (<< 1 14))
-(define modifier-right-control-key (<< 1 15))
+(define-event-modifier-flag modifier-right-shift-key   (<< 1 13))
+(define-event-modifier-flag modifier-right-option-key  (<< 1 14))
+(define-event-modifier-flag modifier-right-control-key (<< 1 15))
 
 ;;;
 ;;; Virtual Keycodes
@@ -430,6 +438,10 @@
 (define (make-initial-dead-key-state)
   (box 0))
 
+(define (copy-dead-key-state dks)
+  (box (unbox dks)))
+
+
 
 ; key-translate : integer [<extra options>] -> string
 ;    Translates a virtual keycode into a string.
@@ -558,11 +570,13 @@
 
 (define (char->main-char-key+modifiers c)
   (define mck (hash-ref char-to-main-char-key-ht c #f))
-  (and mck
-       (let ()
-         (define k+ms (hash-ref char-to-osx-keycode+modifiers-ht c #f))
-         (define mods (if (list? k+ms) (cadddr k+ms) #f))
-         (values mck mods))))
+  (if mck
+      (let ()
+	(define k+ms (hash-ref char-to-osx-keycode+modifiers-ht c #f))
+	(define mods (if (list? k+ms) (cadddr k+ms) #f))
+	(values mck mods))
+    (values #f #f)))
+	 
 
 ;;;
 ;;; RACKET KEY-CODE TO VIRTUAL KEYCODE
