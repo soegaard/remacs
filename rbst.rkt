@@ -1,38 +1,76 @@
 #lang racket
-(module+ test (require rackunit))
-;;; Randomized Binary Search Tree
-(random-seed 42) ; repeatabilty ...
+(module+ test (require rackunit) (random-seed 42))
+;;;
+;;; This is a functional version of the algorithm
+;;; described in:
+;;;     Randomized Binary Search Tree
+;;;     Conrado Martinez and Salvador Roura
+;;;     http://www.cis.temple.edu/~wolfgang/cis551/martinez.pdf
 
-(struct tree (n l x r) #:transparent #:mutable)
-; n = size = size(l) + 1 + size(r)
-; l = left subtree
-; r = right subtree
-; x = element
+; insert : tree index element -> tree      O(log(n))
+; delete : tree index         -> tree      O(log(n))
+; ref    : tree index         -> element   O(log(n))
+; size   : tree               -> integer   O(1)
+; split  : tree index         -> tree tree O(log(n))
+
+;;; Representation
+
+; An empty tree is represented as #f
+; Non-empty trees are represented as:
+(struct tree (n l x r) #:transparent)
+;   n = size = size(l) + 1 + size(r)
+;   l = left subtree
+;   r = right subtree
+;   x = element
+
+;;; Invariant 
+;   n = size(l) + 1 + size(r)
+
+;;; Construction
+
+; All non-empty trees are constructed using make,
+; which takes care of the invariant.
 
 ; make : tree element tree -> tree
 (define (make l x r)
   (tree (+ (size l) 1 (size r))
         l x r))
 
+;;; Accessors and predicates
+
+(define left     tree-l)
+(define right    tree-r)
+(define element  tree-x)
+
 (define (empty-tree? t) (not t))
 (define (size t) (if t (tree-n t) 0))
-(define left  tree-l)
-(define right tree-r)
-(define elm   tree-x)
 
+;;; Conversion to list
+
+; elements : tree -> list-of-elements
+;   return the list of elements in an inorder traversal
 (define (elements t)
   (if t
-      (append (elements (left t)) (cons (elm t) (elements (right t))))
+      (append (elements (left t)) (cons (element t) (elements (right t))))
       '()))
 
 (module+ test
+  ; a few sample trees
   (define t-a  (make #f 'a #f))
   (define t-b  (make #f 'b #f))
   (define t-ab (make t-a 'b #f))
-  
+  ; elements
+  (check-equal? (elements #f) '())
+  (check-equal? (elements t-a)  '(a))
+  (check-equal? (elements t-b)  '(b))
+  (check-equal? (elements t-ab) '(a b))
+  ; build non-balanced tree
   (define (linear-tree xs)
     (for/fold ([t #f]) ([x xs])
       (make t x #f))))
+
+
+;;; Retrival
 
 ; ref : tree index -> element
 ;   return the element at index i
@@ -47,6 +85,7 @@
                       [(< i sl) (ref l i)]
                       [else     (ref r (- i sl 1))])]))
 
+;;; Insertion
 
 ; insert : element index tree -> tree
 ;   insert the element x at index i in tree t
@@ -68,12 +107,19 @@
   (check-equal? (elements (insert (insert #f 0 'a) 0 'b)) '(b a))
   (check-equal? (elements (insert (insert #f 0 'b) 0 'a)) '(a b)))
 
+
 ; insert-at-root : tree index element -> tree
 ;   insert the element x at index i in the tree,
 ;   make sure x becomes the new root
 (define (insert-at-root t i x)
   (define-values (t< t>) (split t i))
   (make t< x t>))
+
+(module+ test
+  (check-true (let ([t (insert-at-root (insert #f 0 'a) 0 'b)])
+                (and (eq? (element t) 'b) (equal? (elements t) '(b a)))))
+  (check-true (let ([t (insert-at-root (insert #f 0 'a) 1 'b)])
+                (and (eq? (element t) 'b) (equal? (elements t) '(a b))))))
 
 ; split : tree index -> tree tree
 ;   return two trees, the first one contains all elements with index
@@ -100,6 +146,8 @@
   (check-equal? (elements (for/fold ([t #f]) ([x (reverse a..m)]) (insert t 0 x))) a..m))
 
 
+;;; Deletion
+
 ; delete : tree index -> tree
 ;   return new tree where element i is removed
 (define (delete t i)
@@ -122,5 +170,5 @@
   (if (= total 0)
       #f
       (if (< (random total) m)
-          (make (left l) (elm l) (join (right l) r))
-          (make (join l (left r)) (elm r) (right r)))))
+          (make (left l) (element l) (join (right l) r))
+          (make (join l (left r)) (element r) (right r)))))
