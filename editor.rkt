@@ -1,4 +1,5 @@
 #lang racket
+;;; TODO add ESC handling in M-x routine
 ;;; TODO report get-meta-down bug on OS X
 ;;; TODO Finish eval-buffer
 ;;; TODO Implement open-input-buffer
@@ -1209,30 +1210,6 @@
 
 (struct keymap (bindings) #:transparent)
 
-(define (key-event/no-modifiers key-event)
-  (define e key-event)
-  (new key-event% 
-       [key-code   (send e get-key-code)]
-       [shift-down   #f]
-       [control-down #f]
-       [meta-down    #f]
-       [alt-down     #f]
-       [x            (send e get-x)]
-       [y            (send e get-y)]
-       [time-stamp   (send e get-time-stamp)]
-       [caps-down    #f]
-       [mod3-down    #f]
-       [mod4-down    #f]
-       [mod5-down    #f]
-       
-       [control+meta-is-altgr #f]))
-
-(define (get-shift-key-code key-event)
-  (define e (key-event/no-modifiers key-event))
-  (send e set-shift-down #t)
-  (send e get-key-code))      
-
-
 (define (key-event->key event)
   (newline)
   (displayln (list 'key-event->key
@@ -1244,22 +1221,26 @@
   (define shift? (send event get-shift-down))
   (define alt?   (send event get-alt-down))     ; mac: Option
   (define ctrl?  (send event get-control-down)) 
-  (define meta?  (send event get-meta-down))    ; mac: cmd, pc: alt, unix: meta
+  (define meta?  (case (system-type 'os)
+                   [(macosx) (send event get-alt-down)]
+                   [else     (send event get-meta-down)]))    ; mac: cmd, pc: alt, unix: meta
   (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta?))
   
   (define c      (send event get-key-code))
   ; k = key without modifier
   (define k      (cond
-                   [(and shift? alt?) (send event get-other-shift-altgr-key-code)]
-                   [shift?            (send event get-other-shift-key-code)]
-                   [alt?              (send event get-other-altgr-key-code)]
+                   [(and ctrl? alt?)  (send event get-key-code)]
+                   [alt?              (send event get-other-altgr-key-code)] ; OS X: 
                    [else              c]))
   
   (let ([k (match k ['escape "ESC"] [#\space "space"][_ k])])
     (cond 
+      [(eq? k 'control)      'control] ; ignore control + nothing      
       [(or ctrl? alt? meta?) (~a (if ctrl? "C-" "")
-                                 (if alt?  "A-" "")
-                                 (if meta? "M-" "")
+                                 (cond 
+                                   [meta? "M-"]
+                                   [alt?  "A-"]
+                                   [else  ""])
                                  k)]
       [else                  k])))
 
@@ -1279,6 +1260,7 @@
     (match prefix
       [(list "M-x" more ...)
        (match key
+         ; TODO ad ESC
          [#\backspace (define new (remove-last more))
                       (message (string-append* `("M-x " ,@(map ~a new))))
                       `(replace ,(cons "M-x" new))]
