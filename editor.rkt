@@ -1,5 +1,4 @@
 #lang racket
-;;; TODO add ESC handling in M-x routine
 ;;; TODO report get-meta-down bug on OS X
 ;;; TODO Finish eval-buffer
 ;;; TODO Implement open-input-buffer
@@ -1224,7 +1223,7 @@
   (define meta?  (case (system-type 'os)
                    [(macosx) (send event get-alt-down)]
                    [else     (send event get-meta-down)]))    ; mac: cmd, pc: alt, unix: meta
-  (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta?))
+  (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta?)) 
   
   (define c      (send event get-key-code))
   ; k = key without modifier
@@ -1260,7 +1259,8 @@
     (match prefix
       [(list "M-x" more ...)
        (match key
-         ; TODO ad ESC
+         ["ESC"       (message "")
+                      #f]
          [#\backspace (define new (remove-last more))
                       (message (string-append* `("M-x " ,@(map ~a new))))
                       `(replace ,(cons "M-x" new))]
