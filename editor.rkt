@@ -1,9 +1,9 @@
 #lang racket
+;;; TODO report get-meta-down bug on OS X
 ;;; TODO Finish eval-buffer
 ;;; TODO Implement open-input-buffer
 ;;; TODO Allow negative numeric prefix
 ;;; TODO Holding M and typing a number should create a numeric prefix.
-;;; TODO Visual feedback for M-x and friends  =>  minibuffer !
 
 (module+ test (require rackunit))
 (require "dlist.rkt" (for-syntax syntax/parse) framework)
@@ -69,7 +69,7 @@
 (struct mode (name) #:transparent)
 ; A mode has a name (displayed in the status bar).
 
-(struct window (frame parent buffer) #:mutable)
+(struct window (frame canvas parent buffer) #:mutable)
 ; A window is an area in which a buffer is displayed.
 ; Multiple windows are shown together in a frame.
 
@@ -1234,14 +1234,27 @@
 
 
 (define (key-event->key event)
+  (newline)
+  (displayln (list 'key-event->key
+                   'key                (send event get-key-code)
+                   'other-shift        (send event get-other-shift-key-code)
+                   'other-altgr        (send event get-other-altgr-key-code)
+                   'other-shift-altgr  (send event get-other-shift-altgr-key-code)
+                   'other-caps         (send event get-other-caps-key-code)))
   (define shift? (send event get-shift-down))
+  (define alt?   (send event get-alt-down))     ; mac: Option
+  (define ctrl?  (send event get-control-down)) 
+  (define meta?  (send event get-meta-down))    ; mac: cmd, pc: alt, unix: meta
+  (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta?))
+  
   (define c      (send event get-key-code))
-  (define k      (if shift?
-                     (or (send event get-other-shift-key-code) c)
-                     c))
-  (define ctrl?  (send event get-control-down))
-  (define alt?   (send event get-alt-down))
-  (define meta?  (send event get-meta-down))  
+  ; k = key without modifier
+  (define k      (cond
+                   [(and shift? alt?) (send event get-other-shift-altgr-key-code)]
+                   [shift?            (send event get-other-shift-key-code)]
+                   [alt?              (send event get-other-altgr-key-code)]
+                   [else              c]))
+  
   (let ([k (match k ['escape "ESC"] [#\space "space"][_ k])])
     (cond 
       [(or ctrl? alt? meta?) (~a (if ctrl? "C-" "")
@@ -1320,7 +1333,7 @@
          ; todo: Make M-< and M-> work
          ; ["M-<"       beginning-of-buffer]
          ["C-<"       beginning-of-buffer]
-         ; ["M->"       end-of-buffer]
+         ["M->"       end-of-buffer]
          ["C->"       end-of-buffer]
          ; Cmd + something
          ["M-left"    backward-word]
@@ -1424,9 +1437,9 @@
 (define (frame-window-tree [f (current-frame)])
   (define (loop w)
     (match w
-      [(horizontal-split-window f p b l r) (append (loop l) (loop r))]
-      [(vertical-split-window   f p b u l) (append (loop u) (loop l))]
-      [(window frame parent buffer)        (list w)]))
+      [(horizontal-split-window f c p b l r) (append (loop l) (loop r))]
+      [(vertical-split-window   f c p b u l) (append (loop u) (loop l))]
+      [(window frame canvas parent buffer)   (list w)]))
   (flatten (loop (frame-windows f))))
 
 ;;;
@@ -1605,13 +1618,13 @@
   (define xmid (mid xmin xmax))
   (define ymid (mid ymin ymax))
   (match win
-    [(horizontal-split-window _ _ _ left  right) (render-windows left  dc xmin xmid ymin ymax)
-                                                 (render-windows right dc xmid xmax ymin ymax)
-                                                 (send dc draw-line xmid ymin xmid ymax)]
-    [(vertical-split-window _ _ _ upper lower)   (render-windows upper dc xmin xmax ymin ymid)
-                                                 (render-windows lower dc xmin xmax ymid ymax)
-                                                 (send dc draw-line xmin ymid xmax ymid)]
-    [(window frame parent buffer)                (render-window  win   dc xmin xmax ymin ymax)]
+    [(horizontal-split-window _ _ _ _ left  right) (render-windows left  dc xmin xmid ymin ymax)
+                                                   (render-windows right dc xmid xmax ymin ymax)
+                                                   (send dc draw-line xmid ymin xmid ymax)]
+    [(vertical-split-window _ _ _ _ upper lower)   (render-windows upper dc xmin xmax ymin ymid)
+                                                   (render-windows lower dc xmin xmax ymid ymax)
+                                                   (send dc draw-line xmin ymid xmax ymid)]
+    [(window frame canvas parent buffer)           (render-window  win   dc xmin xmax ymin ymax)]
     [_ (error 'render-window "got ~a" win)]))
 
 (define (render-frame frame dc)
@@ -1636,12 +1649,15 @@
 ; operations in a minibuffer.
 
 #;(define (message format-string . arguments)
-  ; TODO
-  ; Display the message in the mini-buffer,
-  ; add the message to the *Messages* buffer.
-  (define msg (apply format format-string arguments))
-  #;(send (frame-echo-area f) set-message s)
-  1)
+    ; TODO
+    ; Display the message in the mini-buffer,
+    ; add the message to the *Messages* buffer.
+    (define msg (apply format format-string arguments))
+    #;(send (frame-echo-area f) set-message s)
+    1)
+
+; Each frame is divided into windows. 
+; 
 
 (define (new-editor-frame this-frame)
   ;;; WINDOW SIZE
@@ -1675,49 +1691,50 @@
   (define (add-prefix! key) (set! prefix (append prefix (list key))))
   (define (clear-prefix!)   (set! prefix '()))
   ;;; CANVAS
-; All buffers, mini buffers and the echo area are rendered into an remacs-canvas%
-(define subeditor-canvas%
-  (class canvas%
-    ;; Buffer
-    (define the-buffer #f)
-    (define (set-buffer b) (set! the-buffer b))
-    (define (get-buffer b) the-buffer)
-    ;; Key Events
-    (define/override (on-char event)
-      ; TODO syntax  (with-temp-buffer body ...)
-      (define key-code (send event get-key-code))
-      (unless (equal? key-code 'release)
-        (define key (key-event->key event))
-        ; (displayln (list 'key key 'shift (get-shift-key-code event)))
-        ; (send msg set-label (~a "key: " key))
-        (match (global-keymap prefix key)
-          [(? procedure? thunk)  (clear-prefix!) (thunk)]
-          [(list 'replace pre)   (set! prefix pre)]
-          ['prefix               (add-prefix! key)]
-          ['ignore               (void)]
-          ['exit                ; (save-buffer! (current-buffer))
-           ; TODO : Ask how to handle unsaved buffers
-           (send frame on-exit)]
-          ['release             (void)]
-          [_                    (unless (equal? (send event get-key-code) 'release)
-                                  (clear-prefix!))]))
-      ; todo: don't trigger repaint on every key stroke ...
-      (send canvas on-paint))
-    ;; Rendering
-    (define/override (on-paint)
-      (define dc (send canvas get-dc))
-      ; reset drawing context
-      (use-default-font-settings)
-      (send dc set-font default-fixed-font)
-      (send dc set-text-mode 'solid) ; solid -> use text background color
-      ; (send dc set-background "white")
-      (send dc clear)
-      (send dc set-text-background background-color)
-      (send dc set-text-foreground text-color)
-      (render-frame this-frame dc)
-      ; uddate status line
-      (display-status-line (status-line-hook)))
-    (super-new)))
+  ; All buffers, mini buffers and the echo area are rendered into an remacs-canvas%
+  (define subeditor-canvas%
+    (class canvas%
+      ;; Buffer
+      (define the-buffer #f)
+      (define (set-buffer b) (set! the-buffer b))
+      (define (get-buffer b) the-buffer)
+      ;; Key Events
+      (define/override (on-char event)
+        ; TODO syntax  (with-temp-buffer body ...)
+        (define key-code (send event get-key-code))
+        (unless (equal? key-code 'release)
+          (define key (key-event->key event))
+          ; (displayln (list 'key key 'shift (get-shift-key-code event)))
+          ; (send msg set-label (~a "key: " key))
+          (match (global-keymap prefix key)
+            [(? procedure? thunk)  (clear-prefix!) (thunk)]
+            [(list 'replace pre)   (set! prefix pre)]
+            ['prefix               (add-prefix! key)]
+            ['ignore               (void)]
+            ['exit                ; (save-buffer! (current-buffer))
+             ; TODO : Ask how to handle unsaved buffers
+             (send frame on-exit)]
+            ['release             (void)]
+            [_                    (unless (equal? (send event get-key-code) 'release)
+                                    (clear-prefix!))]))
+        ; todo: don't trigger repaint on every key stroke ...
+        (send canvas on-paint))
+      ;; Rendering
+      (define/override (on-paint)
+        (define dc (send canvas get-dc))
+        ; reset drawing context
+        (use-default-font-settings)
+        (send dc set-font default-fixed-font)
+        (send dc set-text-mode 'solid) ; solid -> use text background color
+        ; (send dc set-background "white")
+        (send dc clear)
+        (send dc set-text-background background-color)
+        (send dc set-text-foreground text-color)
+        (render-frame this-frame dc)
+        ; uddate status line
+        (display-status-line (status-line-hook)))
+      (super-new)))
+
   ;;; ---
   (define canvas (new subeditor-canvas% [parent frame]))
   (set-frame-canvas! this-frame canvas)
@@ -1733,9 +1750,11 @@
   (define ib illead-buffer)
   (current-buffer ib)
   (define f  (frame #f #f #f #f))
-  (define sp (vertical-split-window f f #f #f #f))
-  (define w  (window f sp ib))
-  (define w2 (window f sp (get-buffer "*scratch*")))
+  (define sp (vertical-split-window f #f f #f #f #f))
+  (define c #f) 
+  (define w  (window f c sp ib))
+  (define c2 #f)
+  (define w2 (window f c2 sp (get-buffer "*scratch*")))
   (set-vertical-split-window-above! sp w)
   (set-vertical-split-window-below! sp w2)
   (set-frame-windows! f sp)
