@@ -1,5 +1,4 @@
 #lang racket
-;;; TODO report get-meta-down bug on OS X
 ;;; TODO Finish eval-buffer
 ;;; TODO Implement open-input-buffer
 ;;; TODO Allow negative numeric prefix
@@ -1220,10 +1219,11 @@
   (define shift? (send event get-shift-down))
   (define alt?   (send event get-alt-down))     ; mac: Option
   (define ctrl?  (send event get-control-down)) 
+  (define met?   (send event get-meta-down))
   (define meta?  (case (system-type 'os)
                    [(macosx) (send event get-alt-down)]
                    [else     (send event get-meta-down)]))    ; mac: cmd, pc: alt, unix: meta
-  (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta?)) 
+  (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'met met? 'meta meta?)) 
   
   (define c      (send event get-key-code))
   ; k = key without modifier
