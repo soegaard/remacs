@@ -1,4 +1,6 @@
 #lang racket
+;;; TODO previous-buffer (parallel to next-buffer)
+;;; TODO Introduce global that controls which key to use for meta
 ;;; TODO Finish eval-buffer
 ;;; TODO Implement open-input-buffer
 ;;; TODO Allow negative numeric prefix
@@ -68,16 +70,19 @@
 (struct mode (name) #:transparent)
 ; A mode has a name (displayed in the status bar).
 
-(struct window (frame canvas parent buffer) #:mutable)
+(struct window (frame panel canvas parent buffer) #:mutable #:transparent)
 ; A window is an area in which a buffer is displayed.
-; Multiple windows are shown together in a frame.
+; Multiple windows are grouped in a frame.
+; The contents of the buffer is rendered to the canvas.
+; The canvas is contained in a panel
 
-(struct frame (frame% canvas windows mini-window) #:mutable)
+(struct frame (frame% panel windows mini-window) #:mutable #:transparent)
 ; A frame contains one or multiple windows.
-; The frame is render onto its canvas.
+; About to change: The frame is render onto its canvas.
 
-(struct horizontal-split-window window (left  right) #:mutable)
-(struct   vertical-split-window window (above below) #:mutable)
+(struct horizontal-split-window window (left  right) #:mutable #:transparent)
+(struct   vertical-split-window window (above below) #:mutable #:transparent)
+
 ; The buffer of a split window is #f.
 
 ;;;
@@ -1209,38 +1214,45 @@
 (struct keymap (bindings) #:transparent)
 
 (define (key-event->key event)
-  (newline)
-  (displayln (list 'key-event->key
-                   'key                (send event get-key-code)
-                   'other-shift        (send event get-other-shift-key-code)
-                   'other-altgr        (send event get-other-altgr-key-code)
-                   'other-shift-altgr  (send event get-other-shift-altgr-key-code)
-                   'other-caps         (send event get-other-caps-key-code)))
+  ;(newline)
+  #;(displayln (list 'key-event->key
+                     'key                (send event get-key-code)
+                     'other-shift        (send event get-other-shift-key-code)
+                     'other-altgr        (send event get-other-altgr-key-code)
+                     'other-shift-altgr  (send event get-other-shift-altgr-key-code)
+                     'other-caps         (send event get-other-caps-key-code)))
   (define shift? (send event get-shift-down))
-  (define alt?   (send event get-alt-down))     ; mac: Option
-  (define ctrl?  (send event get-control-down)) 
-  (define met?   (send event get-meta-down))
+  (define alt?   (send event get-alt-down))
+  (define ctrl?  (send event get-control-down))
+  (define cmd?   (case (system-type 'os)
+                   ; racket reports cmd down as meta down
+                   [(macosx) (send event get-meta-down)]
+                   ; other systems do not have cmd
+                   [else     #f]))  
   (define meta?  (case (system-type 'os)
+                   ; use the alt key as meta
                    [(macosx) (send event get-alt-down)]
                    [else     (send event get-meta-down)]))    ; mac: cmd, pc: alt, unix: meta
-  (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'met met? 'meta meta?)) 
+  ; (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta? 'cmd cmd?))
   
   (define c      (send event get-key-code))
   ; k = key without modifier
   (define k      (cond
-                   [(and ctrl? alt?)  (send event get-key-code)]
+                   [(and ctrl? alt?)  c]
+                   [cmd?              c]
                    [alt?              (send event get-other-altgr-key-code)] ; OS X: 
                    [else              c]))
   
-  (let ([k (match k ['escape "ESC"] [#\space "space"][_ k])])
+  (let ([k (match k ['escape "ESC"] [#\space "space"] [_ k])])
     (cond 
       [(eq? k 'control)      'control] ; ignore control + nothing      
-      [(or ctrl? alt? meta?) (~a (if ctrl? "C-" "")
-                                 (cond 
-                                   [meta? "M-"]
-                                   [alt?  "A-"]
-                                   [else  ""])
-                                 k)]
+      [(or ctrl? alt? meta? cmd?) (~a (cond 
+                                        [ctrl? "C-"]
+                                        [meta? "M-"]
+                                        [alt?  "A-"]
+                                        [cmd?  "D-"]
+                                        [else  ""])
+                                      k)]
       [else                  k])))
 
 (define (remove-last xs)
@@ -1325,8 +1337,9 @@
          ["M-d"       (λ () (buffer-display (current-buffer)))]
          ["M-s"       save-buffer]
          ["M-o"       open-file-or-create]
-         ["M-e"       eval-buffer]         
+         ["M-e"       eval-buffer]
          ["M-w"       'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
+         ["D-w"       'exit] ; Cmd-w (mac only)
          [#\return    (λ () (buffer-break-line! (current-buffer)))]
          [#\backspace (λ () (buffer-delete-backward-char! (current-buffer) 1))] ; the backspace key
          [#\rubout    (λ () (error 'todo))]                     ; the delete key
@@ -1365,6 +1378,13 @@
 (define window-ht (make-hash))
 (define current-window (make-parameter #f))
 
+; new-window : frame panel buffer -> window
+(define (new-window f panel b [parent #f])
+  ; parent is the parent window, #f means no parent parent window
+  (define w (window f panel #f parent b))
+  (window-install-canvas! w panel)
+  w)
+
 ; get-buffer-window : [buffer-or-name] -> window
 ;   return first window in which buffer is displayed
 (define (get-buffer-window [buffer-or-name (current-buffer)])
@@ -1381,15 +1401,35 @@
              #:when (eq? (get-buffer (window-buffer w)) b))
     w))
 
+; REMINDER
+;    (struct window (frame canvas parent buffer) #:mutable)
+;    (struct horizontal-split-window window (left  right) #:mutable)
+
 ; split-window-right : [window] -> void
 ;   split the window in two, place the new window at the right
+;
+; Implementation note:
+;   The (frame-panel f) holds the panel that display the current windows
+;   Make this panel the left son of a new horisontal panel
+;   and add a new panel to the right for the new window.
 (define (split-window-right [w (current-window)])
   (define f (window-frame w))
+  ; the parent p of a window w might be a horizontal- or vertical window
   (define p (window-parent w))
   (define b (window-buffer w))
-  (define sp (horizontal-split-window f p #f w #f))
+  ; the new split window get the parent of our old window
+  (define pan (new vertical-panel% [parent (window-panel p)]))
+  (define sp (horizontal-split-window f pan #f p #f w #f))
+  ; the old window get a new parent
   (set-window-parent! w sp)
-  (define w2 (window f sp b))
+  (set-frame-windows! f sp)
+  ;; A little space before the next window
+  (new horizontal-pane% 
+       [parent pan]
+       [min-height 2]
+       [stretchable-height #f])  
+  ; now create the new window to the right
+  (define w2 (new-window f pan b sp))
   (set-horizontal-split-window-right! sp w2)
   ; replace the parent window with the new split window
   (cond 
@@ -1413,15 +1453,15 @@
 (define current-frame (make-parameter #f))
 
 (define (refresh-frame [f (current-frame)])
-  (when f
-    (send (frame-canvas f) on-paint)))
+  (when (and f (frame? f))
+    (send (frame-panel f) on-paint)))
 
 (define (frame-window-tree [f (current-frame)])
   (define (loop w)
     (match w
-      [(horizontal-split-window f c p b l r) (append (loop l) (loop r))]
-      [(vertical-split-window   f c p b u l) (append (loop u) (loop l))]
-      [(window frame canvas parent buffer)   (list w)]))
+      [(horizontal-split-window f _ c p b l r)    (append (loop l) (loop r))]
+      [(vertical-split-window   f _ c p b u l)    (append (loop u) (loop l))]
+      [(window frame planel canvas parent buffer) (list w)]))
   (flatten (loop (frame-windows f))))
 
 ;;;
@@ -1444,7 +1484,7 @@
 (define base2   (hex->color #xeee8d5)) ; white      background
 (define base3   (hex->color #xfdf6e3)) ; brwhite    background   (brightest)
 
-(define yellow  (hex->color #xb58900)) ; yellow     accent color
+(define yellow  (hex->color #xb58900)) ; yellow     accent color33
 (define orange  (hex->color #xcb4b16)) ; brred      accent color
 (define red     (hex->color #xdc322f)) ; red        accent color
 (define magenta (hex->color #xd33682)) ; magenta    accent color
@@ -1483,135 +1523,152 @@
 ;;;
 
 (define (render-buffer b dc xmin xmax ymin ymax)
-  ;; Highlightning for region between mark and point
-  (define text-background-color  (send dc get-text-background))
-  (define region-highlighted-color  magenta)
-  (define (set-text-background-color highlight?)
-    (define background-color (if highlight? region-highlighted-color text-background-color))
-    (send dc set-text-background background-color))
-  ;; Dimensions
-  (define width  (- xmax xmin))
-  (define height (- ymax ymin))
-  (define fs (font-size))
-  (define ls (+ fs 1)) ; linesize -- 1 pixel for spacing
-  ;; Placement of point relative to lines on screen
-  (define num-lines-on-screen (max 0 (quotient height ls)))
-  (define-values (row col)    (mark-row+column (buffer-point  b)))
-  (define last-row-on-screen  (min row num-lines-on-screen))
-  (define first-row-on-screen (max 0 (- row num-lines-on-screen)))
-  (define num-lines-to-skip   first-row-on-screen)
-  ;; Placement of region
-  (define-values (reg-begin reg-end)
-    (if (use-region? b) (values (region-beginning b) (region-end b)) (values #f #f)))
-  ; (displayln (list first-row-on-screen last-row-on-screen))
-  ; suspend flush
-  (send dc suspend-flush)  
-  ; draw-string : string real real -> real
-  ;   draw string t at (x,y), return point to draw next string
-  (define (draw-string t x y)
-    (define-values (w h _ __) (send dc get-text-extent t))
-    (send dc draw-text t x y)
-    (+ x w))
-  ; draw text
-  (for/fold ([y ymin] [p 0]) ; p the position of start of line
-            ([l #;(drop (dlist->list (text-lines (buffer-text b))) num-lines-to-skip)
-                (text-lines (buffer-text b))]
-             [i num-lines-on-screen])
-    (define strings (line-strings l))
-    (define n (length strings))
-    (define (last-string? i) (= i (- n 1)))
-    (define (sort-numbers xs) (sort xs <))
-    (for/fold ([x xmin] [p p]) ([s strings] [i (in-range n)])
-      ; p is the start position of the string s
-      (match s
-        [(? string?)
-         (define sn (string-length s))
-         ; find positions of points and marks in the string
-         (define positions-in-string
-           (sort-numbers
-            (append (for/list ([m (buffer-marks b)] #:when (<= p (mark-position m) (+ p sn)))
-                      (mark-position m))
-                    (for/list ([m (buffer-points b)] #:when (<= p (mark-position m) (+ p sn)))
-                      (mark-position m)))))
-         ; split the string at the mark positions (there might be a color change)
-         (define start-positions (cons p positions-in-string))
-         (define end-positions   (append positions-in-string (list (+ p sn))))
-         (define substrings      (map (λ (start end) (substring s (- start p) (- end p)))
-                                      start-positions end-positions))
-         ; draw the strings one at a time
-         (define-values (next-x next-p)
-           (for/fold ([x x] [p p]) ([t substrings])
-             (when (equal? reg-begin p) (set-text-background-color #t))
-             (when (equal? reg-end   p) (set-text-background-color #f))
-             (define u ; remove final newline if present
-               (or (and (not (equal? t ""))
-                        (char=? (string-ref t (- (string-length t) 1)) #\newline)
-                        (substring t 0 (max 0 (- (string-length t) 1))))
-                   t))
-             (values (draw-string u x y) (+ p (string-length t)))))
-         ; return the next x position
-         (values next-x next-p)]
-        ; draw text one string at a time
-        #;[(? string?) (define t ; remove final newline
-                         (if (last-string? i) (substring s 0(max 0 (- (string-length s) 1))) s))
-                       (values (draw-string t x y) (+ p (string-length s)))]
-        ; draw text one character at a time
-        #;[(? string?)
-           (for/fold ([x x]) ([c s])
-             (unless (char=? c #\newline)
-               (define t (string c))
-               (define-values (w h _ __) (send dc get-text-extent t))
-               (send dc draw-text t x y)
-               (values (+ x w) (+ p (string-length s)))))]        
-        [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) x]
-        [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
-        [_ (displayln (~a "Warning: Got " s)) x]))
-    (values (+ y ls)
-            (+ p (line-length l))))
-  ; get point and mark height
-  (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
-  ; draw marks (for debug)
-  (begin
-    (define old-pen (send dc get-pen))
-    (define new-pen (new pen% [color base00]))
-    (send dc set-pen new-pen)
-    (for ([p (buffer-marks b)])
+  (when b
+    ;; Highlightning for region between mark and point
+    (define text-background-color  (send dc get-text-background))
+    (define region-highlighted-color  magenta)
+    (define (set-text-background-color highlight?)
+      (define background-color (if highlight? region-highlighted-color text-background-color))
+      (send dc set-text-background background-color))
+    ;; Dimensions
+    (define width  (- xmax xmin))
+    (define height (- ymax ymin))
+    (define fs (font-size))
+    (define ls (+ fs 1)) ; linesize -- 1 pixel for spacing
+    ;; Placement of point relative to lines on screen
+    (define num-lines-on-screen (max 0 (quotient height ls)))
+    (define-values (row col)    (mark-row+column (buffer-point  b)))
+    (define last-row-on-screen  (min row num-lines-on-screen))
+    (define first-row-on-screen (max 0 (- row num-lines-on-screen)))
+    (define num-lines-to-skip   first-row-on-screen)
+    ;; Placement of region
+    (define-values (reg-begin reg-end)
+      (if (use-region? b) (values (region-beginning b) (region-end b)) (values #f #f)))
+    ; (displayln (list first-row-on-screen last-row-on-screen))
+    ; suspend flush
+    (send dc suspend-flush)  
+    ; draw-string : string real real -> real
+    ;   draw string t at (x,y), return point to draw next string
+    (define (draw-string t x y)
+      (define-values (w h _ __) (send dc get-text-extent t))
+      (send dc draw-text t x y)
+      (+ x w))
+    ; draw text
+    (for/fold ([y ymin] [p 0]) ; p the position of start of line
+              ([l #;(drop (dlist->list (text-lines (buffer-text b))) num-lines-to-skip)
+                  (text-lines (buffer-text b))]
+               [i num-lines-on-screen])
+      (define strings (line-strings l))
+      (define n (length strings))
+      (define (last-string? i) (= i (- n 1)))
+      (define (sort-numbers xs) (sort xs <))
+      (for/fold ([x xmin] [p p]) ([s strings] [i (in-range n)])
+        ; p is the start position of the string s
+        (match s
+          [(? string?)
+           (define sn (string-length s))
+           ; find positions of points and marks in the string
+           (define positions-in-string
+             (sort-numbers
+              (append (for/list ([m (buffer-marks b)] #:when (<= p (mark-position m) (+ p sn)))
+                        (mark-position m))
+                      (for/list ([m (buffer-points b)] #:when (<= p (mark-position m) (+ p sn)))
+                        (mark-position m)))))
+           ; split the string at the mark positions (there might be a color change)
+           (define start-positions (cons p positions-in-string))
+           (define end-positions   (append positions-in-string (list (+ p sn))))
+           (define substrings      (map (λ (start end) (substring s (- start p) (- end p)))
+                                        start-positions end-positions))
+           ; draw the strings one at a time
+           (define-values (next-x next-p)
+             (for/fold ([x x] [p p]) ([t substrings])
+               (when (equal? reg-begin p) (set-text-background-color #t))
+               (when (equal? reg-end   p) (set-text-background-color #f))
+               (define u ; remove final newline if present
+                 (or (and (not (equal? t ""))
+                          (char=? (string-ref t (- (string-length t) 1)) #\newline)
+                          (substring t 0 (max 0 (- (string-length t) 1))))
+                     t))
+               (values (draw-string u x y) (+ p (string-length t)))))
+           ; return the next x position
+           (values next-x next-p)]
+          ; draw text one string at a time
+          #;[(? string?) (define t ; remove final newline
+                           (if (last-string? i) (substring s 0(max 0 (- (string-length s) 1))) s))
+                         (values (draw-string t x y) (+ p (string-length s)))]
+          ; draw text one character at a time
+          #;[(? string?)
+             (for/fold ([x x]) ([c s])
+               (unless (char=? c #\newline)
+                 (define t (string c))
+                 (define-values (w h _ __) (send dc get-text-extent t))
+                 (send dc draw-text t x y)
+                 (values (+ x w) (+ p (string-length s)))))]        
+          [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) x]
+          [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
+          [_ (displayln (~a "Warning: Got " s)) x]))
+      (values (+ y ls)
+              (+ p (line-length l))))
+    ; get point and mark height
+    (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
+    ; draw marks (for debug)
+    (begin
+      (define old-pen (send dc get-pen))
+      (define new-pen (new pen% [color base00]))
+      (send dc set-pen new-pen)
+      (for ([p (buffer-marks b)])
+        (define-values (r c) (mark-row+column p))
+        (define x (+ xmin (* c    font-width)))
+        (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
+        (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
+          (send dc draw-line x y x (min ymax (+ y font-height -1)))))
+      (send dc set-pen old-pen))
+    ; draw points
+    (for ([p (buffer-points b)])
       (define-values (r c) (mark-row+column p))
       (define x (+ xmin (* c    font-width)))
       (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
       (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
         (send dc draw-line x y x (min ymax (+ y font-height -1)))))
-    (send dc set-pen old-pen))
-  ; draw points
-  (for ([p (buffer-points b)])
-    (define-values (r c) (mark-row+column p))
-    (define x (+ xmin (* c    font-width)))
-    (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
-    (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
-      (send dc draw-line x y x (min ymax (+ y font-height -1)))))
-  ; resume flush
-  (send dc resume-flush))
+    ; resume flush
+    (send dc resume-flush)))
 
-(define (render-window win dc xmin xmax ymin ymax)
-  (render-buffer (window-buffer win) dc xmin xmax ymin ymax))
+(define (render-window w)
+  (define c  (window-canvas w))
+  (define dc (send c get-dc))
+  ;; sane defaults
+  (use-default-font-settings)
+  (send dc set-font default-fixed-font)
+  (send dc set-text-mode 'solid) ; solid -> use text background color
+  ; (send dc set-background "white")
+  (send dc clear)
+  (send dc set-text-background background-color)
+  (send dc set-text-foreground text-color)
+  ;; render buffer
+  (define xmin 0)
+  (define xmax (send c get-width))
+  (define ymin 0)
+  (define ymax (send c get-height))
+  (render-buffer (window-buffer w) dc xmin xmax ymin ymax))
 
-(define (render-windows win dc xmin xmax ymin ymax)
-  (define (mid a b) (quotient (+ a b) 2))
-  (define xmid (mid xmin xmax))
-  (define ymid (mid ymin ymax))
+(define (render-windows win)
   (match win
-    [(horizontal-split-window _ _ _ _ left  right) (render-windows left  dc xmin xmid ymin ymax)
-                                                   (render-windows right dc xmid xmax ymin ymax)
-                                                   (send dc draw-line xmid ymin xmid ymax)]
-    [(vertical-split-window _ _ _ _ upper lower)   (render-windows upper dc xmin xmax ymin ymid)
-                                                   (render-windows lower dc xmin xmax ymid ymax)
-                                                   (send dc draw-line xmin ymid xmax ymid)]
-    [(window frame canvas parent buffer)           (render-window  win   dc xmin xmax ymin ymax)]
+    [(horizontal-split-window _ _ _ _ _ left  right) (render-windows left)
+                                                     (render-windows right)
+                                                     ; (send dc draw-line xmid ymin xmid ymax)
+                                                     ]
+    [(vertical-split-window _ _ _ _ _ upper lower)   (render-windows upper)
+                                                     (render-windows lower)
+                                                     ;(send dc draw-line xmin ymid xmax ymid)
+                                                     ]
+    [(window frame panel canvas parent buffer)       (render-window  win)]
     [_ (error 'render-window "got ~a" win)]))
 
-(define (render-frame frame dc)
-  (define-values (xmax ymax) (send dc get-size))
-  (render-windows (frame-windows frame) dc 0 xmax 0 ymax))
+(define (render-frame f)
+  ; (define dc (send (frame-frame% f) get-dc))
+  ; (define-values (xmax ymax) (send dc get-size))
+  (define xmax 42) (define ymax 42)
+  (render-windows (frame-windows f)))
 
 ;;; Mini Canvas
 ; The bottom line of each frame is a small canvas.
@@ -1638,43 +1695,27 @@
     #;(send (frame-echo-area f) set-message s)
     1)
 
-; Each frame is divided into windows. 
-; 
+;;; COLORS
+(define background-color base1)
+(define text-color       base03)
 
-(define (new-editor-frame this-frame)
-  ;;; WINDOW SIZE
-  (define min-width  800)
-  (define min-height 800)
-  ;;; COLORS
-  (define background-color base1)
-  (define text-color       base03)
-  ;;; FRAME  
-  (define frame (new frame% [label "Editor"] [style '(fullscreen-button)]))
-  (set-frame-frame%! this-frame frame)
-  (define msg (new message% [parent frame] [label "No news"]))
-  (current-message msg)
-  (send msg min-width min-width)
-  ;;; MENUBAR
-  (define (create-menubar)
-    (define-syntax (new-menu-item stx)
-      (syntax-parse stx  ; add menu item to menu
-        [(_ par l sc cb) #'(new menu-item% [label l] [parent par] [shortcut sc] [callback cb])]))
-    (define mb (new menu-bar% (parent frame)))
-    ;; File Menu
-    (define fm (new menu% (label "File") (parent mb)))
-    (new-menu-item fm "New File" #\n (λ (_ e) (create-new-buffer)))
-    (new-menu-item fm "Open"     #\o (λ (_ e) (open-file-or-create)))
-    (new-menu-item fm "Save"     #\s (λ (_ e) (save-buffer)))
-    ;; Help Menu
-    (new menu% (label "Help") (parent mb)))
-  (create-menubar)
-  ;;; PREFIX
+; create-window-canvas : window panel% -> canvas
+; this-window 
+;   the non-gui structure representing the window used to display a buffer.
+; f
+;   the non-gui structure representing the frame of the window
+; panel
+;   the panel which the canvas has as parent
+(define (window-install-canvas! this-window panel)
+  (define f (window-frame this-window))
+  (displayln "WINDOW INSTALL CANVAS")
+  ;;; PREFIX 
+  ; keeps track of key pressed so far
   (define prefix '())
   (define (add-prefix! key) (set! prefix (append prefix (list key))))
   (define (clear-prefix!)   (set! prefix '()))
-  ;;; CANVAS
-  ; All buffers, mini buffers and the echo area are rendered into an remacs-canvas%
-  (define subeditor-canvas%
+  
+  (define window-canvas%
     (class canvas%
       ;; Buffer
       (define the-buffer #f)
@@ -1695,7 +1736,7 @@
             ['ignore               (void)]
             ['exit                ; (save-buffer! (current-buffer))
              ; TODO : Ask how to handle unsaved buffers
-             (send frame on-exit)]
+             (send (frame-frame% f) on-exit)]
             ['release             (void)]
             [_                    (unless (equal? (send event get-key-code) 'release)
                                     (clear-prefix!))]))
@@ -1703,47 +1744,90 @@
         (send canvas on-paint))
       ;; Rendering
       (define/override (on-paint)
-        (define dc (send canvas get-dc))
+        (render-frame f)
+        ; (define dc (send canvas get-dc))
         ; reset drawing context
-        (use-default-font-settings)
-        (send dc set-font default-fixed-font)
-        (send dc set-text-mode 'solid) ; solid -> use text background color
-        ; (send dc set-background "white")
-        (send dc clear)
-        (send dc set-text-background background-color)
-        (send dc set-text-foreground text-color)
-        (render-frame this-frame dc)
+        
+        ; (render-frame (window-frame this-window) dc) XXX
         ; uddate status line
-        (display-status-line (status-line-hook)))
+        ; (display-status-line (status-line-hook)) ; XXX TODO XXX 
+        )
       (super-new)))
+  (define canvas (new window-canvas% [parent panel]))
+  (set-window-canvas! this-window canvas)
+  (send canvas min-client-width  200)
+  (send canvas min-client-height 200)
+  canvas)
 
-  ;;; ---
-  (define canvas (new subeditor-canvas% [parent frame]))
-  (set-frame-canvas! this-frame canvas)
+(define make-frame frame)
+(define (frame-install-frame%! this-frame)
+  ;;; FRAME SIZE
+  (define min-width  800)
+  (define min-height 800)
+  ;;; FRAME  
+  (define frame (new frame% [label "Editor"] [style '(fullscreen-button)]))
+  (set-frame-frame%! this-frame frame)
+  (define msg (new message% [parent frame] [label "No news"]))
+  (current-message msg)
+  (send msg min-width min-width)
+  ;;; MENUBAR
+  (define (create-menubar)
+    (define-syntax (new-menu-item stx)
+      (syntax-parse stx  ; add menu item to menu
+        [(_ par l sc cb) #'(new menu-item% [label l] [parent par] [shortcut sc] [callback cb])]))
+    (define mb (new menu-bar% (parent frame)))
+    ;; File Menu
+    (define fm (new menu% (label "File") (parent mb)))
+    (new-menu-item fm "New File" #\n (λ (_ e) (create-new-buffer)))
+    (new-menu-item fm "Open"     #\o (λ (_ e) (open-file-or-create)))
+    (new-menu-item fm "Save"     #\s (λ (_ e) (save-buffer)))
+    ;; Help Menu
+    (new menu% (label "Help") (parent mb))) 
+  (create-menubar)
+  ;; PANEL
+  ; The holds contains the shown window 
+  (define panel (new vertical-panel% 
+                     [parent frame]
+                     [min-width min-width]
+                     [min-height 50]))
+  (set-frame-panel! this-frame panel)
+  ;;; CANVAS
+  ; Non-split windows are rendered into an associated canvas.
+  ; (Split windows holds panels of windows and/or subpanels)
+  ; Buffers, mini buffers and the echo area are rendered into 
+  ; into the canvas of the window to which they belong.
+  
+  ; (define canvas 'todo #;(create-window-canvas w))
+  ; (set-frame-canvas! this-frame canvas) ; XXX
+  ;; Status line
   (define status-line (new message% [parent frame] [label "Welcome"]))
   (send status-line min-width min-width)
   (define (display-status-line s) (send status-line set-label s))
-  (send canvas min-client-width  200)
-  (send canvas min-client-height 200)
   (display-status-line "Don't panic")
-  (send frame show #t))
+  (send frame show #t)
+  
+  ; (struct frame (frame% panel windows mini-window) #:mutable)
+  (make-frame frame panel #f #f))
 
 (module+ test
   (define ib illead-buffer)
   (current-buffer ib)
   (define f  (frame #f #f #f #f))
-  (define sp (vertical-split-window f #f f #f #f #f))
-  (define c #f) 
-  (define w  (window f c sp ib))
-  (define c2 #f)
-  (define w2 (window f c2 sp (get-buffer "*scratch*")))
-  (set-vertical-split-window-above! sp w)
-  (set-vertical-split-window-below! sp w2)
-  (set-frame-windows! f sp)
-  (current-window w)
+  (frame-install-frame%! f) ; installs frame% and panel
+  (define p (frame-panel f))
+  (define w  (new-window f p ib #f))
+  (set-window-parent! w w)
   
-  (current-frame f)
-  (new-editor-frame f))
+  ;(define sp (vertical-split-window f #f #f #f #f #f #f))  
+  ; (define w  (window f #f c sp ib))
+  ; (define c2 #f)
+  ; (define w2 (window f #f c2 sp (get-buffer "*scratch*")))
+  ; (set-vertical-split-window-above! sp w)
+  ; (set-vertical-split-window-below! sp w2)
+  ; (set-frame-windows! f sp)
+  (set-frame-windows! f w)
+  (current-window w)
+  (current-frame f))
 
 (define (display-file path)
   (with-input-from-file path
