@@ -1,4 +1,5 @@
 #lang racket
+;;; TODO Move keyboard focus at startup (send canvas focus) doesn't work?!?
 ;;; TODO previous-buffer (parallel to next-buffer)
 ;;; TODO Introduce global that controls which key to use for meta
 ;;; TODO Finish eval-buffer
@@ -149,12 +150,17 @@
   (define illead-text 
     (new-text 
      (list->lines
+      (list "x\n"))))
+  #;(define illead-text 
+    (new-text 
+     (list->lines
       (list "Sing, O goddess, the anger of Achilles son of Peleus, that brought\n"
             "countless ills upon the Achaeans. Many a brave soul did it send hurrying\n"
             "down to Hades, and many a hero did it yield a prey to dogs and vultures,\n"
             "for so were the counsels of Jove fulfilled from the day on which the\n"
             "son of Atreus, king of men, and great Achilles, first fell out with\n"
             "one another.\n"))))
+
   
   ; recreate the same text file from scratch
   (define (create-new-test-file path)
@@ -1301,6 +1307,7 @@
          [_           #f])]
       [(list "C-x")
        (match key
+         [#\2         split-window-below]
          [#\3         split-window-right]
          [#\s         save-some-buffers]
          [#\o         other-window]
@@ -1366,7 +1373,6 @@
       "  " "Position: " (mark-position (buffer-point (current-buffer)))
       "  " "Length: "   (buffer-length (current-buffer))))
 
-
 ;;;
 ;;; WINDOWS
 ;;;
@@ -1415,25 +1421,25 @@
 (define (split-window-right [w (current-window)])
   (define f (window-frame w))
   ; the parent p of a window w might be a horizontal- or vertical window
-  (define p (window-parent w))
   (define b (window-buffer w))
+  (define c (window-canvas w))
+  (define p (window-parent w))
+  (define root? (not (window? p)))
   ; the new split window get the parent of our old window
-  (define pan (new vertical-panel% [parent (window-panel p)]))
-  (define sp (horizontal-split-window f pan #f p #f w #f))
+  (define parent-panel (if root? (frame-panel f) (window-panel p)))
+  (define pan (new horizontal-panel% [parent parent-panel]))
+  (define sp  (horizontal-split-window f pan #f p #f w #f))
   ; the old window get a new parent
   (set-window-parent! w sp)
-  (set-frame-windows! f sp)
+  (send c reparent pan)
   ;; A little space before the next window
-  (new horizontal-pane% 
-       [parent pan]
-       [min-height 2]
-       [stretchable-height #f])  
+  ; (new horizontal-pane% [parent pan] [min-height 2] [stretchable-height #f])
   ; now create the new window to the right
   (define w2 (new-window f pan b sp))
   (set-horizontal-split-window-right! sp w2)
   ; replace the parent window with the new split window
   (cond 
-    [(eq? f p) ; root window?
+    [root? ; root window?
      (set-frame-windows! f sp)]
     [(horizontal-split-window? p)
      ; is w a left or a right window?
@@ -1443,8 +1449,43 @@
     [(vertical-split-window? p)
      ; is w above or below?
      (if (eq? (vertical-split-window-above p) w) 
-         (set-vertical-split-window-above!  p sp)
-         (set-vertical-split-window-below!  p sp))]))
+         (set-vertical-split-window-above! p sp)
+         (set-vertical-split-window-below! p sp))]))
+
+(define (split-window-below [w (current-window)])
+  (define f (window-frame w))
+  ; the parent p of a window w might be a horizontal- or vertical window
+  (define b (window-buffer w))
+  (define c (window-canvas w))
+  (define p (window-parent w))
+  (define root? (not (window? p)))
+  ; the new split window get the parent of our old window
+  (define parent-panel (if root? (frame-panel f) (window-panel p)))
+  (define pan (new vertical-panel% [parent parent-panel]))
+  (define sp (vertical-split-window f pan #f p #f w #f))
+  ; the old window get a new parent
+  (set-window-parent! w sp)
+  (send c reparent pan)
+  ;; A little space before the next window
+  (new vertical-pane% [parent pan] [min-width 2] [min-height 2] [stretchable-width #f])
+  ; now create the new window below
+  (define w2 (new-window f pan b sp))
+  (set-vertical-split-window-below! sp w2)
+  ; replace the parent window with the new split window
+  (cond 
+    [root? 
+     (set-frame-windows! f sp)]
+    [(horizontal-split-window? p)
+     ; is w a left or a right window?
+     (if (eq? (horizontal-split-window-left p) w) 
+         (set-horizontal-split-window-left!  p sp)
+         (set-horizontal-split-window-right! p sp))]
+    [(vertical-split-window? p)
+     ; is w above or below?
+     (if (eq? (vertical-split-window-above p) w) 
+         (set-vertical-split-window-above! p sp)
+         (set-vertical-split-window-below! p sp))]
+    [else (error "Internal Error")]))
 
 ;;;
 ;;; FRAMES
@@ -1653,21 +1694,19 @@
 
 (define (render-windows win)
   (match win
-    [(horizontal-split-window _ _ _ _ _ left  right) (render-windows left)
-                                                     (render-windows right)
-                                                     ; (send dc draw-line xmid ymin xmid ymax)
-                                                     ]
-    [(vertical-split-window _ _ _ _ _ upper lower)   (render-windows upper)
-                                                     (render-windows lower)
-                                                     ;(send dc draw-line xmin ymid xmax ymid)
-                                                     ]
-    [(window frame panel canvas parent buffer)       (render-window  win)]
+    [(horizontal-split-window _ _ _ _ _ left  right) 
+     (render-windows left)
+     ; (send dc draw-line xmid ymin xmid ymax)
+     (render-windows right)]
+    [(vertical-split-window _ _ _ _ _ upper lower)
+     (render-windows upper)
+     ; (send dc draw-line xmin ymid xmax ymid)
+     (render-windows lower)]
+    [(window frame panel canvas parent buffer)
+     (render-window  win)]
     [_ (error 'render-window "got ~a" win)]))
 
 (define (render-frame f)
-  ; (define dc (send (frame-frame% f) get-dc))
-  ; (define-values (xmax ymax) (send dc get-size))
-  (define xmax 42) (define ymax 42)
   (render-windows (frame-windows f)))
 
 ;;; Mini Canvas
@@ -1721,6 +1760,9 @@
       (define the-buffer #f)
       (define (set-buffer b) (set! the-buffer b))
       (define (get-buffer b) the-buffer)
+      ;;; Focus Events
+      (define/override (on-focus event)
+        (displayln (~a "Got focus! " (buffer-name (window-buffer this-window)) " " event)))
       ;; Key Events
       (define/override (on-char event)
         ; TODO syntax  (with-temp-buffer body ...)
@@ -1815,8 +1857,7 @@
   (define f  (frame #f #f #f #f))
   (frame-install-frame%! f) ; installs frame% and panel
   (define p (frame-panel f))
-  (define w  (new-window f p ib #f))
-  (set-window-parent! w w)
+  (define w  (new-window f p ib 'root))
   
   ;(define sp (vertical-split-window f #f #f #f #f #f #f))  
   ; (define w  (window f #f c sp ib))
@@ -1828,6 +1869,7 @@
   (set-frame-windows! f w)
   (current-window w)
   (current-frame f))
+
 
 (define (display-file path)
   (with-input-from-file path
