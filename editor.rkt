@@ -1,4 +1,5 @@
 #lang racket
+;;; TODO Make cursor blink
 ;;; TODO Move keyboard focus at startup (send canvas focus) doesn't work?!?
 ;;; TODO previous-buffer (parallel to next-buffer)
 ;;; TODO Introduce global that controls which key to use for meta
@@ -154,15 +155,15 @@
      (list->lines
       (list "x\n"))))
   #;(define illead-text 
-    (new-text 
-     (list->lines
-      (list "Sing, O goddess, the anger of Achilles son of Peleus, that brought\n"
-            "countless ills upon the Achaeans. Many a brave soul did it send hurrying\n"
-            "down to Hades, and many a hero did it yield a prey to dogs and vultures,\n"
-            "for so were the counsels of Jove fulfilled from the day on which the\n"
-            "son of Atreus, king of men, and great Achilles, first fell out with\n"
-            "one another.\n"))))
-
+      (new-text 
+       (list->lines
+        (list "Sing, O goddess, the anger of Achilles son of Peleus, that brought\n"
+              "countless ills upon the Achaeans. Many a brave soul did it send hurrying\n"
+              "down to Hades, and many a hero did it yield a prey to dogs and vultures,\n"
+              "for so were the counsels of Jove fulfilled from the day on which the\n"
+              "son of Atreus, king of men, and great Achilles, first fell out with\n"
+              "one another.\n"))))
+  
   
   ; recreate the same text file from scratch
   (define (create-new-test-file path)
@@ -1583,6 +1584,8 @@
 
 (define (render-buffer b dc xmin xmax ymin ymax)
   (when b
+    ;; Active?
+    (define active? (eq? b (current-buffer)))
     ;; Highlightning for region between mark and point
     (define text-background-color  (send dc get-text-background))
     (define region-highlighted-color  magenta)
@@ -1683,12 +1686,13 @@
           (send dc draw-line x y x (min ymax (+ y font-height -1)))))
       (send dc set-pen old-pen))
     ; draw points
-    (for ([p (buffer-points b)])
-      (define-values (r c) (mark-row+column p))
-      (define x (+ xmin (* c    font-width)))
-      (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
-      (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
-        (send dc draw-line x y x (min ymax (+ y font-height -1)))))
+    (when active?
+      (for ([p (buffer-points b)])
+        (define-values (r c) (mark-row+column p))
+        (define x (+ xmin (* c    font-width)))
+        (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
+        (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
+          (send dc draw-line x y x (min ymax (+ y font-height -1))))))
     ; resume flush
     (send dc resume-flush)))
 
@@ -1723,11 +1727,9 @@
   (match win
     [(horizontal-split-window _ _ _ _ _ _ left  right) 
      (render-windows left)
-     ; (send dc draw-line xmid ymin xmid ymax)
      (render-windows right)]
     [(vertical-split-window _ _ _ _ _ _ upper lower)
      (render-windows upper)
-     ; (send dc draw-line xmin ymid xmax ymid)
      (render-windows lower)]
     [(window frame panel borders canvas parent buffer)
      (render-window  win)]
