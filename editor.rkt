@@ -1459,7 +1459,8 @@
          (begin
            (set-vertical-split-window-above! p sp)
            (send (window-canvas (vertical-split-window-below p)) reparent parent-panel))
-         (set-vertical-split-window-below! p sp))]))
+         (set-vertical-split-window-below! p sp))])
+  (send c focus))
 
 (define (split-window-below [w (current-window)])
   (define f (window-frame w))
@@ -1502,7 +1503,7 @@
            (send (window-canvas (vertical-split-window-below p)) reparent parent-panel))
          (set-vertical-split-window-below! p sp))]
     [else (error "Internal Error")])
-  (send (window-canvas w2) reparent new-panel))
+  (send c focus))
 
 ;;;
 ;;; FRAMES
@@ -1733,6 +1734,10 @@
     [_ (error 'render-window "got ~a" win)]))
 
 (define (render-frame f)
+  (define n (buffer-name (current-buffer)))
+  (define f% (frame-frame% f))
+  (unless (equal? n (send f% get-label))
+    (send f% set-label n))
   (render-windows (frame-windows f)))
 
 ;;; Mini Canvas
@@ -1886,8 +1891,9 @@
   (current-buffer ib)
   (define f  (frame #f #f #f #f))
   (frame-install-frame%! f) ; installs frame% and panel
+  
   (define p (frame-panel f))
-  (define w  (new-window f p ib 'root))
+  (define w (new-window f p ib 'root))
   
   ;(define sp (vertical-split-window f #f #f #f #f #f #f))  
   ; (define w  (window f #f c sp ib))
@@ -1898,7 +1904,9 @@
   ; (set-frame-windows! f sp)
   (set-frame-windows! f w)
   (current-window w)
-  (current-frame f))
+  (current-frame f)
+  
+  (send (window-canvas w) focus))
 
 
 (define (display-file path)
