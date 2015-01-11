@@ -1,4 +1,5 @@
 #lang racket
+;;; TODO Move keyboard focus at on-focus
 ;;; TODO Move keyboard focus at startup (send canvas focus) doesn't work?!?
 ;;; TODO previous-buffer (parallel to next-buffer)
 ;;; TODO Introduce global that controls which key to use for meta
@@ -71,11 +72,13 @@
 (struct mode (name) #:transparent)
 ; A mode has a name (displayed in the status bar).
 
-(struct window (frame panel canvas parent buffer) #:mutable #:transparent)
+(struct window (frame panel borders canvas parent buffer) #:mutable #:transparent)
 ; A window is an area in which a buffer is displayed.
 ; Multiple windows are grouped in a frame.
 ; The contents of the buffer is rendered to the canvas.
-; The canvas is contained in a panel
+; The canvas is contained in a panel.
+; borders is a set of symbols indicating which borders to draw
+;   'left 'right 'top 'bottom
 
 (struct frame (frame% panel windows mini-window) #:mutable #:transparent)
 ; A frame contains one or multiple windows.
@@ -1385,9 +1388,10 @@
 (define current-window (make-parameter #f))
 
 ; new-window : frame panel buffer -> window
-(define (new-window f panel b [parent #f])
+(define (new-window f panel b [parent #f] #:borders [borders #f])
   ; parent is the parent window, #f means no parent parent window
-  (define w (window f panel #f parent b))
+  (define bs (or borders (seteq)))
+  (define w (window f panel bs #f parent b))
   (window-install-canvas! w panel)
   w)
 
@@ -1421,21 +1425,23 @@
 (define (split-window-right [w (current-window)])
   (define f (window-frame w))
   ; the parent p of a window w might be a horizontal- or vertical window
-  (define b (window-buffer w))
-  (define c (window-canvas w))
-  (define p (window-parent w))
+  (define b  (window-buffer w))
+  (define bs (window-borders w))
+  (define c  (window-canvas w))
+  (define p  (window-parent w))
   (define root? (not (window? p)))
   ; the new split window get the parent of our old window
   (define parent-panel (if root? (frame-panel f) (window-panel p)))
   (define pan (new horizontal-panel% [parent parent-panel]))
-  (define sp  (horizontal-split-window f pan #f p #f w #f))
+  (define sp  (horizontal-split-window f pan bs #f p #f w #f))
   ; the old window get a new parent
   (set-window-parent! w sp)
   (send c reparent pan)
   ;; A little space before the next window
   ; (new horizontal-pane% [parent pan] [min-height 2] [stretchable-height #f])
   ; now create the new window to the right
-  (define w2 (new-window f pan b sp))
+  (define bs2 (set-add bs 'left))
+  (define w2 (new-window f pan b sp #:borders bs2))
   (set-horizontal-split-window-right! sp w2)
   ; replace the parent window with the new split window
   (cond 
@@ -1444,48 +1450,60 @@
     [(horizontal-split-window? p)
      ; is w a left or a right window?
      (if (eq? (horizontal-split-window-left p) w) 
-         (set-horizontal-split-window-left!  p sp)
+         (begin
+           (set-horizontal-split-window-left!  p sp)
+           (send (window-canvas (horizontal-split-window-right p)) reparent parent-panel))
          (set-horizontal-split-window-right! p sp))]
     [(vertical-split-window? p)
      ; is w above or below?
      (if (eq? (vertical-split-window-above p) w) 
-         (set-vertical-split-window-above! p sp)
+         (begin
+           (set-vertical-split-window-above! p sp)
+           (send (window-canvas (vertical-split-window-below p)) reparent parent-panel))
          (set-vertical-split-window-below! p sp))]))
 
 (define (split-window-below [w (current-window)])
   (define f (window-frame w))
   ; the parent p of a window w might be a horizontal- or vertical window
-  (define b (window-buffer w))
-  (define c (window-canvas w))
-  (define p (window-parent w))
+  (define b  (window-buffer w))
+  (define bs (window-borders w))
+  (define c  (window-canvas w))
+  (define p  (window-parent w))
+  
   (define root? (not (window? p)))
-  ; the new split window get the parent of our old window
+  ; the parent of the new split window (sp), is the parent the window (w) to be split
   (define parent-panel (if root? (frame-panel f) (window-panel p)))
-  (define pan (new vertical-panel% [parent parent-panel]))
-  (define sp (vertical-split-window f pan #f p #f w #f))
-  ; the old window get a new parent
+  (define new-panel    (new vertical-panel% [parent parent-panel]))
+  (define sp (vertical-split-window f new-panel bs #f p #f w #f))
+  ; the split window becomes he parent of the old window
   (set-window-parent! w sp)
-  (send c reparent pan)
-  ;; A little space before the next window
-  (new vertical-pane% [parent pan] [min-width 2] [min-height 2] [stretchable-width #f])
-  ; now create the new window below
-  (define w2 (new-window f pan b sp))
+  ; this means that the canvas of w, now belongs the the new panel
+  (send c reparent new-panel)
+  ; The bottom of the split window contains a new window, showing the same buffer
+  ; The new window is required to draw the top border
+  (define bs2 (set-add bs 'top))
+  (define w2 (new-window f new-panel b sp #:borders bs2))
   (set-vertical-split-window-below! sp w2)
-  ; replace the parent window with the new split window
+  ; The split window takes the place of w in the parent of w
   (cond 
     [root? 
      (set-frame-windows! f sp)]
     [(horizontal-split-window? p)
      ; is w a left or a right window?
      (if (eq? (horizontal-split-window-left p) w) 
-         (set-horizontal-split-window-left!  p sp)
+         (begin
+           (set-horizontal-split-window-left!  p sp)
+           (send (window-canvas (horizontal-split-window-right p)) reparent parent-panel))
          (set-horizontal-split-window-right! p sp))]
     [(vertical-split-window? p)
-     ; is w above or below?
-     (if (eq? (vertical-split-window-above p) w) 
-         (set-vertical-split-window-above! p sp)
+     ; is w above or a?
+     (if (eq? (vertical-split-window-above p) w)
+         (begin 
+           (set-vertical-split-window-above! p sp)
+           (send (window-canvas (vertical-split-window-below p)) reparent parent-panel))
          (set-vertical-split-window-below! p sp))]
-    [else (error "Internal Error")]))
+    [else (error "Internal Error")])
+  (send (window-canvas w2) reparent new-panel))
 
 ;;;
 ;;; FRAMES
@@ -1500,9 +1518,9 @@
 (define (frame-window-tree [f (current-frame)])
   (define (loop w)
     (match w
-      [(horizontal-split-window f _ c p b l r)    (append (loop l) (loop r))]
-      [(vertical-split-window   f _ c p b u l)    (append (loop u) (loop l))]
-      [(window frame planel canvas parent buffer) (list w)]))
+      [(horizontal-split-window f _ _ c p b l r)    (append (loop l) (loop r))]
+      [(vertical-split-window   f _ _ c p b u l)    (append (loop u) (loop l))]
+      [(window frame panel borders canvas parent buffer) (list w)]))
   (flatten (loop (frame-windows f))))
 
 ;;;
@@ -1690,19 +1708,28 @@
   (define xmax (send c get-width))
   (define ymin 0)
   (define ymax (send c get-height))
+  
+  (define bs (window-borders w))
+  ; bordersize is 2 ?
+  (when (set-member? bs 'top)
+    (send dc draw-line 0 0 xmax 0)
+    (set! ymin (+ ymin 1)))
+  (when (set-member? bs 'left)
+    (send dc draw-line 0 0 0 ymax)
+    (set! xmin (+ xmin 1)))
   (render-buffer (window-buffer w) dc xmin xmax ymin ymax))
 
 (define (render-windows win)
   (match win
-    [(horizontal-split-window _ _ _ _ _ left  right) 
+    [(horizontal-split-window _ _ _ _ _ _ left  right) 
      (render-windows left)
      ; (send dc draw-line xmid ymin xmid ymax)
      (render-windows right)]
-    [(vertical-split-window _ _ _ _ _ upper lower)
+    [(vertical-split-window _ _ _ _ _ _ upper lower)
      (render-windows upper)
      ; (send dc draw-line xmin ymid xmax ymid)
      (render-windows lower)]
-    [(window frame panel canvas parent buffer)
+    [(window frame panel borders canvas parent buffer)
      (render-window  win)]
     [_ (error 'render-window "got ~a" win)]))
 
@@ -1797,8 +1824,8 @@
       (super-new)))
   (define canvas (new window-canvas% [parent panel]))
   (set-window-canvas! this-window canvas)
-  (send canvas min-client-width  200)
-  (send canvas min-client-height 200)
+  (send canvas min-client-width  20)
+  (send canvas min-client-height 20)
   canvas)
 
 (define make-frame frame)
