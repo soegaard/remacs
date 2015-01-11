@@ -1169,6 +1169,13 @@
   (current-window w)
   (current-buffer (window-buffer w)))
 
+(define-interactive (maximize-frame)
+  (define f (current-frame))
+  (when (frame? f)
+    (define f% (frame-frame% f))
+    (when (is-a? f% frame%)
+      (send f% maximize (not (send f% is-maximized?))))))
+
 (define-interactive (command-set-mark)
   (displayln (list 'command-set-mark))
   (define b (current-buffer))
