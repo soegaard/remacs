@@ -1,5 +1,4 @@
 #lang racket
-;;; TODO Move keyboard focus at on-focus
 ;;; TODO Move keyboard focus at startup (send canvas focus) doesn't work?!?
 ;;; TODO previous-buffer (parallel to next-buffer)
 ;;; TODO Introduce global that controls which key to use for meta
@@ -1789,7 +1788,11 @@
       (define (get-buffer b) the-buffer)
       ;;; Focus Events
       (define/override (on-focus event)
-        (displayln (~a "Got focus! " (buffer-name (window-buffer this-window)) " " event)))
+        (define w this-window)
+        (define b (window-buffer w))
+        (current-buffer b)
+        (current-window w)
+        (displayln (~a "Got focus! " (buffer-name ) " " event)))
       ;; Key Events
       (define/override (on-char event)
         ; TODO syntax  (with-temp-buffer body ...)
