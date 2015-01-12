@@ -787,6 +787,15 @@
       #:exists 'replace)
     (set-buffer-modified?! b #f)))
 
+; save-buffer-as : buffer ->
+;   get new file name from user, 
+;   associate file with buffer,
+;   and save it
+(define (save-buffer-as! b)
+  (define file (finder:put-file))
+  (when file
+    (set-buffer-path! b file)
+    (save-buffer! b)))
 
 (define (make-output-buffer b)
   ;; State
@@ -1146,7 +1155,8 @@
 (define-interactive (forward-word)        (buffer-forward-word! (current-buffer)))
 (define-interactive (move-to-column n)    (buffer-move-to-column! (current-buffer) n)) ; n=num prefix 
 
-(define-interactive (save-buffer)         (save-buffer! (current-buffer)) (refresh-frame))
+(define-interactive (save-buffer)         (save-buffer!    (current-buffer)) (refresh-frame))
+(define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
 (define-interactive (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
 (define-interactive (beginning-of-buffer) (buffer-move-point-to-position! (current-buffer) 0))
 (define-interactive (end-of-buffer)       (buffer-move-point-to-position! 
@@ -1157,6 +1167,7 @@
     (set-window-buffer! (current-window) b)
     (current-buffer b)
     (refresh-frame (current-frame))))
+
 
 (define-interactive (next-buffer) ; show next buffer in current window
   (define w (current-window))
@@ -1354,6 +1365,7 @@
          ["M-i"       (λ () (buffer-insert-property! (current-buffer) (property 'italics)))]
          ["M-d"       (λ () (buffer-display (current-buffer)))]
          ["M-s"       save-buffer]
+         ["M-S"       save-buffer-as]
          ["M-o"       open-file-or-create]
          ["M-e"       eval-buffer]
          ["M-w"       'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
@@ -1522,7 +1534,7 @@
 
 (define (refresh-frame [f (current-frame)])
   (when (and f (frame? f))
-    (send (frame-panel f) on-paint)))
+    (render-frame f)))
 
 (define (frame-window-tree [f (current-frame)])
   (define (loop w)
@@ -1913,13 +1925,19 @@
   (define (create-menubar)
     (define-syntax (new-menu-item stx)
       (syntax-parse stx  ; add menu item to menu
-        [(_ par l sc cb) #'(new menu-item% [label l] [parent par] [shortcut sc] [callback cb])]))
+        [(_ par l sc scm cb) 
+         #'(let ([m scm])
+             (if m
+                 (new menu-item% [label l] [parent par] [shortcut sc] [callback cb] 
+                      [shortcut-prefix (if (list? m) m (list m))])
+                 (new menu-item% [label l] [parent par] [shortcut sc] [callback cb])))]))
     (define mb (new menu-bar% (parent frame)))
     ;; File Menu
     (define fm (new menu% (label "File") (parent mb)))
-    (new-menu-item fm "New File" #\n (λ (_ e) (create-new-buffer)))
-    (new-menu-item fm "Open"     #\o (λ (_ e) (open-file-or-create)))
-    (new-menu-item fm "Save"     #\s (λ (_ e) (save-buffer)))
+    (new-menu-item fm "New File"   #\n #f     (λ (_ e) (create-new-buffer)))
+    (new-menu-item fm "Open"       #\o #f     (λ (_ e) (open-file-or-create)))
+    (new-menu-item fm "Save"       #\s #f     (λ (_ e) (save-buffer)))
+    (new-menu-item fm "Save As..." #\s 'shift (λ (_ e) (save-buffer-as)))
     ;; Help Menu
     (new menu% (label "Help") (parent mb))) 
   (create-menubar)
