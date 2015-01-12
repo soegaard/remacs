@@ -1,5 +1,4 @@
 #lang racket
-;;; TODO Use (send dc get-char-height) instead of M trick
 ;;; TODO Add "Save as"
 ;;; TODO Properties and faces
 ;;; TODO Modes
@@ -1686,7 +1685,8 @@
         (values (+ y ls)
                 (+ p (line-length l))))
       ; get point and mark height
-      (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
+      (define font-width  (send dc get-char-width))
+      (define font-height (send dc get-char-height))
       ; draw marks (for debug)
       (begin
         (define old-pen (send dc get-pen))
