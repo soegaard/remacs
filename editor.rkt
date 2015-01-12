@@ -1,6 +1,8 @@
 #lang racket
-;;; TODO Make cursor blink
-;;; TODO Move keyboard focus at startup (send canvas focus) doesn't work?!?
+;;; TODO Use (send dc get-char-height) instead of M trick
+;;; TODO Add "Save as"
+;;; TODO Properties and faces
+;;; TODO Modes
 ;;; TODO previous-buffer (parallel to next-buffer)
 ;;; TODO Introduce global that controls which key to use for meta
 ;;; TODO Finish eval-buffer
@@ -982,7 +984,7 @@
   (define m (buffer-point b))
   (define-values (row col) (mark-row+column m))
   (text-break-line! (buffer-text b) row col)
-  (displayln b)
+  ; (displayln b)
   (mark-move! m 1)
   (buffer-dirty! b))
 
@@ -1167,10 +1169,10 @@
   (define ws (frame-window-tree (current-frame)))
   (define w (list-next ws (current-window) eq?))
   (current-window w)
-  (current-buffer (window-buffer w)))
+  (current-buffer (window-buffer w))
+  (send (window-canvas w) focus))
 
-(define-interactive (maximize-frame)
-  (define f (current-frame))
+(define-interactive (maximize-frame [f (current-frame)]) ; maximize / demaximize frame
   (when (frame? f)
     (define f% (frame-frame% f))
     (when (is-a? f% frame%)
@@ -1277,7 +1279,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    (write (list prefix key)) (newline)
+    ;(write (list prefix key)) (newline)
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -1589,119 +1591,139 @@
 ;;; GUI
 ;;;
 
-(define (render-buffer b dc xmin xmax ymin ymax)
+(define current-render-points-only? (make-parameter #f))
+(define current-show-points?        (make-parameter #f))
+
+
+(define (render-buffer w b dc xmin xmax ymin ymax)
+  (unless (current-render-points-only?)
+    (when b
+      ;; Active?
+      (define active? (eq? b (current-buffer)))
+      ;; Highlightning for region between mark and point
+      (define text-background-color  (send dc get-text-background))
+      (define region-highlighted-color  magenta)
+      (define (set-text-background-color highlight?)
+        (define background-color (if highlight? region-highlighted-color text-background-color))
+        (send dc set-text-background background-color))
+      ;; Dimensions
+      (define width  (- xmax xmin))
+      (define height (- ymax ymin))
+      (define fs (font-size))
+      (define ls (+ fs 1)) ; linesize -- 1 pixel for spacing
+      ;; Placement of point relative to lines on screen
+      (define num-lines-on-screen (max 0 (quotient height ls)))
+      (define-values (row col)    (mark-row+column (buffer-point  b)))
+      (define last-row-on-screen  (min row num-lines-on-screen))
+      (define first-row-on-screen (max 0 (- row num-lines-on-screen)))
+      (define num-lines-to-skip   first-row-on-screen)
+      ;; Placement of region
+      (define-values (reg-begin reg-end)
+        (if (use-region? b) (values (region-beginning b) (region-end b)) (values #f #f)))
+      ; (displayln (list first-row-on-screen last-row-on-screen))
+      ; suspend flush
+      (send dc suspend-flush)  
+      ; draw-string : string real real -> real
+      ;   draw string t at (x,y), return point to draw next string
+      (define (draw-string t x y)
+        (define-values (w h _ __) (send dc get-text-extent t))
+        (send dc draw-text t x y)
+        (+ x w))
+      ; draw text
+      (for/fold ([y ymin] [p 0]) ; p the position of start of line
+                ([l #;(drop (dlist->list (text-lines (buffer-text b))) num-lines-to-skip)
+                    (text-lines (buffer-text b))]
+                 [i num-lines-on-screen])
+        (define strings (line-strings l))
+        (define n (length strings))
+        (define (last-string? i) (= i (- n 1)))
+        (define (sort-numbers xs) (sort xs <))
+        (for/fold ([x xmin] [p p]) ([s strings] [i (in-range n)])
+          ; p is the start position of the string s
+          (match s
+            [(? string?)
+             (define sn (string-length s))
+             ; find positions of points and marks in the string
+             (define positions-in-string
+               (sort-numbers
+                (append (for/list ([m (buffer-marks b)] #:when (<= p (mark-position m) (+ p sn)))
+                          (mark-position m))
+                        (for/list ([m (buffer-points b)] #:when (<= p (mark-position m) (+ p sn)))
+                          (mark-position m)))))
+             ; split the string at the mark positions (there might be a color change)
+             (define start-positions (cons p positions-in-string))
+             (define end-positions   (append positions-in-string (list (+ p sn))))
+             (define substrings      (map (λ (start end) (substring s (- start p) (- end p)))
+                                          start-positions end-positions))
+             ; draw the strings one at a time
+             (define-values (next-x next-p)
+               (for/fold ([x x] [p p]) ([t substrings])
+                 (when (equal? reg-begin p) (set-text-background-color #t))
+                 (when (equal? reg-end   p) (set-text-background-color #f))
+                 (define u ; remove final newline if present
+                   (or (and (not (equal? t ""))
+                            (char=? (string-ref t (- (string-length t) 1)) #\newline)
+                            (substring t 0 (max 0 (- (string-length t) 1))))
+                       t))
+                 (values (draw-string u x y) (+ p (string-length t)))))
+             ; return the next x position
+             (values next-x next-p)]
+            ; draw text one string at a time
+            #;[(? string?) (define t ; remove final newline
+                             (if (last-string? i) (substring s 0(max 0 (- (string-length s) 1))) s))
+                           (values (draw-string t x y) (+ p (string-length s)))]
+            ; draw text one character at a time
+            #;[(? string?)
+               (for/fold ([x x]) ([c s])
+                 (unless (char=? c #\newline)
+                   (define t (string c))
+                   (define-values (w h _ __) (send dc get-text-extent t))
+                   (send dc draw-text t x y)
+                   (values (+ x w) (+ p (string-length s)))))]        
+            [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) x]
+            [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
+            [_ (displayln (~a "Warning: Got " s)) x]))
+        (values (+ y ls)
+                (+ p (line-length l))))
+      ; get point and mark height
+      (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
+      ; draw marks (for debug)
+      (begin
+        (define old-pen (send dc get-pen))
+        (define new-pen (new pen% [color base00]))
+        (send dc set-pen new-pen)
+        (for ([p (buffer-marks b)])
+          (define-values (r c) (mark-row+column p))
+          (define x (+ xmin (* c    font-width)))
+          (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
+          (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
+            (send dc draw-line x y x (min ymax (+ y font-height -1)))))
+        (send dc set-pen old-pen))
+      ; resume flush
+      (send dc resume-flush)))
+  ; draw points
+  (render-points w b dc xmin xmax ymin ymax))
+
+(define (render-points w b dc xmin xmax ymin ymax)
+  (define points-on-pen  (new pen% [color text-color]))
+  (define points-off-pen (new pen% [color background-color]))
+  ; get point and mark height
+  (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
   (when b
-    ;; Active?
-    (define active? (eq? b (current-buffer)))
-    ;; Highlightning for region between mark and point
-    (define text-background-color  (send dc get-text-background))
-    (define region-highlighted-color  magenta)
-    (define (set-text-background-color highlight?)
-      (define background-color (if highlight? region-highlighted-color text-background-color))
-      (send dc set-text-background background-color))
-    ;; Dimensions
-    (define width  (- xmax xmin))
-    (define height (- ymax ymin))
-    (define fs (font-size))
-    (define ls (+ fs 1)) ; linesize -- 1 pixel for spacing
-    ;; Placement of point relative to lines on screen
-    (define num-lines-on-screen (max 0 (quotient height ls)))
-    (define-values (row col)    (mark-row+column (buffer-point  b)))
-    (define last-row-on-screen  (min row num-lines-on-screen))
-    (define first-row-on-screen (max 0 (- row num-lines-on-screen)))
-    (define num-lines-to-skip   first-row-on-screen)
-    ;; Placement of region
-    (define-values (reg-begin reg-end)
-      (if (use-region? b) (values (region-beginning b) (region-end b)) (values #f #f)))
-    ; (displayln (list first-row-on-screen last-row-on-screen))
-    ; suspend flush
-    (send dc suspend-flush)  
-    ; draw-string : string real real -> real
-    ;   draw string t at (x,y), return point to draw next string
-    (define (draw-string t x y)
-      (define-values (w h _ __) (send dc get-text-extent t))
-      (send dc draw-text t x y)
-      (+ x w))
-    ; draw text
-    (for/fold ([y ymin] [p 0]) ; p the position of start of line
-              ([l #;(drop (dlist->list (text-lines (buffer-text b))) num-lines-to-skip)
-                  (text-lines (buffer-text b))]
-               [i num-lines-on-screen])
-      (define strings (line-strings l))
-      (define n (length strings))
-      (define (last-string? i) (= i (- n 1)))
-      (define (sort-numbers xs) (sort xs <))
-      (for/fold ([x xmin] [p p]) ([s strings] [i (in-range n)])
-        ; p is the start position of the string s
-        (match s
-          [(? string?)
-           (define sn (string-length s))
-           ; find positions of points and marks in the string
-           (define positions-in-string
-             (sort-numbers
-              (append (for/list ([m (buffer-marks b)] #:when (<= p (mark-position m) (+ p sn)))
-                        (mark-position m))
-                      (for/list ([m (buffer-points b)] #:when (<= p (mark-position m) (+ p sn)))
-                        (mark-position m)))))
-           ; split the string at the mark positions (there might be a color change)
-           (define start-positions (cons p positions-in-string))
-           (define end-positions   (append positions-in-string (list (+ p sn))))
-           (define substrings      (map (λ (start end) (substring s (- start p) (- end p)))
-                                        start-positions end-positions))
-           ; draw the strings one at a time
-           (define-values (next-x next-p)
-             (for/fold ([x x] [p p]) ([t substrings])
-               (when (equal? reg-begin p) (set-text-background-color #t))
-               (when (equal? reg-end   p) (set-text-background-color #f))
-               (define u ; remove final newline if present
-                 (or (and (not (equal? t ""))
-                          (char=? (string-ref t (- (string-length t) 1)) #\newline)
-                          (substring t 0 (max 0 (- (string-length t) 1))))
-                     t))
-               (values (draw-string u x y) (+ p (string-length t)))))
-           ; return the next x position
-           (values next-x next-p)]
-          ; draw text one string at a time
-          #;[(? string?) (define t ; remove final newline
-                           (if (last-string? i) (substring s 0(max 0 (- (string-length s) 1))) s))
-                         (values (draw-string t x y) (+ p (string-length s)))]
-          ; draw text one character at a time
-          #;[(? string?)
-             (for/fold ([x x]) ([c s])
-               (unless (char=? c #\newline)
-                 (define t (string c))
-                 (define-values (w h _ __) (send dc get-text-extent t))
-                 (send dc draw-text t x y)
-                 (values (+ x w) (+ p (string-length s)))))]        
-          [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) x]
-          [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
-          [_ (displayln (~a "Warning: Got " s)) x]))
-      (values (+ y ls)
-              (+ p (line-length l))))
-    ; get point and mark height
-    (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
-    ; draw marks (for debug)
-    (begin
-      (define old-pen (send dc get-pen))
-      (define new-pen (new pen% [color base00]))
-      (send dc set-pen new-pen)
-      (for ([p (buffer-marks b)])
-        (define-values (r c) (mark-row+column p))
-        (define x (+ xmin (* c    font-width)))
-        (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
-        (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
-          (send dc draw-line x y x (min ymax (+ y font-height -1)))))
-      (send dc set-pen old-pen))
-    ; draw points
+    (define active? (send (window-canvas w) has-focus?))
     (when active?
+      (define cm (current-inexact-milliseconds))
+      (define on? (current-show-points?))
       (for ([p (buffer-points b)])
         (define-values (r c) (mark-row+column p))
         (define x (+ xmin (* c    font-width)))
         (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
         (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
-          (send dc draw-line x y x (min ymax (+ y font-height -1))))))
-    ; resume flush
-    (send dc resume-flush)))
+          (define old-pen (send dc get-pen))
+          (send dc set-pen (if on? points-on-pen points-off-pen))
+          (send dc draw-line x y x (min ymax (+ y font-height -1)))
+          (send dc set-pen old-pen))))))
+
 
 (define (render-window w)
   (define c  (window-canvas w))
@@ -1711,9 +1733,12 @@
   (send dc set-font default-fixed-font)
   (send dc set-text-mode 'solid) ; solid -> use text background color
   ; (send dc set-background "white")
-  (send dc clear)
+  (unless (current-render-points-only?)
+    (send dc clear))
+  
   (send dc set-text-background background-color)
   (send dc set-text-foreground text-color)
+  
   ;; render buffer
   (define xmin 0)
   (define xmax (send c get-width))
@@ -1728,7 +1753,7 @@
   (when (set-member? bs 'left)
     (send dc draw-line 0 0 0 ymax)
     (set! xmin (+ xmin 1)))
-  (render-buffer (window-buffer w) dc xmin xmax ymin ymax))
+  (render-buffer w (window-buffer w) dc xmin xmax ymin ymax))
 
 (define (render-windows win)
   (match win
@@ -1742,11 +1767,28 @@
      (render-window  win)]
     [_ (error 'render-window "got ~a" win)]))
 
+(define (frame->windows f)
+  (define (loop ws)
+    (match ws
+      [(vertical-split-window _ _ _ _ _ _ upper lower)
+       (append (loop upper) (loop lower))]
+      [(horizontal-split-window _ _ _ _ _ _ left right)
+       (append (loop left) (loop right))]
+      [w (list w)]))
+  (loop (frame-windows f)))
+
 (define (render-frame f)
-  (define n (buffer-name (current-buffer)))
+  ;; show name of buffer with keyboard focus as frame title
   (define f% (frame-frame% f))
-  (unless (equal? n (send f% get-label))
-    (send f% set-label n))
+  (define ws (frame->windows f))
+  (define w  (for/or ([w ws])
+               (and (send (window-canvas w) has-focus?)
+                    w)))
+  (when (window? w)
+    (define n (buffer-name (window-buffer w)))
+    (unless (equal? n (send f% get-label))
+      (send f% set-label n)))
+  ;; render windows
   (render-windows (frame-windows f)))
 
 ;;; Mini Canvas
@@ -1787,7 +1829,6 @@
 ;   the panel which the canvas has as parent
 (define (window-install-canvas! this-window panel)
   (define f (window-frame this-window))
-  (displayln "WINDOW INSTALL CANVAS")
   ;;; PREFIX 
   ; keeps track of key pressed so far
   (define prefix '())
@@ -1804,9 +1845,9 @@
       (define/override (on-focus event)
         (define w this-window)
         (define b (window-buffer w))
+        ; (displayln (list 'on-focus (buffer-name b)))
         (current-buffer b)
-        (current-window w)
-        (displayln (~a "Got focus! " (buffer-name ) " " event)))
+        (current-window w))
       ;; Key Events
       (define/override (on-char event)
         ; TODO syntax  (with-temp-buffer body ...)
@@ -1829,7 +1870,14 @@
         ; todo: don't trigger repaint on every key stroke ...
         (send canvas on-paint))
       ;; Rendering
-      (define/override (on-paint)
+      (public on-paint-points)
+      (define (on-paint-points on?) ; render points only
+        (parameterize ([current-render-points-only? #t]
+                       [current-show-points?        on?])
+          (render-frame f)))
+      
+      
+      (define/override (on-paint) ; render everything
         (render-frame f)
         ; (define dc (send canvas get-dc))
         ; reset drawing context
@@ -1843,6 +1891,11 @@
   (set-window-canvas! this-window canvas)
   (send canvas min-client-width  20)
   (send canvas min-client-height 20)
+  ; start update-points thread
+  (thread (λ () (let loop ([on? #t])
+                  (sleep/yield 0.5)
+                  (send canvas on-paint-points on?)
+                  (loop (not on?)))))
   canvas)
 
 (define make-frame frame)
