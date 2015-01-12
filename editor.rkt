@@ -1,5 +1,6 @@
 #lang racket
-;;; TODO Add "Save as"
+;;; TODO Fix ctrl+space produce C-\u0000 problem
+;;; TODO Maybe C-space is supposed to produce \u0000 ?
 ;;; TODO Properties and faces
 ;;; TODO Modes
 ;;; TODO previous-buffer (parallel to next-buffer)
@@ -1223,10 +1224,9 @@
 ; (self-insert-command k) : -> void
 ;    insert character k and move point
 (define ((self-insert-command k))
+  ; (display "Inserting: ") (write k) (newline)
   (define b (current-buffer))
   (buffer-insert-char-before-point! b k))
-
-
 
 ;;;
 ;;; KEYMAP
@@ -1243,12 +1243,13 @@
 
 (define (key-event->key event)
   ;(newline)
-  #;(displayln (list 'key-event->key
-                     'key                (send event get-key-code)
-                     'other-shift        (send event get-other-shift-key-code)
-                     'other-altgr        (send event get-other-altgr-key-code)
-                     'other-shift-altgr  (send event get-other-shift-altgr-key-code)
-                     'other-caps         (send event get-other-caps-key-code)))
+  (write (list 'key-event->key
+               'key                (send event get-key-code)
+               'other-shift        (send event get-other-shift-key-code)
+               'other-altgr        (send event get-other-altgr-key-code)
+               'other-shift-altgr  (send event get-other-shift-altgr-key-code)
+               'other-caps         (send event get-other-caps-key-code)))
+  (newline)
   (define shift? (send event get-shift-down))
   (define alt?   (send event get-alt-down))
   (define ctrl?  (send event get-control-down))
@@ -1271,17 +1272,21 @@
                    [alt?              (send event get-other-altgr-key-code)] ; OS X: 
                    [else              c]))
   
-  (let ([k (match k ['escape "ESC"] [#\space "space"] [_ k])])
+  (let ([k (match k 
+             ['escape "ESC"] 
+             [#\space "space"] 
+             [_ k])])
     (cond 
-      [(eq? k 'control)      'control] ; ignore control + nothing      
-      [(or ctrl? alt? meta? cmd?) (~a (cond 
-                                        [ctrl? "C-"]
-                                        [meta? "M-"]
-                                        [alt?  "A-"]
-                                        [cmd?  "D-"]
-                                        [else  ""])
-                                      k)]
-      [else                  k])))
+      [(eq? k 'control)      'control] ; ignore control + nothing
+      [(and ctrl? (eqv? #\u0000 k))   "C-space"]
+      [(or ctrl? alt? meta? cmd?)     (~a (cond 
+                                            [ctrl? "C-"]
+                                            [meta? "M-"]
+                                            [alt?  "A-"]
+                                            [cmd?  "D-"]
+                                            [else  ""])
+                                          k)]
+      [else                           k])))
 
 (define (remove-last xs)
   (if (null? xs) xs
@@ -1289,7 +1294,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    ;(write (list prefix key)) (newline)
+    (write (list prefix key)) (newline)
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -1609,11 +1614,9 @@
 (define (render-buffer w b dc xmin xmax ymin ymax)
   (unless (current-render-points-only?)
     (when b
-      ;; Active?
-      (define active? (eq? b (current-buffer)))
       ;; Highlightning for region between mark and point
-      (define text-background-color  (send dc get-text-background))
-      (define region-highlighted-color  magenta)
+      (define text-background-color (send dc get-text-background))
+      (define region-highlighted-color magenta)
       (define (set-text-background-color highlight?)
         (define background-color (if highlight? region-highlighted-color text-background-color))
         (send dc set-text-background background-color))
@@ -1631,8 +1634,7 @@
       ;; Placement of region
       (define-values (reg-begin reg-end)
         (if (use-region? b) (values (region-beginning b) (region-end b)) (values #f #f)))
-      ; (displayln (list first-row-on-screen last-row-on-screen))
-      ; suspend flush
+      ; (displayln (list 'first-line first-row-on-screen 'last-line last-row-on-screen))
       (send dc suspend-flush)  
       ; draw-string : string real real -> real
       ;   draw string t at (x,y), return point to draw next string
@@ -1657,7 +1659,7 @@
              ; find positions of points and marks in the string
              (define positions-in-string
                (sort-numbers
-                (append (for/list ([m (buffer-marks b)] #:when (<= p (mark-position m) (+ p sn)))
+                (append (for/list ([m (buffer-marks b)]  #:when (<= p (mark-position m) (+ p sn)))
                           (mark-position m))
                         (for/list ([m (buffer-points b)] #:when (<= p (mark-position m) (+ p sn)))
                           (mark-position m)))))
@@ -1678,19 +1680,7 @@
                        t))
                  (values (draw-string u x y) (+ p (string-length t)))))
              ; return the next x position
-             (values next-x next-p)]
-            ; draw text one string at a time
-            #;[(? string?) (define t ; remove final newline
-                             (if (last-string? i) (substring s 0(max 0 (- (string-length s) 1))) s))
-                           (values (draw-string t x y) (+ p (string-length s)))]
-            ; draw text one character at a time
-            #;[(? string?)
-               (for/fold ([x x]) ([c s])
-                 (unless (char=? c #\newline)
-                   (define t (string c))
-                   (define-values (w h _ __) (send dc get-text-extent t))
-                   (send dc draw-text t x y)
-                   (values (+ x w) (+ p (string-length s)))))]        
+             (values next-x next-p)]        
             [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) x]
             [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
             [_ (displayln (~a "Warning: Got " s)) x]))
@@ -1886,18 +1876,16 @@
       (define (on-paint-points on?) ; render points only
         (parameterize ([current-render-points-only? #t]
                        [current-show-points?        on?])
-          (render-frame f)))
-      
-      
+          (render-frame f)))     
       (define/override (on-paint) ; render everything
-        (render-frame f)
-        ; (define dc (send canvas get-dc))
-        ; reset drawing context
-        
-        ; (render-frame (window-frame this-window) dc) XXX
-        ; uddate status line
-        ; (display-status-line (status-line-hook)) ; XXX TODO XXX 
-        )
+        (parameterize ([current-show-points? #t])
+          (render-frame f)))
+      ; (define dc (send canvas get-dc))
+      ; reset drawing context
+      
+      ; (render-frame (window-frame this-window) dc) XXX
+      ; uddate status line
+      ; (display-status-line (status-line-hook)) ; XXX TODO XXX 
       (super-new)))
   (define canvas (new window-canvas% [parent panel]))
   (set-window-canvas! this-window canvas)
@@ -1934,10 +1922,10 @@
     (define mb (new menu-bar% (parent frame)))
     ;; File Menu
     (define fm (new menu% (label "File") (parent mb)))
-    (new-menu-item fm "New File"   #\n #f     (λ (_ e) (create-new-buffer)))
-    (new-menu-item fm "Open"       #\o #f     (λ (_ e) (open-file-or-create)))
-    (new-menu-item fm "Save"       #\s #f     (λ (_ e) (save-buffer)))
-    (new-menu-item fm "Save As..." #\s 'shift (λ (_ e) (save-buffer-as)))
+    (new-menu-item fm "New File"   #\n #f           (λ (_ e) (create-new-buffer)))
+    (new-menu-item fm "Open"       #\o #f           (λ (_ e) (open-file-or-create)))
+    (new-menu-item fm "Save"       #\s #f           (λ (_ e) (save-buffer)))
+    (new-menu-item fm "Save As..." #\s '(shift cmd) (λ (_ e) (save-buffer-as)))
     ;; Help Menu
     (new menu% (label "Help") (parent mb))) 
   (create-menubar)
