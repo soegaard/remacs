@@ -1,6 +1,6 @@
 #lang racket
-;;; TODO Fix ctrl+space produce C-\u0000 problem
-;;; TODO Maybe C-space is supposed to produce \u0000 ?
+;;; TODO Let cursor blink back and forth from dark to light colors. 
+;;;      That will work regardless of color scheme chosen by user.
 ;;; TODO Properties and faces
 ;;; TODO Modes
 ;;; TODO previous-buffer (parallel to next-buffer)
@@ -9,6 +9,7 @@
 ;;; TODO Implement open-input-buffer
 ;;; TODO Allow negative numeric prefix
 ;;; TODO Holding M and typing a number should create a numeric prefix.
+;;; TODO Completions ala http://sublimetext.info/docs/en/extensibility/completions.html
 
 (module+ test (require rackunit))
 (require "dlist.rkt" (for-syntax syntax/parse) framework)
@@ -451,7 +452,7 @@
     (set-linked-line-marks! link (set-remove (linked-line-marks link) m))
     ; insert mark in new line
     (define new-link (dlist-move (first-dcons link) r))
-    (displayln new-link)
+    ; (displayln new-link)
     (set-linked-line-marks! new-link (set-add (linked-line-marks new-link) m))
     ; the mark must point to the new line
     (set-mark-link! m new-link)))
@@ -1243,13 +1244,14 @@
 
 (define (key-event->key event)
   ;(newline)
-  (write (list 'key-event->key
-               'key                (send event get-key-code)
-               'other-shift        (send event get-other-shift-key-code)
-               'other-altgr        (send event get-other-altgr-key-code)
-               'other-shift-altgr  (send event get-other-shift-altgr-key-code)
-               'other-caps         (send event get-other-caps-key-code)))
-  (newline)
+  #;(begin
+      (write (list 'key-event->key
+                   'key                (send event get-key-code)
+                   'other-shift        (send event get-other-shift-key-code)
+                   'other-altgr        (send event get-other-altgr-key-code)
+                   'other-shift-altgr  (send event get-other-shift-altgr-key-code)
+                   'other-caps         (send event get-other-caps-key-code)))
+      (newline))
   (define shift? (send event get-shift-down))
   (define alt?   (send event get-alt-down))
   (define ctrl?  (send event get-control-down))
@@ -1294,7 +1296,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    (write (list prefix key)) (newline)
+    ; (write (list prefix key)) (newline)
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -1671,8 +1673,8 @@
              ; draw the strings one at a time
              (define-values (next-x next-p)
                (for/fold ([x x] [p p]) ([t substrings])
-                 (when (equal? reg-begin p) (set-text-background-color #t))
-                 (when (equal? reg-end   p) (set-text-background-color #f))
+                 (when (and reg-begin (= reg-begin p)) (set-text-background-color #t))
+                 (when (and reg-end   (= reg-end   p)) (set-text-background-color #f))
                  (define u ; remove final newline if present
                    (or (and (not (equal? t ""))
                             (char=? (string-ref t (- (string-length t) 1)) #\newline)
@@ -1687,12 +1689,13 @@
         (values (+ y ls)
                 (+ p (line-length l))))
       ; get point and mark height
-      (define font-width  (send dc get-char-width))
-      (define font-height (send dc get-char-height))
+      ;(define font-width  (send dc get-char-width))
+      ;(define font-height (send dc get-char-height))
+      (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
       ; draw marks (for debug)
-      (begin
+      #;(begin
         (define old-pen (send dc get-pen))
-        (define new-pen (new pen% [color base00]))
+        (define new-pen (new pen% [color yellow]))
         (send dc set-pen new-pen)
         (for ([p (buffer-marks b)])
           (define-values (r c) (mark-row+column p))
