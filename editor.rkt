@@ -200,6 +200,14 @@
                                         (loop (- i n) (cons s before) (rest after)))]
                        [else         (loop i (cons s before) (rest after))])])))
 
+(module+ test
+  (check-equal? (call-with-values (λ () (skip-strings '("ab" "cde" "fg") 0)) list)
+                '(0 () ("ab" "cde" "fg")))
+  (check-equal? (call-with-values (λ () (skip-strings '("ab" "cde" "fg") 1)) list)
+                '(1 () ("ab" "cde" "fg")))
+  (check-equal? (call-with-values (λ () (skip-strings '("ab" "cde" "fg") 2)) list)
+                '(0 ("ab") ("cde" "fg"))))
+
 ; line-insert-char! : line char index -> void
 ;   insert char c in the line l at index i
 (define (line-insert-char! l c i)
@@ -1003,11 +1011,12 @@
   ; emacs: delete-backward-char
   (define m (buffer-point b))
   (define t (buffer-text b))
-  (define-values (row col) (mark-row+column m))
-  (text-delete-backward-char! t row col)
-  (buffer-adjust-marks-due-to-deletion-before! b (mark-position m) 1)
-  (mark-move! m -1) ; point
-  (buffer-dirty! b))
+  (for ([i count]) ; TODO improve efficiency!
+    (define-values (row col) (mark-row+column m))
+    (text-delete-backward-char! t row col)
+    (buffer-adjust-marks-due-to-deletion-before! b (mark-position m) 1)
+    (mark-move! m -1) ; point
+    (buffer-dirty! b)))
 
 (define (buffer-adjust-marks-due-to-deletion-before! b p a)
   (for ([m (buffer-marks b)])
@@ -1063,7 +1072,7 @@
 
 ; The text between point and the first mark is known as the region.
 
-(define (region-beginning b)
+(define (region-beginning [b (current-buffer)])
   (define marks (buffer-marks b))
   (and (not (empty? marks))
        (let ()
@@ -1072,7 +1081,7 @@
          (min (mark-position mark)
               (mark-position point)))))
 
-(define (region-end b)
+(define (region-end [b (current-buffer)])
   (define marks (buffer-marks b))
   (and (not (empty? marks))
        (let ()
@@ -1088,6 +1097,22 @@
          (define beg (region-beginning b))
          (define end (region-end b))
          (and beg end (> end beg)))))
+
+; region-delete! : [buffer] -> void
+;   Delete all characters in region.
+(define (region-delete [b (current-buffer)])
+  (when (use-region? b)
+    (define marks (buffer-marks b))
+    (define mark  (first marks))
+    (define point (buffer-point b))
+    (when (mark< mark point)
+      (define n (- (mark-position point) (mark-position mark)))
+      (buffer-delete-backward-char! b n))
+    (when (mark< point mark)
+      (define n (- (mark-position mark) (mark-position point)))
+      (define p (+ (mark-position mark) n))
+      (buffer-move-point! b p)
+      (buffer-delete-backward-char! b n))))
 
 ;;;
 ;;; MESSAGES
@@ -1228,6 +1253,10 @@
   ; (display "Inserting: ") (write k) (newline)
   (define b (current-buffer))
   (buffer-insert-char-before-point! b k))
+
+(define-interactive (delete-region)
+  (region-delete (current-buffer)))
+
 
 ;;;
 ;;; KEYMAP
