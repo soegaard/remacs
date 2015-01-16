@@ -315,7 +315,6 @@
   (check-equal? (let ([l (line '("ab" "cd\n") 5)]) (del-char l 3) l) (line '("ab" "d\n") 4))
   (check-equal? (let ([l (line '("ab" "cd\n") 5)]) (del-char l 4) l) (line '("ab" "c\n") 4)))
 
-
 ;;;
 ;;; TEXT
 ;;;
@@ -426,10 +425,10 @@
   (define (pos m) (if (mark? m) (mark-position m) m))
   (cmp (pos m1) (pos m2)))
 (define (mark<  m1 m2) (mark-compare m1 m2 <))
-(define (mark<= m1 m2) (mark-compare m1 m2 <=))
-(define (mark>  m1 m2) (mark-compare m1 m2 >))
-(define (mark>= m1 m2) (mark-compare m1 m2 >=))
 (define (mark=  m1 m2) (mark-compare m1 m2 =))
+(define (mark>  m1 m2) (mark-compare m1 m2 >))
+(define (mark<= m1 m2) (mark-compare m1 m2 <=))
+(define (mark>= m1 m2) (mark-compare m1 m2 >=))
 
 ; new-mark : buffer string integer boolean -> mark
 (define (new-mark b name [pos 0] [fixed? #f])
@@ -439,6 +438,16 @@
   (displayln (list 'new-mark link)) ; xxx
   (set-linked-line-marks! link (set-add (linked-line-marks link) m))
   m)
+
+; delete-mark! : mark -> void
+;   remove the mark from the line it belongs to
+(define (delete-mark! m)
+  ; remove mark from line
+  (define link (mark-link m))
+  (define b (mark-buffer m))
+  (set-linked-line-marks! link (set-remove (linked-line-marks link) m))
+  ; remove mark from buffer
+  (set-buffer-marks! b (filter (λ(x) (not (eq? x m))) (buffer-marks b))))
 
 ; mark-move! : mark integer -> void
 ;  move the mark n characters
@@ -1098,6 +1107,11 @@
          (define end (region-end b))
          (and beg end (> end beg)))))
 
+(define (region-mark [b (current-buffer)])
+  (define marks (buffer-marks b))
+  (and (not (empty? marks))
+       (first marks)))
+
 ; region-delete! : [buffer] -> void
 ;   Delete all characters in region.
 (define (region-delete [b (current-buffer)])
@@ -1105,14 +1119,13 @@
     (define marks (buffer-marks b))
     (define mark  (first marks))
     (define point (buffer-point b))
-    (when (mark< mark point)
-      (define n (- (mark-position point) (mark-position mark)))
-      (buffer-delete-backward-char! b n))
-    (when (mark< point mark)
-      (define n (- (mark-position mark) (mark-position point)))
-      (define p (+ (mark-position mark) n))
-      (buffer-move-point! b p)
-      (buffer-delete-backward-char! b n))))
+    (cond
+      [(mark< mark point) (define n (- (mark-position point) (mark-position mark)))
+                          (buffer-delete-backward-char! b n)]
+      [(mark< point mark) (define n (- (mark-position mark) (mark-position point)))
+                          (buffer-move-point! b n)
+                          (buffer-delete-backward-char! b n)]
+      [else               (void)])))
 
 ;;;
 ;;; MESSAGES
@@ -1257,6 +1270,17 @@
 (define-interactive (delete-region)
   (region-delete (current-buffer)))
 
+
+; backward-delete-char
+;   Delete n characters backwards.
+;   If n=1 and region is active, delete region.
+(define-interactive (backward-delete-char [n 1])
+  (define b (current-buffer))
+  (if (and (= n 1) (use-region? b))
+      (begin
+        (delete-region)
+        (delete-mark! (region-mark)))
+      (buffer-delete-backward-char! b 1)))
 
 ;;;
 ;;; KEYMAP
@@ -1407,7 +1431,8 @@
          ["M-w"       'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
          ["D-w"       'exit] ; Cmd-w (mac only)
          [#\return    (λ () (buffer-break-line! (current-buffer)))]
-         [#\backspace (λ () (buffer-delete-backward-char! (current-buffer) 1))] ; the backspace key
+         [#\backspace backward-delete-char
+                      #;(λ () (buffer-delete-backward-char! (current-buffer) 1))] ; the backspace key
          [#\rubout    (λ () (error 'todo))]                     ; the delete key
          ['home       (λ () (buffer-move-point-to-begining-of-line! (current-buffer)))] ; fn+left
          ['end        (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
