@@ -1266,10 +1266,9 @@
   ; (display "Inserting: ") (write k) (newline)
   (define b (current-buffer))
   (buffer-insert-char-before-point! b k))
-
+ 
 (define-interactive (delete-region)
   (region-delete (current-buffer)))
-
 
 ; backward-delete-char
 ;   Delete n characters backwards.
@@ -1341,6 +1340,8 @@
                                             [cmd?  "D-"]
                                             [else  ""])
                                           k)]
+      [(and shift? (eq? k 'shift))    'shift]
+      [(and shift? (symbol? k))       (~a "S-" k)]
       [else                           k])))
 
 (define (remove-last xs)
@@ -1349,7 +1350,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    ; (write (list prefix key)) (newline)
+    (write (list prefix key)) (newline)
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -1431,9 +1432,8 @@
          ["M-w"       'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
          ["D-w"       'exit] ; Cmd-w (mac only)
          [#\return    (λ () (buffer-break-line! (current-buffer)))]
-         [#\backspace backward-delete-char
-                      #;(λ () (buffer-delete-backward-char! (current-buffer) 1))] ; the backspace key
-         [#\rubout    (λ () (error 'todo))]                     ; the delete key
+         [#\backspace backward-delete-char]                                             ; backspace
+         [#\rubout    (λ () (error 'todo))]                                             ; delete
          ['home       (λ () (buffer-move-point-to-begining-of-line! (current-buffer)))] ; fn+left
          ['end        (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
          ["C-space"   command-set-mark]
