@@ -1,4 +1,5 @@
 #lang racket
+;;; TODO Fix delete-window
 ;;; TODO Let cursor blink back and forth from dark to light colors. 
 ;;;      That will work regardless of color scheme chosen by user.
 ;;; TODO Properties and faces
@@ -41,12 +42,12 @@
 (struct stats (num-lines num-chars) #:transparent)
 ; The number of lines and number of characters in a text.
 
-#;(struct buffer (text name path points marks modes cur-line num-chars num-lines modified?))
+#;(struct buffer (text name path points marks modes cur-line num-chars num-lines modified? locals))
 (module buffer-struct racket/base
   ; buffer-name and buffer-modified? are extendeded to handle current-buffer later on
   (provide (except-out (struct-out buffer) buffer-name buffer-modified?) 
            (rename-out [buffer-name -buffer-name] [buffer-modified? -buffer-modified?]))
-  (struct buffer (text name path points marks modes cur-line num-chars num-lines modified?)
+  (struct buffer (text name path points marks modes cur-line num-chars num-lines modified? locals)
     #:transparent #:mutable))
 (require (submod "." buffer-struct))
 ; A buffer is the basic unit of text being edited.
@@ -326,7 +327,7 @@
     [(dempty? lines) (text (linked-line (new-line "\n") dempty dempty "no-version-yet" '()) 1)]
     ; linked correctly?  
     ; xxx
-    [else            (text lines (for/sum ([l lines]) 
+    [else            (text lines (for/sum ([l lines])
                                    (line-length l)))]))
 
 ; text-line : text integer -> line
@@ -644,12 +645,13 @@
      (mark-move! m (if j (- j col) col))]))
 
 (define (mark-move-to-position! m n)
+  (displayln (list 'mark-move-to-position m n))
   ; remove mark from its current line
   (define l (mark-link m))
   (set-linked-line-marks! l (set-remove (linked-line-marks l) m))
   ; find the new line
   (define-values (row col) (mark-row+column m))
-  (define d (dlist-move (text-lines (buffer-text (mark-buffer m))) n))
+  (define d (dlist-move (text-lines (buffer-text (mark-buffer m))) row))
   ; add mark to the new line
   (set-linked-line-marks! d (set-add (linked-line-marks d) m))
   ; store the new position
@@ -712,7 +714,8 @@
                     0     ; cur-line
                     0     ; num-chars
                     0     ; num-lines
-                    #f))  ; modified?
+                    #f    ; modified?
+                    (make-empty-namespace)))  ; locals
   (define point (new-mark b "*point*"))
   (define points (list point))
   (set-buffer-points! b points)
@@ -1079,7 +1082,9 @@
 ;;; REGIONS
 ;;;
 
-; The text between point and the first mark is known as the region.
+; region = text between point and the first mark is known as the region.
+; set-mark-command sets a mark, and then a region exists
+
 
 (define (region-beginning [b (current-buffer)])
   (define marks (buffer-marks b))
@@ -1112,6 +1117,8 @@
   (and (not (empty? marks))
        (first marks)))
 
+; Note: Emacs has delete-active-region, delete-and-extract-region, and, delete-region
+
 ; region-delete! : [buffer] -> void
 ;   Delete all characters in region.
 (define (region-delete [b (current-buffer)])
@@ -1138,13 +1145,11 @@
   (send msg set-label str))
 
 ;;;
-;;; INTERACTIVE COMMANDS
+;;; COMPLETIONS
 ;;;
 
-;;; Interactive commands are user commands. I.e. the user can
-;;; call them via key-bindings or via M-x.
-;;; Names of interactive commands are registered in order to 
-;;; provide completions for the user.
+(define current-completion-buffer (make-parameter #f))
+(define current-completion-window (make-parameter #f))
 
 ; (require "trie.rkt")
 (require (only-in srfi/13 string-prefix-length))
@@ -1163,11 +1168,25 @@
     [(list x  y zs ...) (longest-common-prefix 
                          (cons (substring x 0 (string-prefix-length x y)) zs))]))
 
-(define all-interactice-commands-ht (make-hash))
+(define (completions->text so-far cs)
+  (define explanation (list (~a "Completions for: " so-far)))
+  (new-text (list->lines (for/list ([c (append explanation cs)]) (~a c "\n")))))
+
+;;;
+;;; INTERACTIVE COMMANDS
+;;;
+
+;;; Interactive commands are user commands. I.e. the user can
+;;; call them via key-bindings or via M-x.
+;;; Names of interactive commands are registered in order to 
+;;; provide completions for the user.
+
+
+(define all-interactive-commands-ht (make-hash))
 (define (add-interactive-command name cmd)
-  (hash-set! all-interactice-commands-ht (~a name) cmd))
+  (hash-set! all-interactive-commands-ht (~a name) cmd))
 (define (lookup-interactive-command cmd-name)
-  (hash-ref all-interactice-commands-ht (~a cmd-name) #f))
+  (hash-ref all-interactive-commands-ht (~a cmd-name) #f))
 
 (define-syntax (define-interactive stx)
   (syntax-parse stx
@@ -1198,9 +1217,10 @@
 (define-interactive (save-buffer)         (save-buffer!    (current-buffer)) (refresh-frame))
 (define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
 (define-interactive (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
-(define-interactive (beginning-of-buffer) (buffer-move-point-to-position! (current-buffer) 0))
-(define-interactive (end-of-buffer)       (buffer-move-point-to-position! 
-                                           (current-buffer) (buffer-length (current-buffer))))
+(define-interactive (beginning-of-buffer [b (current-buffer)]) (buffer-move-point-to-position! b 0))
+(define-interactive (end-of-buffer       [b (current-buffer)]) 
+  (buffer-move-point-to-position! b (- (buffer-length b) 1)))
+
 (define-interactive (open-file-or-create [path (finder:get-file)])
   (when path ; #f = none selected
     (define b (buffer-open-file-or-create path))
@@ -1221,6 +1241,9 @@
   (current-window w)
   (current-buffer (window-buffer w))
   (send (window-canvas w) focus))
+
+(define-interactive (delete-window [w (current-window)])
+  (window-delete! w))
 
 (define-interactive (maximize-frame [f (current-frame)]) ; maximize / demaximize frame
   (when (frame? f)
@@ -1266,9 +1289,9 @@
   ; (display "Inserting: ") (write k) (newline)
   (define b (current-buffer))
   (buffer-insert-char-before-point! b k))
- 
-(define-interactive (delete-region)
-  (region-delete (current-buffer)))
+
+(define-interactive (delete-region [b (current-buffer)])
+  (region-delete b))
 
 ; backward-delete-char
 ;   Delete n characters backwards.
@@ -1280,6 +1303,14 @@
         (delete-region)
         (delete-mark! (region-mark)))
       (buffer-delete-backward-char! b 1)))
+
+(define-interactive (mark-whole-buffer [b (current-buffer)])
+  (parameterize ([current-buffer b])
+    (end-of-buffer)
+    (command-set-mark)
+    (beginning-of-buffer)))
+
+
 
 ;;;
 ;;; KEYMAP
@@ -1348,9 +1379,12 @@
   (if (null? xs) xs
       (reverse (rest (reverse xs)))))
 
+
+
 (define global-keymap
   (λ (prefix key)
-    (write (list prefix key)) (newline)
+    ; (write (list prefix key)) (newline)
+    
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -1367,11 +1401,34 @@
                       `(replace ,(cons "M-x" new))]
          [#\tab       (define so-far (string-append* (map ~a more)))
                       (define cs     (completions-lookup so-far))
-                      (cond [(empty? cs) (message (~a "M-x " so-far key))
-                                         'ignore]
-                            [else        (define pre (longest-common-prefix cs))
-                                         (message (~a "M-x " pre))
-                                         (list 'replace (cons "M-x" (string->list pre)))])]
+                      (cond 
+                        [(empty? cs) (message (~a "M-x " so-far key))
+                                     'ignore]
+                        [else
+                         (define b (current-completion-buffer))
+                         (unless b 
+                           ;; no prev completions buffer => make a new
+                           (define bn "*completions*")
+                           (define nb (new-buffer (new-text) #f bn))
+                           (current-completion-buffer nb)
+                           (set! b nb) 
+                           ;; show it new window
+                           (split-window-right)   ; both windows show same buffer
+                           (define ws (frame-window-tree (current-frame)))
+                           (define w  (list-next ws (current-window) eq?))
+                           (define ob (window-buffer w))
+                           (set-window-buffer! w nb)
+                           (current-completion-window ob))
+                         ;; text in *completion* buffer
+                         (define t (completions->text so-far cs))
+                         ;; replace text in completions buffer
+                         (mark-whole-buffer b)
+                         (delete-region b)
+                         (buffer-insert-string-before-point! b (text->string t))
+                         ;; replace prefix with the longest unique completion
+                         (define pre (longest-common-prefix cs))
+                         (message (~a "M-x " pre))
+                         (list 'replace (cons "M-x" (string->list pre)))])]
          [#\return    (define cmd-name (string-append* (map ~a more)))
                       (define cmd      (lookup-interactive-command cmd-name))
                       (message "")
@@ -1587,6 +1644,50 @@
     [else (error "Internal Error")])
   (send c focus))
 
+(define (window-delete! w)
+  (define p (window-parent w))
+  (displayln (list 'parent p))
+  (cond
+    [(or (vertical-split-window? p)
+         (horizontal-split-window? p))
+     ;; get other window
+     (define gp (window-parent p))                    ; grand parent
+     (displayln (list 'gp gp))
+     (define ow                                       ; other window
+       (cond 
+         [(vertical-split-window? p) 
+          (if (eq? (vertical-split-window-above p) w) ; above?
+              (vertical-split-window-below p)
+              (vertical-split-window-above p))]
+         [(horizontal-split-window? p) 
+          (if (eq? (horizontal-split-window-left p) w) ; left?
+              (horizontal-split-window-left p)
+              (horizontal-split-window-right p))]
+         [else (error 'window-delete! "internal error")]))
+     ;; replace parent with other window
+     (set-window-parent! ow gp)
+     (when (eq? (current-window) w) (current-window ow))
+     (current-buffer (window-buffer (current-window)))
+     (cond
+       [(eq? gp 'root) 
+        (define f (window-frame w))
+        (set-frame-windows! f ow)
+        (define panel (frame-panel f))
+        (send panel change-children (λ(_) '()))
+        ; (send (window-panel ow) reparent panel)
+        (send panel add-child (window-panel ow))]
+       [(horizontal-split-window? gp)
+        (if (eq? (horizontal-split-window-left gp) p)
+            (set-horizontal-split-window-left! gp ow)
+            (set-horizontal-split-window-right! gp ow))]
+       [(vertical-split-window? gp)
+        (if (eq? (vertical-split-window-above gp) p)
+            (set-vertical-split-window-above! gp ow)
+            (set-vertical-split-window-below! gp ow))]
+       [else (error 'window-delete! "internal error 2")])]
+    ;; original window can't be deleted
+    [else (error 'window-delete "can't delete window")]))
+
 ;;;
 ;;; FRAMES
 ;;;
@@ -1748,16 +1849,16 @@
       (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
       ; draw marks (for debug)
       #;(begin
-        (define old-pen (send dc get-pen))
-        (define new-pen (new pen% [color yellow]))
-        (send dc set-pen new-pen)
-        (for ([p (buffer-marks b)])
-          (define-values (r c) (mark-row+column p))
-          (define x (+ xmin (* c    font-width)))
-          (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
-          (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
-            (send dc draw-line x y x (min ymax (+ y font-height -1)))))
-        (send dc set-pen old-pen))
+          (define old-pen (send dc get-pen))
+          (define new-pen (new pen% [color yellow]))
+          (send dc set-pen new-pen)
+          (for ([p (buffer-marks b)])
+            (define-values (r c) (mark-row+column p))
+            (define x (+ xmin (* c    font-width)))
+            (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
+            (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
+              (send dc draw-line x y x (min ymax (+ y font-height -1)))))
+          (send dc set-pen old-pen))
       ; resume flush
       (send dc resume-flush)))
   ; draw points
