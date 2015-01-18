@@ -88,8 +88,9 @@
 ; A frame contains one or multiple windows.
 ; About to change: The frame is render onto its canvas.
 
-(struct horizontal-split-window window (left  right) #:mutable #:transparent)
-(struct   vertical-split-window window (above below) #:mutable #:transparent)
+(struct            split-window       window ()            #:mutable #:transparent)
+(struct horizontal-split-window split-window (left  right) #:mutable #:transparent)
+(struct   vertical-split-window split-window (above below) #:mutable #:transparent)
 
 ; The buffer of a split window is #f.
 
@@ -1447,6 +1448,7 @@
          [_           #f])]
       [(list "C-x")
        (match key
+         [#\0         delete-window]
          [#\2         split-window-below]
          [#\3         split-window-right]
          [#\s         save-some-buffers]
@@ -1648,8 +1650,7 @@
   (define p (window-parent w))
   (displayln (list 'parent p))
   (cond
-    [(or (vertical-split-window? p)
-         (horizontal-split-window? p))
+    [(split-window? p)
      ;; get other window
      (define gp (window-parent p))                    ; grand parent
      (displayln (list 'gp gp))
@@ -1673,18 +1674,39 @@
         (define f (window-frame w))
         (set-frame-windows! f ow)
         (define panel (frame-panel f))
-        (send panel change-children (λ(_) '()))
-        ; (send (window-panel ow) reparent panel)
-        (send panel add-child (window-panel ow))]
+        (send panel change-children  (λ(cs) '()))
+        (if (split-window? ow)
+            (send (window-panel ow) reparent panel)
+            (send (window-canvas ow) reparent panel))]
        [(horizontal-split-window? gp)
+        ; remove parent from panel of grand parent
+        (define panel (window-panel gp))        
+        (send panel change-children (λ(cs) '()))
+        ; add ow to grand parent
+        (if (split-window? ow)
+            (send (window-panel ow) reparent panel)
+            (send (window-canvas ow) reparent panel))
+        ; put ow into the same slot of gp as p were
         (if (eq? (horizontal-split-window-left gp) p)
             (set-horizontal-split-window-left! gp ow)
             (set-horizontal-split-window-right! gp ow))]
        [(vertical-split-window? gp)
+        ; remove parent from panel of grand parent
+        (define panel (window-panel gp))
+        (send panel change-children (λ(cs) '()))
+        ; add ow to grandparent
+        (if (split-window? ow)
+            (send (window-panel ow) reparent panel)
+            (send (window-canvas ow) reparent panel))
+        ; put ow into same slot of gp as p were
         (if (eq? (vertical-split-window-above gp) p)
             (set-vertical-split-window-above! gp ow)
             (set-vertical-split-window-below! gp ow))]
-       [else (error 'window-delete! "internal error 2")])]
+       [else (error 'window-delete! "internal error 2")])
+     ;; send keyboard focus to other window
+     (if (split-window? ow)
+         (send (window-panel ow) focus)
+         (send (window-canvas ow) focus))]
     ;; original window can't be deleted
     [else (error 'window-delete "can't delete window")]))
 
