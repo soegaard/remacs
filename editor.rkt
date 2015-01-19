@@ -1,5 +1,6 @@
 #lang racket
-;;; TODO Fix delete-window
+;;; TODO Fix delete-window The other other window of the parent needs 
+;;; to be added to the grandparent
 ;;; TODO Let cursor blink back and forth from dark to light colors. 
 ;;;      That will work regardless of color scheme chosen by user.
 ;;; TODO Properties and faces
@@ -1646,7 +1647,16 @@
     [else (error "Internal Error")])
   (send c focus))
 
+(define (left-window?  hw w) (eq? (horizontal-split-window-left  hw) w))
+(define (right-window? hw w) (eq? (horizontal-split-window-right hw) w))
+(define (above-window? hw w) (eq? (vertical-split-window-above   hw) w))
+(define (below-window? hw w) (eq? (vertical-split-window-below   hw) w))
+
 (define (window-delete! w)
+  (define (window-backend w)
+    (if (split-window? w)
+        (window-panel  w)
+        (window-canvas w)))    
   (define p (window-parent w))
   (displayln (list 'parent p))
   (cond
@@ -1657,13 +1667,13 @@
      (define ow                                       ; other window
        (cond 
          [(vertical-split-window? p) 
-          (if (eq? (vertical-split-window-above p) w) ; above?
+          (if (above-window? p w)
               (vertical-split-window-below p)
               (vertical-split-window-above p))]
          [(horizontal-split-window? p) 
-          (if (eq? (horizontal-split-window-left p) w) ; left?
-              (horizontal-split-window-left p)
-              (horizontal-split-window-right p))]
+          (if (left-window? p w)
+              (horizontal-split-window-right p)
+              (horizontal-split-window-left p))]
          [else (error 'window-delete! "internal error")]))
      ;; replace parent with other window
      (set-window-parent! ow gp)
@@ -1674,39 +1684,46 @@
         (define f (window-frame w))
         (set-frame-windows! f ow)
         (define panel (frame-panel f))
-        (send panel change-children  (λ(cs) '()))
-        (if (split-window? ow)
-            (send (window-panel ow) reparent panel)
-            (send (window-canvas ow) reparent panel))]
+        (send panel change-children  (λ (cs) '()))
+        (send (window-backend ow) reparent panel)]
        [(horizontal-split-window? gp)
-        ; remove parent from panel of grand parent
-        (define panel (window-panel gp))        
-        (send panel change-children (λ(cs) '()))
-        ; add ow to grand parent
-        (if (split-window? ow)
-            (send (window-panel ow) reparent panel)
-            (send (window-canvas ow) reparent panel))
+        ; remove all children of the panel of grand parent        
+        (define panel (window-panel gp))
+        (send panel change-children (λ (cs) '()))        
+        ; add child and ow in correct order
+        (define (add-to-grand-parent w) (send (window-backend w) reparent panel))
+        (cond 
+          [(left-window? gp p) 
+           (add-to-grand-parent ow)
+           (add-to-grand-parent (horizontal-split-window-right gp))]
+          [else                
+           (add-to-grand-parent (horizontal-split-window-left  gp))
+           (add-to-grand-parent ow)])
         ; put ow into the same slot of gp as p were
-        (if (eq? (horizontal-split-window-left gp) p)
-            (set-horizontal-split-window-left! gp ow)
+        (if (left-window? gp p)
+            (set-horizontal-split-window-left!  gp ow)
             (set-horizontal-split-window-right! gp ow))]
        [(vertical-split-window? gp)
-        ; remove parent from panel of grand parent
+        ; remove all children of the panel of the grand parent
         (define panel (window-panel gp))
-        (send panel change-children (λ(cs) '()))
-        ; add ow to grandparent
-        (if (split-window? ow)
-            (send (window-panel ow) reparent panel)
-            (send (window-canvas ow) reparent panel))
+        (send panel change-children (λ (cs) '()))
+        ; add child and ow in correct order
+        (define (add-to-grand-parent w) (send (window-backend w) reparent panel))
+        (cond
+          [(above-window? gp p)
+           (add-to-grand-parent ow)
+           (add-to-grand-parent (vertical-split-window-below gp))]
+          [(below-window? gp p)
+           (add-to-grand-parent (vertical-split-window-above gp))
+           (add-to-grand-parent ow)]
+          [else (error)])
         ; put ow into same slot of gp as p were
-        (if (eq? (vertical-split-window-above gp) p)
+        (if (above-window? gp p)
             (set-vertical-split-window-above! gp ow)
             (set-vertical-split-window-below! gp ow))]
        [else (error 'window-delete! "internal error 2")])
      ;; send keyboard focus to other window
-     (if (split-window? ow)
-         (send (window-panel ow) focus)
-         (send (window-canvas ow) focus))]
+     (send (window-backend ow) focus)]
     ;; original window can't be deleted
     [else (error 'window-delete "can't delete window")]))
 
