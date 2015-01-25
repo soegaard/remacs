@@ -1,6 +1,4 @@
 #lang racket
-;;; TODO Fix delete-window The other other window of the parent needs 
-;;; to be added to the grandparent
 ;;; TODO Let cursor blink back and forth from dark to light colors. 
 ;;;      That will work regardless of color scheme chosen by user.
 ;;; TODO Properties and faces
@@ -1702,12 +1700,14 @@
   ;; The window structures are now updated, but the gui panels need to be updated too.
   (cond
     [(eq? gp 'root)
+     (set-window-borders! ow '()) ; root has no borders
      (define f (window-frame w))
      (set-frame-windows! f ow)
      (define panel (frame-panel f))
      (send panel change-children  (λ (cs) '()))
      (send (window-backend ow) reparent panel)]
     [else ; gp is a split window
+     (set-window-borders! ow (window-borders p))
      (define panel (window-panel gp))
      ; make ow a child of the grand parent
      (send (window-backend ow) reparent panel)
@@ -1716,10 +1716,9 @@
            (λ (cs) (replace (window-backend p) (window-backend ow)
                             (filter (λ(c) (not (eq? c (window-backend ow))))
                                     cs))))])
+  (send fp end-container-sequence)
   ;; send keyboard focus to other window
-  (send (window-backend ow) focus)
-  (send fp end-container-sequence))
-
+  (send (window-backend ow) focus))
 
 ;;;
 ;;; FRAMES
