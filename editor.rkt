@@ -1652,80 +1652,74 @@
 (define (above-window? hw w) (eq? (vertical-split-window-above   hw) w))
 (define (below-window? hw w) (eq? (vertical-split-window-below   hw) w))
 
+; replace : any any list -> list
+;   copy zs but replace occurences of x with y
+(define (replace x y zs)
+  (for/list ([z (in-list zs)])
+    (if (eq? z x) y z)))
+
 (define (window-delete! w)
+  (define fp (window-panel (frame-windows (current-frame))))
+  (send fp begin-container-sequence)
   (define (window-backend w)
-    (if (split-window? w)
-        (window-panel  w)
-        (window-canvas w)))    
+    ; split-windows are backed by a panel holding subwindows,
+    ; whereas a single window is backed by a canvas
+    (if (split-window? w) (window-panel  w) (window-canvas w)))
+  ; to delete the window w, it must be removed from its parent
   (define p (window-parent w))
   (displayln (list 'parent p))
+  ; only split windows can hold subwindows
+  (unless (split-window? p)
+    (error 'window-delete "can't delete window"))
+  ;; since the parent is a split window, it must hold another window:
+  (define ow ; other window
+    (cond [(vertical-split-window? p) 
+           (if (above-window? p w)
+               (vertical-split-window-below p)
+               (vertical-split-window-above p))]
+          [(horizontal-split-window? p) 
+           (if (left-window? p w)
+               (horizontal-split-window-right p)
+               (horizontal-split-window-left p))]
+          [else (error 'window-delete! "internal error")]))
+  ;; The sole purpose of the parent is to hold w and ow, 
+  ;; since w is to be deleted, the parent p is no longer needed.
+  ;; To replace p with ow, we need to grab the grand parent and replace parent with other window
+  (define gp (window-parent p))
+  (set-window-parent! ow gp)
+  (cond [(horizontal-split-window? gp)
+         (if (left-window? gp p)
+             (set-horizontal-split-window-left!  gp ow)
+             (set-horizontal-split-window-right! gp ow))]
+        [(vertical-split-window? gp)
+         (if (above-window? gp p)
+             (set-vertical-split-window-above! gp ow)
+             (set-vertical-split-window-below! gp ow))]
+        [else (void)])    
+  ;; if the current window is deleted, we need to make a new window the current one.
+  (when (eq? (current-window) w) (current-window ow))
+  (current-buffer (window-buffer (current-window)))
+  ;; The window structures are now updated, but the gui panels need to be updated too.
   (cond
-    [(split-window? p)
-     ;; get other window
-     (define gp (window-parent p))                    ; grand parent
-     (displayln (list 'gp gp))
-     (define ow                                       ; other window
-       (cond 
-         [(vertical-split-window? p) 
-          (if (above-window? p w)
-              (vertical-split-window-below p)
-              (vertical-split-window-above p))]
-         [(horizontal-split-window? p) 
-          (if (left-window? p w)
-              (horizontal-split-window-right p)
-              (horizontal-split-window-left p))]
-         [else (error 'window-delete! "internal error")]))
-     ;; replace parent with other window
-     (set-window-parent! ow gp)
-     (when (eq? (current-window) w) (current-window ow))
-     (current-buffer (window-buffer (current-window)))
-     (cond
-       [(eq? gp 'root) 
-        (define f (window-frame w))
-        (set-frame-windows! f ow)
-        (define panel (frame-panel f))
-        (send panel change-children  (λ (cs) '()))
-        (send (window-backend ow) reparent panel)]
-       [(horizontal-split-window? gp)
-        ; remove all children of the panel of grand parent        
-        (define panel (window-panel gp))
-        (send panel change-children (λ (cs) '()))        
-        ; add child and ow in correct order
-        (define (add-to-grand-parent w) (send (window-backend w) reparent panel))
-        (cond 
-          [(left-window? gp p) 
-           (add-to-grand-parent ow)
-           (add-to-grand-parent (horizontal-split-window-right gp))]
-          [else                
-           (add-to-grand-parent (horizontal-split-window-left  gp))
-           (add-to-grand-parent ow)])
-        ; put ow into the same slot of gp as p were
-        (if (left-window? gp p)
-            (set-horizontal-split-window-left!  gp ow)
-            (set-horizontal-split-window-right! gp ow))]
-       [(vertical-split-window? gp)
-        ; remove all children of the panel of the grand parent
-        (define panel (window-panel gp))
-        (send panel change-children (λ (cs) '()))
-        ; add child and ow in correct order
-        (define (add-to-grand-parent w) (send (window-backend w) reparent panel))
-        (cond
-          [(above-window? gp p)
-           (add-to-grand-parent ow)
-           (add-to-grand-parent (vertical-split-window-below gp))]
-          [(below-window? gp p)
-           (add-to-grand-parent (vertical-split-window-above gp))
-           (add-to-grand-parent ow)]
-          [else (error)])
-        ; put ow into same slot of gp as p were
-        (if (above-window? gp p)
-            (set-vertical-split-window-above! gp ow)
-            (set-vertical-split-window-below! gp ow))]
-       [else (error 'window-delete! "internal error 2")])
-     ;; send keyboard focus to other window
-     (send (window-backend ow) focus)]
-    ;; original window can't be deleted
-    [else (error 'window-delete "can't delete window")]))
+    [(eq? gp 'root)
+     (define f (window-frame w))
+     (set-frame-windows! f ow)
+     (define panel (frame-panel f))
+     (send panel change-children  (λ (cs) '()))
+     (send (window-backend ow) reparent panel)]
+    [else ; gp is a split window
+     (define panel (window-panel gp))
+     ; make ow a child of the grand parent
+     (send (window-backend ow) reparent panel)
+     ; now the ow is last child, so we need to move to the where p is
+     (send panel change-children 
+           (λ (cs) (replace (window-backend p) (window-backend ow)
+                            (filter (λ(c) (not (eq? c (window-backend ow))))
+                                    cs))))])
+  ;; send keyboard focus to other window
+  (send (window-backend ow) focus)
+  (send fp end-container-sequence))
+
 
 ;;;
 ;;; FRAMES
