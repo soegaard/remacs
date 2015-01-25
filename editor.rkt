@@ -14,6 +14,7 @@
 (module+ test (require rackunit))
 (require "dlist.rkt" (for-syntax syntax/parse) framework)
 (require racket/gui/base)
+(require (only-in srfi/1 circular-list))
 
 ;;;
 ;;; REPRESENTATION
@@ -1743,9 +1744,9 @@
 ;;;
 
 (define (hex->color x)
-  (define red   (remainder           x        256))
+  (define blue  (remainder           x        256))
   (define green (remainder (quotient x   256) 256))
-  (define blue  (remainder (quotient x 65536) 256))
+  (define red   (remainder (quotient x 65536) 256))
   (make-object color% red green blue))
 
 (define base03  (hex->color #x002b36)) ; brblack    background   (darkest)
@@ -1766,6 +1767,15 @@
 (define blue    (hex->color #x268bd2)) ; blue       accent color
 (define cyan    (hex->color #x2aa198)) ; cyan       accent color
 (define green   (hex->color #x859900)) ; green      accent color
+
+(define background-color base03)
+(define text-color       base1)
+(define border-color     base00)
+(define border-pen       (new pen% [color base00] [width 1] [style 'solid] [cap 'butt] [join 'miter]))
+
+(define point-colors (circular-list base03 base03 base03 base02 base01 base00
+                                    base0 base1 base2 base3 base3 base2 base1 base0
+                                    base00 base01 base02 base03))
 
 ;;;
 ;;; FONT
@@ -1798,7 +1808,7 @@
 
 (define current-render-points-only? (make-parameter #f))
 (define current-show-points?        (make-parameter #f))
-
+(define current-point-color         (make-parameter point-colors))
 
 (define (render-buffer w b dc xmin xmax ymin ymax)
   (unless (current-render-points-only?)
@@ -1897,6 +1907,10 @@
   (render-points w b dc xmin xmax ymin ymax))
 
 (define (render-points w b dc xmin xmax ymin ymax)
+  (define colors (current-point-color))
+  (define points-pen (new pen% [color (car colors)]))
+  (current-point-color (cdr colors))
+  
   (define points-on-pen  (new pen% [color text-color]))
   (define points-off-pen (new pen% [color background-color]))
   ; get point and mark height
@@ -1912,7 +1926,10 @@
         (define y (+ ymin (* r (+ font-height -2)))) ; why -2 ?
         (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
           (define old-pen (send dc get-pen))
-          (send dc set-pen (if on? points-on-pen points-off-pen))
+          (send dc set-pen (if #t ;on? 
+                               points-pen
+                               ; points-on-pen 
+                               points-off-pen))
           (send dc draw-line x y x (min ymax (+ y font-height -1)))
           (send dc set-pen old-pen))))))
 
@@ -1924,7 +1941,7 @@
   (use-default-font-settings)
   (send dc set-font default-fixed-font)
   (send dc set-text-mode 'solid) ; solid -> use text background color
-  ; (send dc set-background "white")
+  (send dc set-background background-color)
   (unless (current-render-points-only?)
     (send dc clear))
   
@@ -1939,12 +1956,15 @@
   
   (define bs (window-borders w))
   ; bordersize is 2 ?
+  (define op (send dc get-pen))
+  (send dc set-pen border-pen)
   (when (set-member? bs 'top)
     (send dc draw-line 0 0 xmax 0)
     (set! ymin (+ ymin 1)))
   (when (set-member? bs 'left)
     (send dc draw-line 0 0 0 ymax)
     (set! xmin (+ xmin 1)))
+  (send dc set-pen op)
   (render-buffer w (window-buffer w) dc xmin xmax ymin ymax))
 
 (define (render-windows win)
@@ -2008,9 +2028,6 @@
     #;(send (frame-echo-area f) set-message s)
     1)
 
-;;; COLORS
-(define background-color base1)
-(define text-color       base03)
 
 ; create-window-canvas : window panel% -> canvas
 ; this-window 
@@ -2083,7 +2100,7 @@
   (send canvas min-client-height 20)
   ; start update-points thread
   (thread (λ () (let loop ([on? #t])
-                  (sleep/yield 0.5)
+                  (sleep/yield 0.1)
                   (send canvas on-paint-points on?)
                   (loop (not on?)))))
   canvas)
