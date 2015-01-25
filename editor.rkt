@@ -1311,8 +1311,6 @@
     (command-set-mark)
     (beginning-of-buffer)))
 
-
-
 ;;;
 ;;; KEYMAP
 ;;;
@@ -1329,16 +1327,17 @@
 (define (key-event->key event)
   ;(newline)
   #;(begin
-      (write (list 'key-event->key
-                   'key                (send event get-key-code)
-                   'other-shift        (send event get-other-shift-key-code)
-                   'other-altgr        (send event get-other-altgr-key-code)
-                   'other-shift-altgr  (send event get-other-shift-altgr-key-code)
-                   'other-caps         (send event get-other-caps-key-code)))
-      (newline))
+    (write (list 'key-event->key
+                 'key                (send event get-key-code)
+                 'other-shift        (send event get-other-shift-key-code)
+                 'other-altgr        (send event get-other-altgr-key-code)
+                 'other-shift-altgr  (send event get-other-shift-altgr-key-code)
+                 'other-caps         (send event get-other-caps-key-code)))
+    (newline))
   (define shift? (send event get-shift-down))
   (define alt?   (send event get-alt-down))
   (define ctrl?  (send event get-control-down))
+  (define caps?  (send event get-caps-down))
   (define cmd?   (case (system-type 'os)
                    ; racket reports cmd down as meta down
                    [(macosx) (send event get-meta-down)]
@@ -1348,7 +1347,7 @@
                    ; use the alt key as meta
                    [(macosx) (send event get-alt-down)]
                    [else     (send event get-meta-down)]))    ; mac: cmd, pc: alt, unix: meta
-  ; (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta? 'cmd cmd?))
+  ; (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta? 'cmd cmd? 'caps caps?))
   
   (define c      (send event get-key-code))
   ; k = key without modifier
@@ -1486,7 +1485,7 @@
          ["M-d"       (λ () (buffer-display (current-buffer)))]
          ["M-s"       save-buffer]
          ["M-S"       save-buffer-as]
-         ["M-o"       open-file-or-create]
+         ["D-o"       open-file-or-create]
          ["M-e"       eval-buffer]
          ["M-w"       'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
          ["D-w"       'exit] ; Cmd-w (mac only)
@@ -2063,9 +2062,13 @@
         (define key-code (send event get-key-code))
         (unless (equal? key-code 'release)
           (define key (key-event->key event))
-          ; (displayln (list 'key key 'shift (get-shift-key-code event)))
           ; (send msg set-label (~a "key: " key))
-          (match (global-keymap prefix key)
+          (define binding (or (global-keymap prefix key)
+                              ; If A-<key> is unbound, then use the character as-is.
+                              ; This makes A-a insert å.
+                              (and (char? key-code)
+                                   (global-keymap prefix key-code))))
+          (match binding
             [(? procedure? thunk)  (clear-prefix!) (thunk)]
             [(list 'replace pre)   (set! prefix pre)]
             ['prefix               (add-prefix! key)]
