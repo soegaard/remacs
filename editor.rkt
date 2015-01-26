@@ -1207,23 +1207,23 @@
 
 (define-interactive (beginning-of-line)   (buffer-move-point-to-begining-of-line! (current-buffer)))
 (define-interactive (end-of-line)         (buffer-move-point-to-end-of-line! (current-buffer)))
-(define-interactive (backward-char)       (buffer-move-point! (current-buffer) -1))
-(define-interactive (forward-char)        (buffer-move-point! (current-buffer) +1))
+(define-interactive (backward-char)       
+  (cond [(region-mark) => delete-mark!])
+  (buffer-move-point! (current-buffer) -1))
+(define-interactive (forward-char)        
+  (cond [(region-mark) => delete-mark!]) 
+  (buffer-move-point! (current-buffer) +1))
 (define-interactive (previous-line)       (buffer-move-point-up! (current-buffer)))
 (define-interactive (next-line)           (buffer-move-point-down! (current-buffer)))
 (define-interactive (backward-word)       (buffer-backward-word! (current-buffer)))
 (define-interactive (forward-word)        (buffer-forward-word! (current-buffer)))
 (define-interactive (move-to-column n)    (buffer-move-to-column! (current-buffer) n)) ; n=num prefix 
-
 (define-interactive (backward-char/extend-region)
-  (when (empty? (buffer-marks (current-buffer)))
-    (command-set-mark))
-  (backward-char))
-
+  (when (empty? (buffer-marks (current-buffer))) (command-set-mark))
+  (buffer-move-point! (current-buffer) -1))
 (define-interactive (forward-char/extend-region)
-  (when (empty? (buffer-marks (current-buffer)))
-    (command-set-mark))
-  (forward-char))
+  (when (empty? (buffer-marks (current-buffer))) (command-set-mark))
+  (buffer-move-point! (current-buffer) +1))
 
 (define-interactive (save-buffer)         (save-buffer!    (current-buffer)) (refresh-frame))
 (define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
