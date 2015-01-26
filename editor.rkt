@@ -1215,6 +1215,16 @@
 (define-interactive (forward-word)        (buffer-forward-word! (current-buffer)))
 (define-interactive (move-to-column n)    (buffer-move-to-column! (current-buffer) n)) ; n=num prefix 
 
+(define-interactive (backward-char/extend-region)
+  (when (empty? (buffer-marks (current-buffer)))
+    (command-set-mark))
+  (backward-char))
+
+(define-interactive (forward-char/extend-region)
+  (when (empty? (buffer-marks (current-buffer)))
+    (command-set-mark))
+  (forward-char))
+
 (define-interactive (save-buffer)         (save-buffer!    (current-buffer)) (refresh-frame))
 (define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
 (define-interactive (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
@@ -1383,8 +1393,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    ; (write (list prefix key)) (newline)
-    
+    (write (list prefix key)) (newline)    
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -1461,10 +1470,13 @@
          ["C-x"       'prefix]
          ["C-u"       'prefix]
          ["M-x"       (message "M-x ") 'prefix]
+         ; movement
          ['left       backward-char]
          ['right      forward-char]
-         ['up         previous-line]
-         ['down       next-line]         
+         ['up         previous-line]        
+         ['down       next-line]
+         ["S-left"    backward-char/extend-region]
+         ["S-right"   forward-char/extend-region]         
          ; Ctrl + something
          ["C-a"       beginning-of-line]
          ["C-b"       backward-char]
