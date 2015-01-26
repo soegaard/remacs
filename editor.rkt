@@ -1,6 +1,5 @@
 #lang racket
-;;; TODO Let cursor blink back and forth from dark to light colors. 
-;;;      That will work regardless of color scheme chosen by user.
+;;; TODO left and right needs to toggle transient-mode rather than deactivate the mark
 ;;; TODO Properties and faces
 ;;; TODO Modes
 ;;; TODO previous-buffer (parallel to next-buffer)
@@ -61,14 +60,17 @@
 ; If modified? is true, then the buffer has been modied since the last
 ; read or save of the file.
 ; The list modes contains the active modes (see below).
+; marks = list of marks
 ; A buffer can have multiple marks:
 
-(struct mark (buffer link position name fixed?) #:transparent #:mutable)
+(struct mark (buffer link position name fixed? active?) #:transparent #:mutable)
 ; A mark rembers a position in the text of a buffer.
 ; The mark stores the link (linked-line) which hold the line.
 ; The mark name can be used to refer to the mark.
 ; fixed? = #f  A normal mark moves when insertions are made to the buffer.
 ; fixed? = #t  A fixed-mark remain in place.
+; active? =#t  text between mark and point is an active region 
+; active? =#f  region is non-active (will not be highlighted)
 
 ; If there is exactly one mark, the area between the point and the mark
 ; is called a region.
@@ -433,13 +435,20 @@
 (define (mark>= m1 m2) (mark-compare m1 m2 >=))
 
 ; new-mark : buffer string integer boolean -> mark
-(define (new-mark b name [pos 0] [fixed? #f])
+(define (new-mark b name [pos 0] [fixed? #f] #:active? [active? #f])
   ; (define link (text-lines (buffer-text b)))
   (define link (text-lines (buffer-text b)))
-  (define m (mark b link pos name fixed?))
+  (define m (mark b link pos name fixed? active?))
   (displayln (list 'new-mark link)) ; xxx
   (set-linked-line-marks! link (set-add (linked-line-marks link) m))
   m)
+
+; mark-deactivate! mark -> void
+(define (mark-deactivate! m)
+  (set-mark-active?! m #f))
+
+(define (mark-activate! m)
+  (set-mark-active?! m #t))
 
 ; delete-mark! : mark -> void
 ;   remove the mark from the line it belongs to
@@ -1106,8 +1115,10 @@
               (mark-position point)))))
 
 (define (use-region? b)
+  (define marks (buffer-marks b))
   (and #t ; (transient-mode-on? b)
-       #t ; (mark-active? b)
+       (not (empty? marks))
+       (mark-active? (first marks))
        (let ()
          (define beg (region-beginning b))
          (define end (region-end b))
@@ -1192,38 +1203,44 @@
 (define-syntax (define-interactive stx)
   (syntax-parse stx
     [(d-i name:id expr)
-     #'(begin
+     (syntax/loc stx
+       (begin
          (add-name-to-completions 'name)
          (define name expr)
-         (add-interactive-command 'name name))]
+         (add-interactive-command 'name name)))]
     [(d-i (name:id . args) expr ...)
-     #'(begin
+     (syntax/loc stx
+       (begin
          (add-name-to-completions 'name)
          (define (name . args) expr ...)
-         (add-interactive-command 'name name))]
+         (add-interactive-command 'name name)))]
     [_ (raise-syntax-error 'define-interactive "bad syntax" stx)]))
 
 ;; Names from emacs
-
 (define-interactive (beginning-of-line)   (buffer-move-point-to-begining-of-line! (current-buffer)))
 (define-interactive (end-of-line)         (buffer-move-point-to-end-of-line! (current-buffer)))
 (define-interactive (backward-char)       
-  (cond [(region-mark) => delete-mark!])
+  (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point! (current-buffer) -1))
 (define-interactive (forward-char)        
-  (cond [(region-mark) => delete-mark!]) 
+  (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point! (current-buffer) +1))
 (define-interactive (previous-line)       (buffer-move-point-up! (current-buffer)))
 (define-interactive (next-line)           (buffer-move-point-down! (current-buffer)))
 (define-interactive (backward-word)       (buffer-backward-word! (current-buffer)))
 (define-interactive (forward-word)        (buffer-forward-word! (current-buffer)))
 (define-interactive (move-to-column n)    (buffer-move-to-column! (current-buffer) n)) ; n=num prefix 
-(define-interactive (backward-char/extend-region)
-  (when (empty? (buffer-marks (current-buffer))) (command-set-mark))
-  (buffer-move-point! (current-buffer) -1))
-(define-interactive (forward-char/extend-region)
-  (when (empty? (buffer-marks (current-buffer))) (command-set-mark))
-  (buffer-move-point! (current-buffer) +1))
+(define-interactive (backward-char/extend-region)      (forward-char/extend-region -1))
+(define-interactive (forward-char/extend-region [n +1]) ; n=-1 is backward
+  (unless (or (= n 1) (= n -1)) (error 'forward-char/extend-region "internal error"))
+  (define marks (buffer-marks (current-buffer)))
+  (cond [(and (not (empty? marks)) (not (mark-active? (first marks))))
+         (delete-mark! (first marks))
+         (command-set-mark)]
+        [(empty? marks)
+         (command-set-mark)])
+  (mark-activate! (region-mark))
+  (buffer-move-point! (current-buffer) n))
 
 (define-interactive (save-buffer)         (save-buffer!    (current-buffer)) (refresh-frame))
 (define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
@@ -1238,7 +1255,6 @@
     (set-window-buffer! (current-window) b)
     (current-buffer b)
     (refresh-frame (current-frame))))
-
 
 (define-interactive (next-buffer) ; show next buffer in current window
   (define w (current-window))
@@ -1267,11 +1283,13 @@
   (define b (current-buffer))
   (define p (buffer-point b))
   (define fixed? #f)
+  (define active? #t)
   (define name "*mark*")
   (define l (mark-link p))
-  (define m (mark b l (mark-position p) name fixed?))
+  (define m (mark b l (mark-position p) name fixed? active?))
   (set-linked-line-marks! l (set-add (linked-line-marks l) m))
   (set-buffer-marks! b (set-add (buffer-marks b) m))
+  (mark-activate! m)
   m)
 
 ; create-new-buffer :  -> void
