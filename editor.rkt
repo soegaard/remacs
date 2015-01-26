@@ -827,6 +827,7 @@
   (define file (finder:put-file))
   (when file
     (set-buffer-path! b file)
+    (set-buffer-name! b (path->string file))
     (save-buffer! b)))
 
 (define (make-output-buffer b)
@@ -1144,7 +1145,8 @@
       [(mark< point mark) (define n (- (mark-position mark) (mark-position point)))
                           (buffer-move-point! b n)
                           (buffer-delete-backward-char! b n)]
-      [else               (void)])))
+      [else               (void)])
+    (mark-deactivate! mark)))
 
 ;;;
 ;;; MESSAGES
@@ -1218,18 +1220,20 @@
 
 ;; Names from emacs
 (define-interactive (beginning-of-line)   (buffer-move-point-to-begining-of-line! (current-buffer)))
-(define-interactive (end-of-line)         (buffer-move-point-to-end-of-line! (current-buffer)))
+(define-interactive (end-of-line)         (buffer-move-point-to-end-of-line!      (current-buffer)))
+(define-interactive (previous-line)       (buffer-move-point-up!   (current-buffer)))
+(define-interactive (next-line)           (buffer-move-point-down! (current-buffer)))
+(define-interactive (backward-word)       (buffer-backward-word!   (current-buffer)))
+(define-interactive (forward-word)        (buffer-forward-word!    (current-buffer)))
+(define-interactive (move-to-column n)    (buffer-move-to-column!  (current-buffer) n)) ; n=numprefix 
+
 (define-interactive (backward-char)       
   (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point! (current-buffer) -1))
 (define-interactive (forward-char)        
   (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point! (current-buffer) +1))
-(define-interactive (previous-line)       (buffer-move-point-up! (current-buffer)))
-(define-interactive (next-line)           (buffer-move-point-down! (current-buffer)))
-(define-interactive (backward-word)       (buffer-backward-word! (current-buffer)))
-(define-interactive (forward-word)        (buffer-forward-word! (current-buffer)))
-(define-interactive (move-to-column n)    (buffer-move-to-column! (current-buffer) n)) ; n=num prefix 
+
 (define-interactive (backward-char/extend-region)      (forward-char/extend-region -1))
 (define-interactive (forward-char/extend-region [n +1]) ; n=-1 is backward
   (unless (or (= n 1) (= n -1)) (error 'forward-char/extend-region "internal error"))
@@ -1317,6 +1321,7 @@
 (define ((self-insert-command k))
   ; (display "Inserting: ") (write k) (newline)
   (define b (current-buffer))
+  (when (use-region? b) (delete-region b))
   (buffer-insert-char-before-point! b k))
 
 (define-interactive (delete-region [b (current-buffer)])
@@ -1500,7 +1505,7 @@
          ["C-b"       backward-char]
          ["C-e"       end-of-line]
          ["C-f"       forward-char]
-         ["C-p"       previous-line]
+         ["C-p"       previous-line]         
          ["C-n"       next-line]
          ; todo: Make M-< and M-> work
          ; ["M-<"       beginning-of-buffer]
@@ -1508,6 +1513,11 @@
          ["M->"       end-of-buffer]
          ["C->"       end-of-buffer]
          ; Cmd + something
+         ["D-left"    beginning-of-line]
+         ["D-right"   end-of-line]
+         ["D-o"       open-file-or-create]
+         ["D-w"       'exit] ; Cmd-w (mac only)
+         ; Meta + something
          ["M-left"    backward-word]
          ["M-right"   forward-word]
          ["M-b"       (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]
@@ -1515,10 +1525,8 @@
          ["M-d"       (λ () (buffer-display (current-buffer)))]
          ["M-s"       save-buffer]
          ["M-S"       save-buffer-as]
-         ["D-o"       open-file-or-create]
          ["M-e"       eval-buffer]
          ["M-w"       'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
-         ["D-w"       'exit] ; Cmd-w (mac only)
          [#\return    (λ () (buffer-break-line! (current-buffer)))]
          [#\backspace backward-delete-char]                                             ; backspace
          [#\rubout    (λ () (error 'todo))]                                             ; delete
@@ -1797,9 +1805,10 @@
 (define cyan    (hex->color #x2aa198)) ; cyan       accent color
 (define green   (hex->color #x859900)) ; green      accent color
 
-(define background-color base03)
-(define text-color       base1)
-(define border-color     base00)
+(define background-color         base03)
+(define region-highlighted-color base01)
+(define text-color               base1)
+(define border-color             base00)
 (define border-pen       (new pen% [color base00] [width 1] [style 'solid] [cap 'butt] [join 'miter]))
 
 (define point-colors (circular-list base03 base03 base03 base02 base01 base00
@@ -1844,7 +1853,6 @@
     (when b
       ;; Highlightning for region between mark and point
       (define text-background-color (send dc get-text-background))
-      (define region-highlighted-color magenta)
       (define (set-text-background-color highlight?)
         (define background-color (if highlight? region-highlighted-color text-background-color))
         (send dc set-text-background background-color))
@@ -2174,7 +2182,7 @@
   (define panel (new vertical-panel% 
                      [parent frame]
                      [min-width min-width]
-                     [min-height 50]))
+                     [min-height 800]))
   (set-frame-panel! this-frame panel)
   ;;; CANVAS
   ; Non-split windows are rendered into an associated canvas.
