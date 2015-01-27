@@ -1,4 +1,5 @@
 #lang racket
+;;; TODO shift-up and shift-down
 ;;; TODO left and right needs to toggle transient-mode rather than deactivate the mark
 ;;; TODO Properties and faces
 ;;; TODO Modes
@@ -86,10 +87,15 @@
 ; borders is a set of symbols indicating which borders to draw
 ;   'left 'right 'top 'bottom
 
-(struct frame (frame% panel windows mini-window) #:mutable #:transparent)
-; A frame contains one or multiple windows.
-; About to change: The frame is render onto its canvas.
+(struct frame (frame% panel windows mini-window status-line) #:mutable #:transparent)
+; frame%      = gui frame 
+; panel       = gui panel holding panels/canvases of the windows in frame
+; windows     = split-window or window
+; mini-window = ?
+; status-line = status-line% at bottom of frame%
 
+; A frame contains one or multiple windows.
+ 
 (struct            split-window       window ()            #:mutable #:transparent)
 (struct horizontal-split-window split-window (left  right) #:mutable #:transparent)
 (struct   vertical-split-window split-window (above below) #:mutable #:transparent)
@@ -2067,12 +2073,9 @@
 
 
 ; create-window-canvas : window panel% -> canvas
-; this-window 
-;   the non-gui structure representing the window used to display a buffer.
-; f
-;   the non-gui structure representing the frame of the window
-; panel
-;   the panel which the canvas has as parent
+; this-window : the non-gui structure representing the window used to display a buffer.
+; f           : the non-gui structure representing the frame of the window
+; panel       : the panel which the canvas has as parent
 (define (window-install-canvas! this-window panel)
   (define f (window-frame this-window))
   ;;; PREFIX 
@@ -2121,19 +2124,16 @@
         (send canvas on-paint))
       ;; Rendering
       (public on-paint-points)
+      (define (display-status-line s) (send (frame-status-line f) set-label s))
       (define (on-paint-points on?) ; render points only
         (parameterize ([current-render-points-only? #t]
                        [current-show-points?        on?])
+          (display-status-line (status-line-hook))
           (render-frame f)))     
       (define/override (on-paint) ; render everything
         (parameterize ([current-show-points? #t])
+          (display-status-line (status-line-hook))
           (render-frame f)))
-      ; (define dc (send canvas get-dc))
-      ; reset drawing context
-      
-      ; (render-frame (window-frame this-window) dc) XXX
-      ; uddate status line
-      ; (display-status-line (status-line-hook)) ; XXX TODO XXX 
       (super-new)))
   (define canvas (new window-canvas% [parent panel]))
   (set-window-canvas! this-window canvas)
@@ -2194,18 +2194,19 @@
   ; (set-frame-canvas! this-frame canvas) ; XXX
   ;; Status line
   (define status-line (new message% [parent frame] [label "Welcome"]))
+  (set-frame-status-line! this-frame status-line)
   (send status-line min-width min-width)
   (define (display-status-line s) (send status-line set-label s))
   (display-status-line "Don't panic")
   (send frame show #t)
   
   ; (struct frame (frame% panel windows mini-window) #:mutable)
-  (make-frame frame panel #f #f))
+  (make-frame frame panel #f #f status-line))
 
 (module+ test
   (define ib illead-buffer)
   (current-buffer ib)
-  (define f  (frame #f #f #f #f))
+  (define f  (frame #f #f #f #f #f))
   (frame-install-frame%! f) ; installs frame% and panel
   
   (define p (frame-panel f))
