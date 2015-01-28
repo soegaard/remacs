@@ -1,5 +1,4 @@
 #lang racket
-;;; TODO next-word and previous-word
 ;;; TODO left and right needs to toggle transient-mode rather than deactivate the mark
 ;;; TODO Properties and faces
 ;;; TODO Modes
@@ -1228,8 +1227,7 @@
 (define-interactive (beginning-of-line)   (buffer-move-point-to-begining-of-line! (current-buffer)))
 (define-interactive (end-of-line)         (buffer-move-point-to-end-of-line!      (current-buffer)))
 
-(define-interactive (backward-word)       (buffer-backward-word!   (current-buffer)))
-(define-interactive (forward-word)        (buffer-forward-word!    (current-buffer)))
+
 (define-interactive (move-to-column n)    (buffer-move-to-column!  (current-buffer) n)) ; n=numprefix 
 
 (define-interactive (backward-char)       
@@ -1244,6 +1242,12 @@
 (define-interactive (next-line)           
   (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point-down! (current-buffer)))
+(define-interactive (backward-word)
+  (cond [(region-mark) => mark-deactivate!])
+  (buffer-backward-word!   (current-buffer)))
+(define-interactive (forward-word)
+  (cond [(region-mark) => mark-deactivate!])
+  (buffer-forward-word!    (current-buffer)))
 
 (define (prepare-extend-region)
   (define marks (buffer-marks (current-buffer)))
@@ -1266,6 +1270,12 @@
 (define-interactive (next-line/extend-region)
   (prepare-extend-region)
   (buffer-move-point-down! (current-buffer)))
+(define-interactive (forward-word/extend-region) 
+  (prepare-extend-region)
+  (buffer-forward-word!   (current-buffer)))
+(define-interactive (backward-word/extend-region)
+  (prepare-extend-region)
+  (buffer-backward-word!   (current-buffer)))
 
 
 
@@ -1421,7 +1431,7 @@
              [_ k])])
     (cond 
       [(eq? k 'control)      'control] ; ignore control + nothing
-      [(and ctrl? (eqv? #\u0000 k))   "C-space"]
+      [(and (symbol? c) meta? shift?) (~a "M-S-" k)]
       [(or ctrl? alt? meta? cmd?)     (~a (cond 
                                             [ctrl? "C-"]
                                             [meta? "M-"]
@@ -1547,6 +1557,8 @@
          ; Meta + something
          ["M-left"    backward-word]
          ["M-right"   forward-word]
+         ["M-S-left"  backward-word/extend-region]
+         ["M-S-right" forward-word/extend-region]
          ["M-b"       (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]
          ["M-i"       (λ () (buffer-insert-property! (current-buffer) (property 'italics)))]
          ["M-d"       (λ () (buffer-display (current-buffer)))]
