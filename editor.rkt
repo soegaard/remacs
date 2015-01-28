@@ -1,4 +1,5 @@
 #lang racket
+;;; TODO next-word and previous-word
 ;;; TODO left and right needs to toggle transient-mode rather than deactivate the mark
 ;;; TODO Properties and faces
 ;;; TODO Modes
@@ -1382,7 +1383,7 @@
 
 (define (key-event->key event)
   ;(newline)
-  #;(begin
+  (begin
       (write (list 'key-event->key
                    'key                (send event get-key-code)
                    'other-shift        (send event get-other-shift-key-code)
@@ -1403,14 +1404,15 @@
                    ; use the alt key as meta
                    [(macosx) (send event get-alt-down)]
                    [else     (send event get-meta-down)]))    ; mac: cmd, pc: alt, unix: meta
-  ; (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta? 'cmd cmd? 'caps caps?))
+  (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta? 'cmd cmd? 'caps caps?))
   
   (define c      (send event get-key-code))
   ; k = key without modifier
   (define k      (cond
                    [(and ctrl? alt?)  c]
                    [cmd?              c]
-                   [alt?              (send event get-other-altgr-key-code)] ; OS X: 
+                   [alt?              (or (and (symbol? c) c)
+                                          (send event get-other-altgr-key-code))] ; OS X: 
                    [else              c]))
   
   (let ([k (match k 
