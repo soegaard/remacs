@@ -1,5 +1,4 @@
 #lang racket
-;;; TODO shift-up and shift-down
 ;;; TODO left and right needs to toggle transient-mode rather than deactivate the mark
 ;;; TODO Properties and faces
 ;;; TODO Modes
@@ -95,7 +94,7 @@
 ; status-line = status-line% at bottom of frame%
 
 ; A frame contains one or multiple windows.
- 
+
 (struct            split-window       window ()            #:mutable #:transparent)
 (struct horizontal-split-window split-window (left  right) #:mutable #:transparent)
 (struct   vertical-split-window split-window (above below) #:mutable #:transparent)
@@ -1227,8 +1226,7 @@
 ;; Names from emacs
 (define-interactive (beginning-of-line)   (buffer-move-point-to-begining-of-line! (current-buffer)))
 (define-interactive (end-of-line)         (buffer-move-point-to-end-of-line!      (current-buffer)))
-(define-interactive (previous-line)       (buffer-move-point-up!   (current-buffer)))
-(define-interactive (next-line)           (buffer-move-point-down! (current-buffer)))
+
 (define-interactive (backward-word)       (buffer-backward-word!   (current-buffer)))
 (define-interactive (forward-word)        (buffer-forward-word!    (current-buffer)))
 (define-interactive (move-to-column n)    (buffer-move-to-column!  (current-buffer) n)) ; n=numprefix 
@@ -1239,18 +1237,37 @@
 (define-interactive (forward-char)        
   (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point! (current-buffer) +1))
+(define-interactive (previous-line)       
+  (cond [(region-mark) => mark-deactivate!])
+  (buffer-move-point-up!   (current-buffer)))
+(define-interactive (next-line)           
+  (cond [(region-mark) => mark-deactivate!])
+  (buffer-move-point-down! (current-buffer)))
 
-(define-interactive (backward-char/extend-region)      (forward-char/extend-region -1))
-(define-interactive (forward-char/extend-region [n +1]) ; n=-1 is backward
-  (unless (or (= n 1) (= n -1)) (error 'forward-char/extend-region "internal error"))
+(define (prepare-extend-region)
   (define marks (buffer-marks (current-buffer)))
   (cond [(and (not (empty? marks)) (not (mark-active? (first marks))))
          (delete-mark! (first marks))
          (command-set-mark)]
         [(empty? marks)
          (command-set-mark)])
-  (mark-activate! (region-mark))
-  (buffer-move-point! (current-buffer) n))
+  (mark-activate! (region-mark)))
+
+(define-interactive (backward-char/extend-region) 
+  (prepare-extend-region)
+  (buffer-move-point! (current-buffer) -1))
+(define-interactive (forward-char/extend-region)
+  (prepare-extend-region)
+  (buffer-move-point! (current-buffer) +1))
+(define-interactive (previous-line/extend-region) 
+  (prepare-extend-region)
+  (buffer-move-point-up! (current-buffer)))
+(define-interactive (next-line/extend-region)
+  (prepare-extend-region)
+  (buffer-move-point-down! (current-buffer)))
+
+
+
 
 (define-interactive (save-buffer)         (save-buffer!    (current-buffer)) (refresh-frame))
 (define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
@@ -1366,13 +1383,13 @@
 (define (key-event->key event)
   ;(newline)
   #;(begin
-    (write (list 'key-event->key
-                 'key                (send event get-key-code)
-                 'other-shift        (send event get-other-shift-key-code)
-                 'other-altgr        (send event get-other-altgr-key-code)
-                 'other-shift-altgr  (send event get-other-shift-altgr-key-code)
-                 'other-caps         (send event get-other-caps-key-code)))
-    (newline))
+      (write (list 'key-event->key
+                   'key                (send event get-key-code)
+                   'other-shift        (send event get-other-shift-key-code)
+                   'other-altgr        (send event get-other-altgr-key-code)
+                   'other-shift-altgr  (send event get-other-shift-altgr-key-code)
+                   'other-caps         (send event get-other-caps-key-code)))
+      (newline))
   (define shift? (send event get-shift-down))
   (define alt?   (send event get-alt-down))
   (define ctrl?  (send event get-control-down))
@@ -1502,10 +1519,12 @@
          ; movement
          ['left       backward-char]
          ['right      forward-char]
-         ['up         previous-line]        
+         ['up         previous-line]
          ['down       next-line]
          ["S-left"    backward-char/extend-region]
-         ["S-right"   forward-char/extend-region]         
+         ["S-right"   forward-char/extend-region]
+         ["S-up"      previous-line/extend-region]
+         ["S-down"    next-line/extend-region]
          ; Ctrl + something
          ["C-a"       beginning-of-line]
          ["C-b"       backward-char]
