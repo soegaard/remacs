@@ -1,6 +1,11 @@
 #lang racket
+;;; TODO brace matching
+;;; TODO indentation
+;;; TODO paragraphs
+;;; TODO filling
+;;; TODO documentation
 ;;; TODO left and right needs to toggle transient-mode rather than deactivate the mark
-;;; TODO Properties and faces
+;;; TODO Properties and faces (done?)
 ;;; TODO Modes
 ;;; TODO previous-buffer (parallel to next-buffer)
 ;;; TODO Introduce global that controls which key to use for meta
@@ -102,6 +107,17 @@
 ; The buffer of a split window is #f.
 
 ;;;
+;;; STRINGS
+;;;
+
+(define (string-whitespace? s)
+  (regexp-match? #px"^[[:space:]]*$" s))
+
+(module+ test 
+  (check-true  (string-whitespace? " \n\t"))
+  (check-false (string-whitespace? " x ")))
+
+;;;
 ;;; LINES
 ;;;
 
@@ -122,6 +138,9 @@
   (apply string-append (filter string? (line-strings l))))
 
 (module+ test (check-equal? (line->string (new-line "abc\n")) "abc\n"))
+
+(define (line-blank? l)
+  (string-whitespace? (line->string l)))
 
 ; list->lines : list-of-strings -> dlist-of-lines
 (define (list->lines xs)
@@ -671,6 +690,17 @@
   (set-linked-line-marks! d (set-add (linked-line-marks d) m))
   ; store the new position
   (set-mark-position! m n))
+
+(define (mark-move-to-beginning-of-paragraph! m)
+  ;; TODO : improve efficiency (i.e. avoid vall to mark-move-up!)
+  ;; paragraphs are separated by one or more blank lines
+  (mark-move-beginning-of-line! m)
+  (let loop ([l (mark-link m)])
+    (cond
+      [(first-dcons? l)         (void)]
+      [(line-blank? (dfirst l)) (mark-move-down! m)]
+      [else                     (mark-move-up! m)
+                                (loop (mark-link m))]))) ; TODO does up and down update the link ?!!>?
 
 ;;;
 ;;; WORDS
@@ -1885,7 +1915,7 @@
 
 (define current-render-points-only? (make-parameter #f))
 (define current-show-points?        (make-parameter #f))
-(define current-point-color         (make-parameter point-colors))
+(define current-point-color         (make-parameter point-colors)) ; circular list of colors
 
 (define (render-buffer w b dc xmin xmax ymin ymax)
   (unless (current-render-points-only?)
@@ -1909,7 +1939,7 @@
       ;; Placement of region
       (define-values (reg-begin reg-end)
         (if (use-region? b) (values (region-beginning b) (region-end b)) (values #f #f)))
-      ; (displayln (list 'first-line first-row-on-screen 'last-line last-row-on-screen))
+      (displayln (list 'first-line first-row-on-screen 'last-line last-row-on-screen))
       (send dc suspend-flush)  
       ; draw-string : string real real -> real
       ;   draw string t at (x,y), return point to draw next string
@@ -1921,7 +1951,9 @@
       (for/fold ([y ymin] [p 0]) ; p the position of start of line
                 ([l #;(drop (dlist->list (text-lines (buffer-text b))) num-lines-to-skip)
                     (text-lines (buffer-text b))]
-                 [i num-lines-on-screen])
+                 [i num-lines-on-screen]
+                 ; #:unless (< i num-lines-to-skip) ; todo - render-points needs to skip too
+                 )
         (define strings (line-strings l))
         (define n (length strings))
         (define (last-string? i) (= i (- n 1)))
@@ -2215,7 +2247,7 @@
   (define panel (new vertical-panel% 
                      [parent frame]
                      [min-width min-width]
-                     [min-height 800]))
+                     [min-height 200]))
   (set-frame-panel! this-frame panel)
   ;;; CANVAS
   ; Non-split windows are rendered into an associated canvas.
