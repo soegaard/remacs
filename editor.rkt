@@ -1962,12 +1962,7 @@
     (set! start-row new-start-row)
     (set! end-row   new-end-row)
     (displayln (list 'new-start-and-end start-row end-row)))
-  
-  ; (define last-row-on-screen  (min row num-lines-on-screen))
-  ; (define first-row-on-screen (max 0 (- row num-lines-on-screen)))
   (define num-lines-to-skip   start-row)
-  ;(displayln (list 'after: 'row row 'start-row start-row 'end-row end-row 'n num-lines-on-screen))
-  
   (unless (current-render-points-only?)
     (when b
       ;; Highlighting for region between mark and point
@@ -1975,12 +1970,11 @@
       (define (set-text-background-color highlight?)
         (define background-color (if highlight? region-highlighted-color text-background-color))
         (send dc set-text-background background-color))
-      
       ;; Placement of region
       (define-values (reg-begin reg-end)
         (if (use-region? b) (values (region-beginning b) (region-end b)) (values #f #f)))
       ; (displayln (list 'first-line first-row-on-screen 'last-line last-row-on-screen))
-      (send dc suspend-flush)  
+      (send dc suspend-flush)
       ; draw-string : string real real -> real
       ;   draw string t at (x,y), return point to draw next string
       (define (draw-string t x y)
@@ -1990,12 +1984,11 @@
       ; draw text
       (for/fold ([y ymin] [p 0]) ; p the position of start of line
                 ([l (text-lines (buffer-text b))]
-                 [i (in-range (+ start-row num-lines-on-screen))]
-                 #:unless (< i num-lines-to-skip))
-        (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t))
-        (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f))
+                 [i (in-range (+ start-row num-lines-on-screen))])
         (cond
-          [(< i num-lines-to-skip) 
+          [(< i num-lines-to-skip)
+           (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t))
+           (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f))
            (values y (+ p (line-length l)))]
           [else
            (define strings (line-strings l))
@@ -2063,7 +2056,7 @@
       (define on? (current-show-points?))
       (for ([p (buffer-points b)])
         (define-values (r c) (mark-row+column p))
-        (when (<= start-row r end-row)
+        (when #t #;(<= start-row r end-row)
           (define x (+ xmin (* c    font-width)))
           (define y (+ ymin (* (- r start-row) (+ font-height -2)))) ; why -2 ?
           (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
