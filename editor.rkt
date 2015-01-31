@@ -358,15 +358,13 @@
 (define (new-text [lines dempty])
   (cond 
     [(dempty? lines) (text (linked-line (new-line "\n") dempty dempty "no-version-yet" '()) 1)]
-    ; linked correctly?  
-    ; xxx
     [else            (text lines (for/sum ([l lines])
                                    (line-length l)))]))
 
 ; text-line : text integer -> line
 ;   the the ith line
 (define (text-line t i)
-  (dlist-ref (text-lines t) i))  
+  (dlist-ref (text-lines t) i))
 
 ; text-append! : text text -> text
 (define (text-append! t1 t2)
@@ -379,6 +377,22 @@
   (apply string-append
     (for/list ([l (text-lines t)])
       (line->string l))))
+
+; subtext->string : text integer integer -> string
+(define (subtext->string t p1 p2)
+  (define-values (r1 c1) (position-row+column t p1))
+  (define-values (r2 c2) (position-row+column t p2))
+  (define n (- r2 r1))
+  (cond
+    [(= r1 r2) (substring (line->string (text-line t r1)) c1 c2)]
+    [else      (string-append*
+                (for/list ([d (in-dlist (dlist-move (text-lines t) r1))]
+                           [i (in-range (+ n 1))])
+                  (define s (line->string d))
+                  (cond
+                    [(= i 0) (substring s c1 (string-length s))]
+                    [(= i n) (substring s 0 c2)]
+                    [else    s])))]))
 
 ; path->text : path -> text
 ;   create a text with contents from the file given by path
@@ -418,6 +432,8 @@
   (define l (dlist-ref (text-lines t) row))
   (line-insert-char! l c col)
   (set-text-length! t (+ (text-length t) 1)))
+
+
 
 ; text-break-line! : text natural natural -> void
 ;   break line number row into two at index col
@@ -571,20 +587,22 @@
     (let ([n (clamp 0 n c)]) ; stay on same line
       (mark-move! m (- n c)))))
 
+; position-row+column : text position -> integer integer
+;   return row and column number of the position (index)
+(define (position-row+column t p)
+  (let/ec return
+    (for/fold ([r 0] [q 0]) ([l (text-lines t)])
+      ; q is the first position on line r
+      (define n (line-length l))
+      (if (> (+ q n) p)
+          (return r (- p q))
+          (values (+ r 1) (+ q n))))))
+
 ; mark-row+column : mark- > integer integer
 ;   return row and column number for the mark m
 (define (mark-row+column m)
-  (define b (mark-buffer m))
-  (define p (mark-position m))
-  (define-values (row col)
-    (let/ec return
-      (for/fold ([r 0] [q 0]) ([l (text-lines (buffer-text b))])
-        ; q is the first position on line r
-        (define n (line-length l))
-        (if (> (+ q n) p)
-            (return r (- p q))
-            (values (+ r 1) (+ q n))))))
-  (values row col))
+  (position-row+column (buffer-text (mark-buffer m))
+                       (mark-position m)))
 
 ; mark-move-beginning-of-line! : mark -> void
 ;   move the mark to the beginning of its line
@@ -593,14 +611,23 @@
   (define-values (row col) (mark-row+column m))
   (set-mark-position! m (- p col)))
 
+; position-of-end-of-line : [buffer or mark] -> integer
+;   return the position just before the newline of the line of point
+(define (position-of-end-of-line [b-or-m (current-buffer)])
+  (define m (cond
+              [(mark?   b-or-m) b-or-m]
+              [(buffer? b-or-m) (buffer-point b-or-m)]
+              [else (error 'position-of-end-line (~a "expected mark or buffer, got " b-or-m))]))
+  (define b (mark-buffer m))
+  (define-values (r c) (mark-row+column m))
+  (define n (line-length (dlist-ref (text-lines (buffer-text b)) r)))
+  (define p (mark-position m))
+  (+ p (- n c) -1))
+
 ; mark-move-end-of-line! : mark -> void
 ;   move the mark to the end of its line
 (define (mark-move-end-of-line! m)
-  (define b (mark-buffer m))
-  (define p (mark-position m))
-  (define-values (row col) (mark-row+column m))
-  (define n (line-length (dlist-ref (text-lines (buffer-text b)) row)))
-  (set-mark-position! m (+ p (- n col) -1)))
+  (set-mark-position! m (position-of-end-of-line m)))
 
 ; mark-move-up! : mark -> void
 ;   move mark up one line
@@ -1251,6 +1278,10 @@
   (buffer-kill-line b)
   (forward-char b)
   (buffer-backward-delete-char! b))
+
+
+
+
 
 ;;;
 ;;; MESSAGES
