@@ -587,7 +587,7 @@
   (values row col))
 
 ; mark-move-beginning-of-line! : mark -> void
-;   move the mark to the begining of its line
+;   move the mark to the beginning of its line
 (define (mark-move-beginning-of-line! m)
   (define p (mark-position m))
   (define-values (row col) (mark-row+column m))
@@ -1057,9 +1057,9 @@
   (for ([m (buffer-marks b)])
     (mark-adjust-insertion-before! m n a)))
 
-; buffer-move-point-to-begining-of-line! : buffer -> void
+; buffer-move-point-to-beginning-of-line! : buffer -> void
 ;   move the point to the beginning of the line
-(define (buffer-move-point-to-begining-of-line! b)
+(define (buffer-move-point-to-beginning-of-line! b)
   (define m (buffer-point b))
   (mark-move-beginning-of-line! m))
 
@@ -1244,6 +1244,14 @@
   (buffer-move-point-to-end-of-line! b)
   (delete-region b))
 
+; kill-whole-line : [buffer] -> void
+;   kill whole line including its newline
+(define (kill-whole-line [b (current-buffer)])
+  (buffer-move-point-to-beginning-of-line! b)
+  (kill-line b)
+  (forward-char b)
+  (buffer-backward-delete-char! b))
+
 ;;;
 ;;; MESSAGES
 ;;;
@@ -1315,7 +1323,7 @@
     [_ (raise-syntax-error 'define-interactive "bad syntax" stx)]))
 
 ;; Names from emacs
-(define-interactive (beginning-of-line)   (buffer-move-point-to-begining-of-line! (current-buffer)))
+(define-interactive (beginning-of-line)   (buffer-move-point-to-beginning-of-line! (current-buffer)))
 (define-interactive (end-of-line)         (buffer-move-point-to-end-of-line!      (current-buffer)))
 
 
@@ -1324,9 +1332,9 @@
 (define-interactive (backward-char)       
   (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point! (current-buffer) -1))
-(define-interactive (forward-char)        
+(define-interactive (forward-char [b (current-buffer)])
   (cond [(region-mark) => mark-deactivate!])
-  (buffer-move-point! (current-buffer) +1))
+  (buffer-move-point! b +1))
 (define-interactive (previous-line)       
   (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point-up!   (current-buffer)))
@@ -1441,16 +1449,18 @@
 (define-interactive (delete-region [b (current-buffer)])
   (region-delete b))
 
-; backward-delete-char
-;   Delete n characters backwards.
-;   If n=1 and region is active, delete region.
-(define-interactive (backward-delete-char [n 1])
-  (define b (current-buffer))
+(define (buffer-backward-delete-char! [b (current-buffer)] [n 1])
   (if (and (= n 1) (use-region? b))
       (begin
         (delete-region)
         (delete-mark! (region-mark)))
       (buffer-delete-backward-char! b 1)))
+
+; backward-delete-char
+;   Delete n characters backwards.
+;   If n=1 and region is active, delete region.
+(define-interactive (backward-delete-char [n 1])
+  (buffer-backward-delete-char! (current-buffer) n))
 
 (define-interactive (mark-whole-buffer [b (current-buffer)])
   (parameterize ([current-buffer b])
@@ -1494,7 +1504,7 @@
                    ; use the alt key as meta
                    [(macosx) (send event get-alt-down)]
                    [else     (send event get-meta-down)]))    ; mac: cmd, pc: alt, unix: meta
-  ; (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta? 'cmd cmd? 'caps caps?))
+  #;(displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta? 'cmd cmd? 'caps caps?))
   
   (define c      (send event get-key-code))
   ; k = key without modifier
@@ -1505,20 +1515,21 @@
                                           (send event get-other-altgr-key-code))] ; OS X: 
                    [else              c]))
   
+  (define (alt   k) (if alt?   (~a "A-" k) k))
+  (define (ctrl  k) (if ctrl?  (~a "C-" k) k))
+  (define (cmd   k) (if cmd?   (~a "D-" k) k))
+  (define (meta  k) (if meta?  (~a "M-" k) k))
+  (define (shift k) (if shift? (~a "S-" k) k))
+  
   (let ([k (match k 
-             ['escape "ESC"] 
-             [#\space "space"] 
+             ['escape     "ESC"] 
+             [#\space     "space"]
+             [#\backspace "backspace"]
              [_ k])])
     (cond 
       [(eq? k 'control)      'control] ; ignore control + nothing
       [(and (symbol? c) meta? shift?) (~a "M-S-" k)]
-      [(or ctrl? alt? meta? cmd?)     (~a (cond 
-                                            [ctrl? "C-"]
-                                            [meta? "M-"]
-                                            [alt?  "A-"]
-                                            [cmd?  "D-"]
-                                            [else  ""])
-                                          k)]
+      [(or ctrl? alt? meta? cmd?)     (alt (ctrl (cmd (meta (shift k)))))]
       [(and shift? (eq? k 'shift))    'shift]
       [(and shift? (symbol? k))       (~a "S-" k)]
       [else                           k])))
@@ -1604,59 +1615,60 @@
          [_           #f])]
       [(list)
        (match key
-         ["ESC"       'prefix]
-         ["C-x"       'prefix]
-         ["C-u"       'prefix]
-         ["M-x"       (message "M-x ") 'prefix]
+         ["ESC"          'prefix]
+         ["C-x"          'prefix]
+         ["C-u"          'prefix]
+         ["M-x"          (message "M-x ") 'prefix]
          ; movement
-         ['left       backward-char]
-         ['right      forward-char]
-         ['up         previous-line]
-         ['down       next-line]
-         ["S-left"    backward-char/extend-region]
-         ["S-right"   forward-char/extend-region]
-         ["S-up"      previous-line/extend-region]
-         ["S-down"    next-line/extend-region]
+         ['left           backward-char]
+         ['right          forward-char]
+         ['up             previous-line]
+         ['down           next-line]
+         ["S-left"        backward-char/extend-region]
+         ["S-right"       forward-char/extend-region]
+         ["S-up"          previous-line/extend-region]
+         ["S-down"        next-line/extend-region]
          ; Ctrl + something
-         ["C-a"       beginning-of-line]
-         ["C-b"       backward-char]
-         ["C-e"       end-of-line]
-         ["C-f"       forward-char]
-         ["C-k"       kill-line]
-         ["C-p"       previous-line]         
-         ["C-n"       next-line]
+         ["C-a"           beginning-of-line]
+         ["C-b"           backward-char]
+         ["C-e"           end-of-line]
+         ["C-f"           forward-char]
+         ["C-k"           kill-line]
+         ["C-S-backspace" kill-whole-line]
+         ["C-p"           previous-line]
+         ["C-n"           next-line]
          ; todo: Make M-< and M-> work
          ; ["M-<"       beginning-of-buffer]
-         ["C-<"       beginning-of-buffer]
-         ["M->"       end-of-buffer]
-         ["C->"       end-of-buffer]
+         ["C-<"           beginning-of-buffer]
+         ["M->"           end-of-buffer]
+         ["C->"           end-of-buffer]
          ; Cmd + something
-         ["D-left"    beginning-of-line]
-         ["D-right"   end-of-line]
-         ["D-o"       open-file-or-create]
-         ["D-w"       'exit] ; Cmd-w (mac only)
+         ["D-left"        beginning-of-line]
+         ["D-right"       end-of-line]
+         ["D-o"           open-file-or-create]
+         ["D-w"           'exit] ; Cmd-w (mac only)
          ; Meta + something
-         ["M-left"    backward-word]
-         ["M-right"   forward-word]
-         ["M-S-left"  backward-word/extend-region]
-         ["M-S-right" forward-word/extend-region]
-         ["M-b"       (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]
-         ["M-i"       (λ () (buffer-insert-property! (current-buffer) (property 'italics)))]
-         ["M-d"       (λ () (buffer-display (current-buffer)))]
-         ["M-s"       save-buffer]
-         ["M-S"       save-buffer-as]
-         ["M-e"       eval-buffer]
-         ["M-w"       'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
-         [#\return    (λ () (buffer-break-line! (current-buffer)))]
-         [#\backspace backward-delete-char]                                             ; backspace
-         [#\rubout    (λ () (error 'todo))]                                             ; delete
-         ['home       (λ () (buffer-move-point-to-begining-of-line! (current-buffer)))] ; fn+left
-         ['end        (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
-         ["C-space"   command-set-mark]
+         ["M-left"        backward-word]
+         ["M-right"       forward-word]
+         ["M-S-left"      backward-word/extend-region]
+         ["M-S-right"     forward-word/extend-region]
+         ["M-b"           (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]
+         ["M-i"           (λ () (buffer-insert-property! (current-buffer) (property 'italics)))]
+         ["M-d"           (λ () (buffer-display (current-buffer)))]
+         ["M-s"           save-buffer]
+         ["M-S"           save-buffer-as]
+         ["M-e"           eval-buffer]
+         ["M-w"           'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
+         [#\return        (λ () (buffer-break-line! (current-buffer)))]
+         [#\backspace     backward-delete-char]                                            ; backspace
+         [#\rubout        (λ () (error 'todo))]                                            ; delete
+         ['home           (λ () (buffer-move-point-to-beginning-of-line! (current-buffer)))] ; fn+left
+         ['end            (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
+         ["C-space"       command-set-mark]
          ; place self inserting characters after #\return and friends
-         ["space"     (self-insert-command #\space)]
-         [(? char? k) (self-insert-command k)]
-         [_           #f])]
+         ["space"         (self-insert-command #\space)]
+         [(? char? k)     (self-insert-command k)]
+         [_               #f])]
       [_ #f])))
 
 ;;;
