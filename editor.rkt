@@ -1,4 +1,6 @@
 #lang racket
+;;; TODO kill-line
+;;; TODO test with large file (words.txt)
 ;;; TODO brace matching
 ;;; TODO recently opened files
 ;;; TODO indentation
@@ -385,6 +387,7 @@
   (define (DCons a p n) (linked-line a p n #f (seteq)))
   (with-input-from-file path 
     (λ () (new-text (for/dlist #:dcons DCons ([s (in-lines)])
+                      (display ".")
                       (string->line (string-append s "\n")))))))
 
 (module+ test
@@ -1098,12 +1101,30 @@
   (for ([m (buffer-marks b)])
     (mark-adjust-deletion-before! m p a)))
 
-(define (buffer-insert-property! b p)
+(define (buffer-insert-property-at-point! b p)
   (define m (buffer-point b))
   (define t (buffer-text b))
   (define-values (row col) (mark-row+column m))
   (line-insert-property! (dlist-ref (text-lines t) row) p col)
-  #;(buffer-dirty! b)) ; xxx
+  #;(buffer-dirty! b))
+
+(define (buffer-insert-property! b p)
+  ; if the region is active, the property is inserted
+  ; before and after the region (consider: are all properties toggles?)
+  ; if there are no region the property is simply inserted
+  (cond
+    [(use-region? b)
+     (define rb (region-beginning b))
+     (define re (region-end b))
+     (define m (buffer-point b))
+     (define old (mark-position m))
+     (mark-move-to-position! m rb)
+     (buffer-insert-property-at-point! b p)
+     (mark-move-to-position! m re)
+     (buffer-insert-property-at-point! b p)
+     (mark-move-to-position! m old)]
+    [else
+     (buffer-insert-property-at-point! b p)]))
 
 (define (buffer-move-point-to-position! b n)
   (define m (buffer-point b))
@@ -2027,9 +2048,9 @@
                     (values (draw-string u x y) (+ p (string-length t)))))
                 ; return the next x position
                 (values next-x next-p)]        
-               [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) x]
-               [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) x]
-               [_ (displayln (~a "Warning: Got " s)) x]))
+               [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) (values x p)]
+               [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) (values x p)]
+               [_ (displayln (~a "Warning: Got " s))                                (values x p)]))
            (values (+ y ls)
                    (+ p (line-length l)))]))
       ; get point and mark height
