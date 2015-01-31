@@ -1,5 +1,4 @@
 #lang racket
-;;; TODO kill-line
 ;;; TODO test with large file (words.txt)
 ;;; TODO brace matching
 ;;; TODO recently opened files
@@ -1130,6 +1129,19 @@
   (define m (buffer-point b))
   (mark-move-to-position! m n))
 
+(define (buffer-set-mark [b (current-buffer)])
+  ; make new mark at current point and return it
+  (define p (buffer-point b))
+  (define fixed? #f)
+  (define active? #t)
+  (define name "*mark*")
+  (define l (mark-link p))
+  (define m (mark b l (mark-position p) name fixed? active?))
+  (set-linked-line-marks! l (set-add (linked-line-marks l) m))
+  (set-buffer-marks! b (set-add (buffer-marks b) m))
+  (mark-activate! m)
+  m)
+
 ; list-next : list any (any any -> boolean)
 ;   return the element after x,
 ;   if x is the last element, then return the first element of xs,
@@ -1221,6 +1233,16 @@
                           (buffer-delete-backward-char! b n)]
       [else               (void)])
     (mark-deactivate! mark)))
+
+;;;
+;;; KILLING
+;;;
+
+(define (kill-line [b (current-buffer)])
+  ; TODO : store deleted text in kill ring
+  (buffer-set-mark b)
+  (buffer-move-point-to-end-of-line! b)
+  (delete-region b))
 
 ;;;
 ;;; MESSAGES
@@ -1386,18 +1408,7 @@
       (send f% maximize (not (send f% is-maximized?))))))
 
 (define-interactive (command-set-mark)
-  (displayln (list 'command-set-mark))
-  (define b (current-buffer))
-  (define p (buffer-point b))
-  (define fixed? #f)
-  (define active? #t)
-  (define name "*mark*")
-  (define l (mark-link p))
-  (define m (mark b l (mark-position p) name fixed? active?))
-  (set-linked-line-marks! l (set-add (linked-line-marks l) m))
-  (set-buffer-marks! b (set-add (buffer-marks b) m))
-  (mark-activate! m)
-  m)
+  (buffer-set-mark (current-buffer)))
 
 ; create-new-buffer :  -> void
 ;   create new buffer and switch to it
@@ -1611,6 +1622,7 @@
          ["C-b"       backward-char]
          ["C-e"       end-of-line]
          ["C-f"       forward-char]
+         ["C-k"       kill-line]
          ["C-p"       previous-line]         
          ["C-n"       next-line]
          ; todo: Make M-< and M-> work
