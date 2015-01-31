@@ -1238,7 +1238,7 @@
 ;;; KILLING
 ;;;
 
-(define (kill-line [b (current-buffer)])
+(define (buffer-kill-line [b (current-buffer)])
   ; TODO : store deleted text in kill ring
   (buffer-set-mark b)
   (buffer-move-point-to-end-of-line! b)
@@ -1246,9 +1246,9 @@
 
 ; kill-whole-line : [buffer] -> void
 ;   kill whole line including its newline
-(define (kill-whole-line [b (current-buffer)])
+(define (buffer-kill-whole-line [b (current-buffer)])
   (buffer-move-point-to-beginning-of-line! b)
-  (kill-line b)
+  (buffer-kill-line b)
   (forward-char b)
   (buffer-backward-delete-char! b))
 
@@ -1468,6 +1468,15 @@
     (command-set-mark)
     (beginning-of-buffer)))
 
+
+(define-interactive (kill-line)
+  (buffer-kill-line))
+
+(define-interactive (kill-whole-line)
+  (buffer-kill-whole-line))
+
+
+
 ;;;
 ;;; KEYMAP
 ;;;
@@ -1515,9 +1524,19 @@
                                           (send event get-other-altgr-key-code))] ; OS X: 
                    [else              c]))
   
-  (define (alt   k) (if alt?   (~a "A-" k) k))
+  (define alt-is-meta? #t)
+  (define cmd-is-meta? #f)
+  (define (alt   k) 
+    (cond
+      [alt-is-meta? k]
+      [alt?         (~a "A-" k)]
+      [else         k]))
   (define (ctrl  k) (if ctrl?  (~a "C-" k) k))
-  (define (cmd   k) (if cmd?   (~a "D-" k) k))
+  (define (cmd   k) 
+    (cond
+      [cmd-is-meta? k]
+      [cmd?         (~a "D-" k)]
+      [else         k]))
   (define (meta  k) (if meta?  (~a "M-" k) k))
   (define (shift k) (if shift? (~a "S-" k) k))
   
@@ -1745,7 +1764,7 @@
   ; the new split window get the parent of our old window
   (define parent-panel (if root? (frame-panel f) (window-panel p)))
   (define pan (new horizontal-panel% [parent parent-panel]))
-  (define sp  (horizontal-split-window f pan bs #f p #f w #f))
+  (define sp  (horizontal-split-window f pan bs #f p #f #f #f w #f))
   ; the old window get a new parent
   (set-window-parent! w sp)
   (send c reparent pan)
@@ -1787,7 +1806,7 @@
   ; the parent of the new split window (sp), is the parent the window (w) to be split
   (define parent-panel (if root? (frame-panel f) (window-panel p)))
   (define new-panel    (new vertical-panel% [parent parent-panel]))
-  (define sp (vertical-split-window f new-panel bs #f p #f w #f))
+  (define sp (vertical-split-window f new-panel bs #f p #f #f #f w #f))
   ; the split window becomes he parent of the old window
   (set-window-parent! w sp)
   ; this means that the canvas of w, now belongs the the new panel
@@ -1906,8 +1925,8 @@
 (define (frame-window-tree [f (current-frame)])
   (define (loop w)
     (match w
-      [(horizontal-split-window f _ _ c p b l r s e)               (append (loop l) (loop r))]
-      [(vertical-split-window   f _ _ c p b u l s e)               (append (loop u) (loop l))]
+      [(horizontal-split-window f _ _ c p b s e l r)               (append (loop l) (loop r))]
+      [(vertical-split-window   f _ _ c p b s e u l)               (append (loop u) (loop l))]
       [(window frame panel borders canvas parent buffer start end) (list w)]))
   (flatten (loop (frame-windows f))))
 
@@ -1941,7 +1960,7 @@
 (define green   (hex->color #x859900)) ; green      accent color
 
 (define background-color         base03)
-(define region-highlighted-color base01)
+(define region-highlighted-color base00)
 (define text-color               base1)
 (define border-color             base00)
 (define border-pen       (new pen% [color base00] [width 1] [style 'solid] [cap 'butt] [join 'miter]))
