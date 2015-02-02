@@ -1,5 +1,4 @@
 #lang racket
-;;; BUG M-x and backspace
 ;;; TODO test with large file (words.txt)
 ;;; TODO brace matching
 ;;; TODO recently opened files
