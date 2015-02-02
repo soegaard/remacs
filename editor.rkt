@@ -1,4 +1,5 @@
 #lang racket
+;;; BUG M-x and backspace
 ;;; TODO test with large file (words.txt)
 ;;; TODO brace matching
 ;;; TODO recently opened files
@@ -400,7 +401,6 @@
   (define (DCons a p n) (linked-line a p n #f (seteq)))
   (with-input-from-file path 
     (λ () (new-text (for/dlist #:dcons DCons ([s (in-lines)])
-                      (display ".")
                       (string->line (string-append s "\n")))))))
 
 (module+ test
@@ -432,7 +432,6 @@
   (define l (dlist-ref (text-lines t) row))
   (line-insert-char! l c col)
   (set-text-length! t (+ (text-length t) 1)))
-
 
 
 ; text-break-line! : text natural natural -> void
@@ -486,7 +485,6 @@
   ; (define link (text-lines (buffer-text b)))
   (define link (text-lines (buffer-text b)))
   (define m (mark b link pos name fixed? active?))
-  (displayln (list 'new-mark link)) ; xxx
   (set-linked-line-marks! link (set-add (linked-line-marks link) m))
   m)
 
@@ -624,6 +622,9 @@
   (define p (mark-position m))
   (+ p (- n c) -1))
 
+(define (position-of-end [b (current-buffer)])
+  (text-length (buffer-text b)))
+
 ; mark-move-end-of-line! : mark -> void
 ;   move the mark to the end of its line
 (define (mark-move-end-of-line! m)
@@ -726,7 +727,6 @@
      (mark-move! m (if j (- j col) col))]))
 
 (define (mark-move-to-position! m n)
-  (displayln (list 'mark-move-to-position m n))
   ; remove mark from its current line
   (define l (mark-link m))
   (set-linked-line-marks! l (set-remove (linked-line-marks l) m))
@@ -1265,11 +1265,26 @@
 ;;; KILLING
 ;;;
 
+; buffer-kill-line : buffer -> void
+;   Kill text from point to end of line.
+;   If point is at end of line, the newline is deleted.
+;   Point is at end of line, if text from point to newline is all whitespace.
 (define (buffer-kill-line [b (current-buffer)])
   ; TODO : store deleted text in kill ring
+  (define m (buffer-point b))
+  (define p1 (mark-position m))
+  (define p2 (position-of-end-of-line m))
+  (define rest-of-line (subtext->string (buffer-text b) p1 p2))
+  ; delete to end of line
   (buffer-set-mark b)
   (buffer-move-point-to-end-of-line! b)
-  (delete-region b))
+  (delete-region b)
+  ; maybe delete newline
+  (when (and (string-whitespace? rest-of-line)
+             (not (= (+ (mark-position m) 1) (position-of-end b))))
+    (forward-char b)
+    (buffer-backward-delete-char! b)))
+
 
 ; kill-whole-line : [buffer] -> void
 ;   kill whole line including its newline
@@ -1290,7 +1305,6 @@
 (define current-message (make-parameter #f))
 
 (define (message str [msg (current-message)])
-  (displayln (list 'message msg))
   (send msg set-label str))
 
 ;;;
@@ -1604,7 +1618,7 @@
        (match key
          ["ESC"       (message "")
                       #f]
-         [#\backspace (define new (remove-last more))
+         ["backspace" (define new (remove-last more))
                       (message (string-append* `("M-x " ,@(map ~a new))))
                       `(replace ,(cons "M-x" new))]
          [#\tab       (define so-far (string-append* (map ~a more)))
@@ -1888,7 +1902,6 @@
     (if (split-window? w) (window-panel  w) (window-canvas w)))
   ; to delete the window w, it must be removed from its parent
   (define p (window-parent w))
-  (displayln (list 'parent p))
   ; only split windows can hold subwindows
   (unless (split-window? p)
     (error 'window-delete "can't delete window"))
@@ -2055,8 +2068,7 @@
     (mark-move-up! start-mark (- start-row new-start-row))
     (mark-move-up! end-mark   (-   end-row  new-end-row))
     (set! start-row new-start-row)
-    (set! end-row   new-end-row)
-    (displayln (list 'new-start-and-end start-row end-row)))
+    (set! end-row   new-end-row))
   (define num-lines-to-skip   start-row)
   (unless (current-render-points-only?)
     (when b
@@ -2271,6 +2283,7 @@
   
   (define window-canvas%
     (class canvas%
+      (inherit has-focus?)
       ;; Buffer
       (define the-buffer #f)
       (define (set-buffer b) (set! the-buffer b))
@@ -2309,7 +2322,9 @@
         (send canvas on-paint))
       ;; Rendering
       (public on-paint-points)
-      (define (display-status-line s) (send (frame-status-line f) set-label s))
+      (define (display-status-line s)
+        (when (eq? (window-buffer this-window) (current-buffer))
+          (send (frame-status-line f) set-label s)))
       (define (on-paint-points on?) ; render points only
         (parameterize ([current-render-points-only? #t]
                        [current-show-points?        on?])
@@ -2409,7 +2424,6 @@
   (current-frame f)
   
   (send (window-canvas w) focus))
-
 
 (define (display-file path)
   (with-input-from-file path
