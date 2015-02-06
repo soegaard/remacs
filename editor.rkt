@@ -1691,6 +1691,8 @@
          ["S-right"       forward-char/extend-region]
          ["S-up"          previous-line/extend-region]
          ["S-down"        next-line/extend-region]
+         ['wheel-down     next-line]
+         ['wheel-up       previous-line]
          ; Ctrl + something
          ["C-a"           beginning-of-line]
          ["C-b"           backward-char]
