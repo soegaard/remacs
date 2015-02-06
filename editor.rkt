@@ -1519,7 +1519,8 @@
 (define-interactive (kill-whole-line)
   (buffer-kill-whole-line))
 
-
+(define-interactive (recenter-top-bottom)
+  (maybe-recenter-top-bottom #t))
 
 ;;;
 ;;; KEYMAP
@@ -1600,7 +1601,6 @@
 (define (remove-last xs)
   (if (null? xs) xs
       (reverse (rest (reverse xs)))))
-
 
 
 (define global-keymap
@@ -1687,18 +1687,19 @@
          ['right          forward-char]
          ['up             previous-line]
          ['down           next-line]
+         ['wheel-down     next-line]
+         ['wheel-up       previous-line]
          ["S-left"        backward-char/extend-region]
          ["S-right"       forward-char/extend-region]
          ["S-up"          previous-line/extend-region]
-         ["S-down"        next-line/extend-region]
-         ['wheel-down     next-line]
-         ['wheel-up       previous-line]
+         ["S-down"        next-line/extend-region]         
          ; Ctrl + something
          ["C-a"           beginning-of-line]
          ["C-b"           backward-char]
          ["C-e"           end-of-line]
          ["C-f"           forward-char]
          ["C-k"           kill-line]
+         ["C-l"           recenter-top-bottom]
          ["C-S-backspace" kill-whole-line]
          ["C-p"           previous-line]
          ["C-n"           next-line]
@@ -2047,7 +2048,50 @@
 (define current-show-points?        (make-parameter #f))
 (define current-point-color         (make-parameter point-colors)) ; circular list of colors
 
-(define (render-buffer w b dc xmin xmax ymin ymax)
+(define (maybe-recenter-top-bottom [force? #f] [w (current-window)])
+  ; move current buffer line to center of window
+  (define b (window-buffer w))
+  (define c (window-canvas w))
+  ; Canvas Dimensions
+  (define xmin 0)
+  (define xmax (send c get-width))
+  (define ymin 0)
+  (define ymax (send c get-height))
+  ;; Dimensions
+  (define width  (- xmax xmin))
+  (define height (- ymax ymin))
+  (define fs (font-size))
+  (define ls (+ fs 1))
+  ;; Placement of point relative to lines on screen
+  (define num-lines-on-screen   (max 0 (quotient height ls)))
+  (define n num-lines-on-screen)
+  (define-values (row col)      (mark-row+column (buffer-point  b)))
+  (define start-mark            (window-start-mark w))
+  (define end-mark              (window-end-mark w))
+  (define-values (start-row _)  (mark-row+column start-mark))
+  (define-values (end-row   __) (mark-row+column end-mark))  
+  ;(displayln (list 'before: 'row row 'start-row start-row 'end-row end-row 'n num-lines-on-screen))
+  (when (or force?
+            (not (and (<= start-row row) (< row (+ start-row n)))))
+    (define n num-lines-on-screen)
+    (define n/2 (quotient n 2))
+    (define new-start-row (max (- row n/2) 0))
+    (define new-end-row   (+ new-start-row n))
+    (mark-move-up! start-mark (- start-row new-start-row))
+    (mark-move-up! end-mark   (-   end-row  new-end-row))
+    (set! start-row new-start-row)
+    (set! end-row   new-end-row))
+  (values start-row end-row))
+
+(define (render-buffer w)
+  (define b  (window-buffer w))
+  (define c  (window-canvas w))
+  (define dc (send c get-dc))
+  ;; Canvas Dimensions
+  (define xmin 0)
+  (define xmax (send c get-width))
+  (define ymin 0)
+  (define ymax (send c get-height))
   ;; Dimensions
   (define width  (- xmax xmin))
   (define height (- ymax ymin))
@@ -2056,21 +2100,9 @@
   ;; Placement of point relative to lines on screen
   (define num-lines-on-screen   (max 0 (quotient height ls)))
   (define-values (row col)      (mark-row+column (buffer-point  b)))
-  (define start-mark            (window-start-mark w))
-  (define end-mark              (window-end-mark w))
-  (define-values (start-row _)  (mark-row+column start-mark))
-  (define-values (end-row   __) (mark-row+column end-mark))
-  ;(displayln (list 'before: 'row row 'start-row start-row 'end-row end-row 'n num-lines-on-screen))
-  (define n num-lines-on-screen)
-  (unless (and (<= start-row row) (< row (+ start-row n)))    
-    (define n/2 (quotient n 2))
-    (define new-start-row (max (- row n/2) 0))
-    (define new-end-row   (+ new-start-row n))
-    (mark-move-up! start-mark (- start-row new-start-row))
-    (mark-move-up! end-mark   (-   end-row  new-end-row))
-    (set! start-row new-start-row)
-    (set! end-row   new-end-row))
+  (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
   (define num-lines-to-skip   start-row)
+  ;; Render
   (unless (current-render-points-only?)
     (when b
       ;; Highlighting for region between mark and point
@@ -2206,7 +2238,7 @@
     (send dc draw-line 0 0 0 ymax)
     (set! xmin (+ xmin 1)))
   (send dc set-pen op)
-  (render-buffer w (window-buffer w) dc xmin xmax ymin ymax))
+  (render-buffer w))
 
 (define (render-windows win)
   (match win
