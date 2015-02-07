@@ -1490,6 +1490,16 @@
   (when (use-region? b) (delete-region b))
   (buffer-insert-char-before-point! b k))
 
+(define-interactive (break-line [b (current-buffer)])
+  (buffer-break-line! b))
+
+(define-interactive (insert-line-after)
+  ; insert new line after the current line,
+  ; place point at beginning of new line
+  ; Sublime: cmd+enter
+  (end-of-line)
+  (break-line))
+
 (define-interactive (delete-region [b (current-buffer)])
   (region-delete b))
 
@@ -1587,8 +1597,9 @@
   
   (let ([k (match k 
              ['escape     "ESC"] 
-             [#\space     "space"]
              [#\backspace "backspace"]
+             [#\return    "return"]
+             [#\space     "space"]
              [_ k])])
     (cond 
       [(eq? k 'control)      'control] ; ignore control + nothing
@@ -1604,7 +1615,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    ; (write (list prefix key)) (newline)    
+    (write (list prefix key)) (newline)    
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -1712,6 +1723,7 @@
          ["D-right"       end-of-line]
          ["D-o"           open-file-or-create]
          ["D-w"           'exit] ; Cmd-w (mac only)
+         ["D-return"      insert-line-after]
          ; Meta + something
          ["M-left"        backward-word]
          ["M-right"       forward-word]
@@ -1724,7 +1736,7 @@
          ["M-S"           save-buffer-as]
          ["M-e"           eval-buffer]
          ["M-w"           'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
-         [#\return        (λ () (buffer-break-line! (current-buffer)))]
+         [#\return        break-line]
          [#\backspace     backward-delete-char]                                            ; backspace
          [#\rubout        (λ () (error 'todo))]                                            ; delete
          ['home           (λ () (buffer-move-point-to-beginning-of-line! (current-buffer)))] ; fn+left
