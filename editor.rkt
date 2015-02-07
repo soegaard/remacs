@@ -1,4 +1,8 @@
 #lang racket
+;;; TODO Copy + Paste
+;;; TODO Respect kill-ring-max
+;;; TODO Implement Move line/seletion up   [Sublime]
+;;; TODO Implement Move line/seletion down
 ;;; TODO test with large file (words.txt)
 ;;; TODO brace matching
 ;;; TODO recently opened files
@@ -1227,6 +1231,13 @@
          (max (mark-position mark)
               (mark-position point)))))
 
+(define (region->string [b (current-buffer)])
+  (cond
+    [(use-region? b)
+     (define t (buffer-text b))
+     (subtext->string t (region-beginning b) (region-end b))]
+    [else #f]))
+
 (define (use-region? b)
   (define marks (buffer-marks b))
   (and #t ; (transient-mode-on? b)
@@ -1248,6 +1259,7 @@
 ;   Delete all characters in region.
 (define (region-delete [b (current-buffer)])
   (when (use-region? b)
+    (buffer-dirty! b)
     (define marks (buffer-marks b))
     (define mark  (first marks))
     (define point (buffer-point b))
@@ -1263,6 +1275,24 @@
 ;;;
 ;;; KILLING
 ;;;
+
+; The kill ring is a list of text blocks.
+; The kill rings is shared between all buffers.
+; (this allows copy+paste from one buffer to another)
+; 
+
+(define kill-ring '())
+(define kill-ring-max 60) ; maximum length of kill-ring (TODO: currently ignored)
+
+(define (kill-ring-insert! s)
+  (set! kill-ring (cons s kill-ring)))
+
+(define (kill-region [b (current-buffer)])
+  (define s (region->string b))
+  (when s
+    (delete-region b)
+    (kill-ring-insert! s)
+    (refresh-frame)))
 
 ; buffer-kill-line : buffer -> void
 ;   Kill text from point to end of line.
@@ -1721,6 +1751,8 @@
          ["C-S-backspace" kill-whole-line]
          ["C-p"           previous-line]
          ["C-n"           next-line]
+         ["C-w"           kill-region]
+         ["D-x"           kill-region] ; also in Edit Menu
          ; todo: Make M-< and M-> work
          ; ["M-<"       beginning-of-buffer]
          ["C-<"           beginning-of-buffer]
@@ -2437,6 +2469,11 @@
     (new-menu-item fm "Open"       #\o #f           (λ (_ e) (open-file-or-create)))
     (new-menu-item fm "Save"       #\s #f           (λ (_ e) (save-buffer)))
     (new-menu-item fm "Save As..." #\s '(shift cmd) (λ (_ e) (save-buffer-as)))
+    ;; Edit Menu
+    (define em (new menu% (label "Edit") (parent mb)))
+    (new-menu-item em "Cut" #\x #f (λ (_ e) (kill-region)))
+    ; (new-menu-item em "Copy" #\c #f (λ (_ e) (copy)))
+    
     ;; Help Menu
     (new menu% (label "Help") (parent mb))) 
   (create-menubar)
