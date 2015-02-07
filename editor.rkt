@@ -1602,10 +1602,9 @@
   (if (null? xs) xs
       (reverse (rest (reverse xs)))))
 
-
 (define global-keymap
   (λ (prefix key)
-    (write (list prefix key)) (newline)    
+    ; (write (list prefix key)) (newline)    
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -2179,10 +2178,18 @@
       ; resume flush
       (send dc resume-flush)))
   ; draw points
-  (render-points w b dc xmin xmax ymin ymax 
-                 start-row end-row))
+  (render-points w start-row end-row))
 
-(define (render-points w b dc xmin xmax ymin ymax start-row end-row)
+(define (render-points w start-row end-row)
+  (define b  (window-buffer w))
+  (define c  (window-canvas w))
+  (define dc (send c get-dc))
+  ;; Canvas Dimensions
+  (define xmin 0)
+  (define xmax (send c get-width))
+  (define ymin 0)
+  (define ymax (send c get-height))
+  ; ---
   (define colors (current-point-color))
   (define points-pen (new pen% [color (car colors)]))
   (current-point-color (cdr colors))
@@ -2350,6 +2357,8 @@
              (send (frame-frame% f) on-exit)]
             ['release             (void)]
             [_                    (unless (equal? (send event get-key-code) 'release)
+                                    (when (and (empty? prefix) key)
+                                      (message (~a "<" key "> undefined")))
                                     (clear-prefix!))]))
         ; todo: don't trigger repaint on every key stroke ...
         (send canvas on-paint))
