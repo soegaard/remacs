@@ -1373,7 +1373,7 @@
 
 (define-interactive (move-to-column n)    (buffer-move-to-column!  (current-buffer) n)) ; n=numprefix 
 
-(define-interactive (backward-char)       
+(define-interactive (backward-char)
   (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point! (current-buffer) -1))
 (define-interactive (forward-char [b (current-buffer)])
@@ -1483,7 +1483,7 @@
     (displayln (eval s-exp))))
 
 ; (self-insert-command k) : -> void
-;    insert character k and move point
+;   insert character k and move point
 (define ((self-insert-command k))
   ; (display "Inserting: ") (write k) (newline)
   (define b (current-buffer))
@@ -1496,9 +1496,17 @@
 (define-interactive (insert-line-after)
   ; insert new line after the current line,
   ; place point at beginning of new line
-  ; Sublime: cmd+enter
+  ; [Sublime: cmd+enter]
   (end-of-line)
   (break-line))
+
+(define-interactive (insert-line-before)
+  ; insert new line before the current line,
+  ; place point at beginning of new line
+  ; [Sublime: cmd+enter]
+  (beginning-of-line)
+  (break-line)
+  (backward-char))
 
 (define-interactive (delete-region [b (current-buffer)])
   (region-delete b))
@@ -1724,6 +1732,7 @@
          ["D-o"           open-file-or-create]
          ["D-w"           'exit] ; Cmd-w (mac only)
          ["D-return"      insert-line-after]
+         ["D-S-return"    insert-line-before]
          ; Meta + something
          ["M-left"        backward-word]
          ["M-right"       forward-word]
