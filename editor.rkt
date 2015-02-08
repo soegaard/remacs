@@ -1,5 +1,6 @@
 #lang racket
-;;; TODO Copy + Paste
+;;; TODO Implement subtext
+;;; TODO Copy
 ;;; TODO Respect kill-ring-max
 ;;; TODO Implement Move line/seletion up   [Sublime]
 ;;; TODO Implement Move line/seletion down
@@ -1294,6 +1295,19 @@
     (kill-ring-insert! s)
     (refresh-frame)))
 
+(define (buffer-insert-latest-kill [b (current-buffer)])
+  (define s (and (not (empty? kill-ring))
+                 (or (first kill-ring) "")))
+  (buffer-insert-string-before-point! b s)
+  (refresh-frame))
+
+#;(define (kill-ring-insert-region [b (current-buffer)])
+    ; emacs name : kill-ring-save
+    )
+; (define copy kill-ring-insert-region)
+
+
+
 ; buffer-kill-line : buffer -> void
 ;   Kill text from point to end of line.
 ;   If point is at end of line, the newline is deleted.
@@ -1570,6 +1584,10 @@
 (define-interactive (recenter-top-bottom)
   (maybe-recenter-top-bottom #t))
 
+(define-interactive (insert-latest-kill)
+  (buffer-insert-latest-kill))
+
+
 ;;;
 ;;; KEYMAP
 ;;;
@@ -1752,7 +1770,8 @@
          ["C-p"           previous-line]
          ["C-n"           next-line]
          ["C-w"           kill-region]
-         ["D-x"           kill-region] ; also in Edit Menu
+         ["D-x"           kill-region]         ; cut   (Edit Menu)
+         ["D-v"           insert-latest-kill]  ; paste (Edit Menu)
          ; todo: Make M-< and M-> work
          ; ["M-<"       beginning-of-buffer]
          ["C-<"           beginning-of-buffer]
@@ -2471,7 +2490,8 @@
     (new-menu-item fm "Save As..." #\s '(shift cmd) (λ (_ e) (save-buffer-as)))
     ;; Edit Menu
     (define em (new menu% (label "Edit") (parent mb)))
-    (new-menu-item em "Cut" #\x #f (λ (_ e) (kill-region)))
+    (new-menu-item em "Cut"   #\x #f (λ (_ e) (kill-region)))
+    (new-menu-item em "Paste" #\v #f (λ (_ e) (insert-latest-kill)))
     ; (new-menu-item em "Copy" #\c #f (λ (_ e) (copy)))
     
     ;; Help Menu
