@@ -1,4 +1,5 @@
 #lang racket
+;;; TODO Add undo
 ;;; TODO Implement subtext
 ;;; TODO Implement Move line/seletion up   [Sublime]
 ;;; TODO Implement Move line/seletion down
@@ -159,7 +160,6 @@
       [else (error 'pos->elm "internal error")]))
   (define (next-pos p)
     (define r (pos-rest p))
-    (write (list 'next-pos r)) (newline)
     (match (first r)
       [(? string? s) (define i (pos-i p))
                      (if (= (string-length s) (+ i 1))
@@ -435,8 +435,8 @@
   ; (displayln "--- illead test file ---")
   ; (write (path->text "illead.txt")) (newline)
   ; (displayln "---")
-  ;(write illead-text) (newline)
-  ;(displayln "---")
+  ; (write illead-text) (newline)
+  ; (displayln "---")
   #;(check-equal? (path->text "illead.txt") illead-text))
 
 ; text-num-lines : text -> natural
@@ -1308,9 +1308,8 @@
 (require "ring-buffer.rkt")
 (define kill-ring (new-ring))
 
-
 (define (kill-ring-insert! s)
-  (set! kill-ring (cons s kill-ring)))
+  (ring-insert! kill-ring s))
 
 (define (kill-region [b (current-buffer)])
   (define s (kill-ring-push-region b))
@@ -1325,17 +1324,11 @@
     s))
 
 (define (buffer-insert-latest-kill [b (current-buffer)])
-  (define s (and (not (empty? kill-ring))
-                 (or (ring-ref kill-ring 0) "")))
+  (define s (or (and (not (ring-empty? kill-ring))
+                     (ring-ref kill-ring 0))
+                ""))
   (buffer-insert-string-before-point! b s)
   (refresh-frame))
-
-#;(define (kill-ring-insert-region [b (current-buffer)])
-    ; emacs name : kill-ring-save
-    )
-; (define copy kill-ring-insert-region)
-
-
 
 ; buffer-kill-line : buffer -> void
 ;   Kill text from point to end of line.
@@ -1357,7 +1350,6 @@
     (forward-char b)
     (buffer-backward-delete-char! b)))
 
-
 ; kill-whole-line : [buffer] -> void
 ;   kill whole line including its newline
 (define (buffer-kill-whole-line [b (current-buffer)])
@@ -1365,9 +1357,6 @@
   (buffer-kill-line b)
   (forward-char b)
   (buffer-backward-delete-char! b))
-
-
-
 
 
 ;;;
@@ -1702,7 +1691,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    (write (list prefix key)) (newline)    
+    ; (write (list prefix key)) (newline)    
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
