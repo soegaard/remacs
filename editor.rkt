@@ -1289,11 +1289,16 @@
   (set! kill-ring (cons s kill-ring)))
 
 (define (kill-region [b (current-buffer)])
-  (define s (region->string b))
+  (define s (kill-ring-push-region b))
   (when s
     (delete-region b)
-    (kill-ring-insert! s)
     (refresh-frame)))
+
+(define (kill-ring-push-region [b (current-buffer)])
+  (define s (region->string b))
+  (when s
+    (kill-ring-insert! s)
+    s))
 
 (define (buffer-insert-latest-kill [b (current-buffer)])
   (define s (and (not (empty? kill-ring))
@@ -1587,6 +1592,8 @@
 (define-interactive (insert-latest-kill)
   (buffer-insert-latest-kill))
 
+(define-interactive (copy-region)
+  (kill-ring-push-region))
 
 ;;;
 ;;; KEYMAP
@@ -1769,6 +1776,7 @@
          ["C-S-backspace" kill-whole-line]
          ["C-p"           previous-line]
          ["C-n"           next-line]
+         ["D-c"           copy-region]
          ["C-w"           kill-region]
          ["D-x"           kill-region]         ; cut   (Edit Menu)
          ["D-v"           insert-latest-kill]  ; paste (Edit Menu)
