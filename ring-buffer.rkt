@@ -8,6 +8,7 @@
 
 ; A ring buffer holds up to max-size elements.
 ; The next element is inserted at index index.
+; Inserting elements in a full buffer will overwrite the oldest element.
 
 (struct ring (buffer index size max-size) #:transparent #:mutable)
 
