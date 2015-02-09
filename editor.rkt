@@ -1,6 +1,5 @@
 #lang racket
 ;;; TODO Implement subtext
-;;; TODO Respect kill-ring-max
 ;;; TODO Implement Move line/seletion up   [Sublime]
 ;;; TODO Implement Move line/seletion down
 ;;; TODO test with large file (words.txt)
@@ -1306,8 +1305,9 @@
 ; (this allows copy+paste from one buffer to another)
 ; 
 
-(define kill-ring '())
-(define kill-ring-max 60) ; maximum length of kill-ring (TODO: currently ignored)
+(require "ring-buffer.rkt")
+(define kill-ring (new-ring))
+
 
 (define (kill-ring-insert! s)
   (set! kill-ring (cons s kill-ring)))
@@ -1326,7 +1326,7 @@
 
 (define (buffer-insert-latest-kill [b (current-buffer)])
   (define s (and (not (empty? kill-ring))
-                 (or (first kill-ring) "")))
+                 (or (ring-ref kill-ring 0) "")))
   (buffer-insert-string-before-point! b s)
   (refresh-frame))
 
