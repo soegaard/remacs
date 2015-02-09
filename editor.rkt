@@ -1,6 +1,5 @@
 #lang racket
 ;;; TODO Implement subtext
-;;; TODO Copy
 ;;; TODO Respect kill-ring-max
 ;;; TODO Implement Move line/seletion up   [Sublime]
 ;;; TODO Implement Move line/seletion down
@@ -143,12 +142,37 @@
 
 (module+ test (check-equal? (new-line "abc\n") (line '("abc\n") 4)))
 
+
 ; line->string : line -> string
 ;   return string contents of a line (i.e. remove properties and overlays)
 (define (line->string l)
   (apply string-append (filter string? (line-strings l))))
 
 (module+ test (check-equal? (line->string (new-line "abc\n")) "abc\n"))
+
+(define (in-line l)
+  (struct pos (rest i))
+  (define (pos->elm p)
+    (match (first (pos-rest p))
+      [(? string?   s) (string-ref s (pos-i p))]
+      [(? property? p) p]
+      [(? overlay?  o) o]
+      [else (error 'pos->elm "internal error")]))
+  (define (next-pos p)
+    (define r (pos-rest p))
+    (write (list 'next-pos r)) (newline)
+    (match (first r)
+      [(? string? s) (define i (pos-i p))
+                     (if (= (string-length s) (+ i 1))
+                         (pos (rest r) 0)
+                         (pos r (+ i 1)))]
+      [(? property? p) (pos (rest r) 0)]
+      [(? overlay? o)  (pos (rest r) 0)]
+      [else (error 'next-post "internal error")]))
+  (define initial-pos (pos (line-strings l) 0))
+  (define (continue-with-pos? p) (not (empty? (pos-rest p))))
+  (make-do-sequence
+   (λ () (values pos->elm next-pos initial-pos continue-with-pos? #f #f))))
 
 (define (line-blank? l)
   (string-whitespace? (line->string l)))
