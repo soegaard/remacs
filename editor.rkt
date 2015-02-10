@@ -650,6 +650,19 @@
   (define p (mark-position m))
   (+ p (- n c) -1))
 
+; position-of-beginning-of-line : [buffer or mark] -> integer
+;   return the position of the beginning of the line
+(define (position-of-beginning-of-line [b-or-m (current-buffer)])
+  (define m (cond
+              [(mark?   b-or-m) b-or-m]
+              [(buffer? b-or-m) (buffer-point b-or-m)]
+              [else (error 'position-of-end-line (~a "expected mark or buffer, got " b-or-m))]))
+  (define b (mark-buffer m))
+  (define-values (r c) (mark-row+column m))
+  (define p (mark-position m))
+  (- p c))
+
+
 (define (position-of-end [b (current-buffer)])
   (text-length (buffer-text b)))
 
@@ -1351,7 +1364,7 @@
     (forward-char b)
     (buffer-backward-delete-char! b)))
 
-; kill-whole-line : [buffer] -> void
+; buffer-kill-whole-line : [buffer] -> void
 ;   kill whole line including its newline
 (define (buffer-kill-whole-line [b (current-buffer)])
   (buffer-move-point-to-beginning-of-line! b)
@@ -1359,6 +1372,24 @@
   (forward-char b)
   (buffer-backward-delete-char! b))
 
+; buffer-kill-line-to-beginning : buffer -> void
+;   Kill text from point to beginning of line.
+;   If point is at the beginning of line, the newline is deleted.
+;   Point is at the beginning of line, if text from point to newline is all whitespace.
+(define (buffer-kill-line-to-beginning [b (current-buffer)])
+  ; TODO : store deleted text in kill ring
+  (define m (buffer-point b))
+  (define p1 (mark-position m))
+  (define p2 (position-of-beginning-of-line m))
+  (define rest-of-line (subtext->string (buffer-text b) p2 p1))
+  ; delete to beginning of line
+  (buffer-set-mark b)
+  (buffer-move-point-to-beginning-of-line! b)
+  (delete-region b)
+  ; maybe delete newline
+  (when (and (string-whitespace? rest-of-line)
+             (not (= (mark-position m) 0)))
+    (buffer-backward-delete-char! b)))
 
 ;;;
 ;;; MESSAGES
@@ -1595,10 +1626,16 @@
 
 
 (define-interactive (kill-line)
-  (buffer-kill-line))
+  (buffer-kill-line)
+  (refresh-frame))
 
 (define-interactive (kill-whole-line)
-  (buffer-kill-whole-line))
+  (buffer-kill-whole-line)
+  (refresh-frame))
+
+(define-interactive (kill-line-to-beginning)
+  (buffer-kill-line-to-beginning)
+  (refresh-frame))
 
 (define-interactive (recenter-top-bottom)
   (maybe-recenter-top-bottom #t))
@@ -1786,6 +1823,7 @@
          ["C-e"           end-of-line]
          ["C-f"           forward-char]
          ["C-k"           kill-line]
+         ["D-backspace"   kill-line-to-beginning]
          ["C-l"           recenter-top-bottom]
          ["C-S-backspace" kill-whole-line]
          ["C-p"           previous-line]
@@ -2515,6 +2553,11 @@
     (new-menu-item em "Copy"  #\c #f (λ (_ e) (copy-region)))
     (new-menu-item em "Cut"   #\x #f (λ (_ e) (kill-region)))
     (new-menu-item em "Paste" #\v #f (λ (_ e) (insert-latest-kill)))
+    ;; Edit | Text
+    (define etm (new menu% (label "Text") (parent em)))
+    (new-menu-item etm "Kill Line"         #\k         '(ctl shift) (λ (_ e) (kill-whole-line)))
+    (new-menu-item etm "Kill to End"       #\k         '(ctl)       (λ (_ e) (kill-line)))
+    (new-menu-item etm "Kill to Beginning" #\backspace '(cmd)       (λ (_ e) (kill-line-to-beginning)))
     
     ;; Help Menu
     (new menu% (label "Help") (parent mb))) 
