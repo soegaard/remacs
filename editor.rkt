@@ -1,5 +1,6 @@
 #lang racket
-;;; TODO Add undo
+;;; TODO Hydra: https://github.com/abo-abo/hydra
+;;; TODO Implement undo
 ;;; TODO Implement subtext
 ;;; TODO Implement Move line/seletion up   [Sublime]
 ;;; TODO Implement Move line/seletion down
@@ -1789,7 +1790,7 @@
          ["C-S-backspace" kill-whole-line]
          ["C-p"           previous-line]
          ["C-n"           next-line]
-         ["D-c"           copy-region]
+         ["D-c"           copy-region]         ; copy  (Edit Menu)
          ["C-w"           kill-region]
          ["D-x"           kill-region]         ; cut   (Edit Menu)
          ["D-v"           insert-latest-kill]  ; paste (Edit Menu)
@@ -2511,9 +2512,9 @@
     (new-menu-item fm "Save As..." #\s '(shift cmd) (λ (_ e) (save-buffer-as)))
     ;; Edit Menu
     (define em (new menu% (label "Edit") (parent mb)))
+    (new-menu-item em "Copy"  #\c #f (λ (_ e) (copy-region)))
     (new-menu-item em "Cut"   #\x #f (λ (_ e) (kill-region)))
     (new-menu-item em "Paste" #\v #f (λ (_ e) (insert-latest-kill)))
-    ; (new-menu-item em "Copy" #\c #f (λ (_ e) (copy)))
     
     ;; Help Menu
     (new menu% (label "Help") (parent mb))) 
