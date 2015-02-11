@@ -204,16 +204,6 @@
                 (check-equal? (for/list ([x (list->lines xs)]) x)
                               (map new-line xs))))
 
-
-
-
-; (struct line (strings length) #:transparent #:mutable)
-; A line is a list of elements of the types:
-;   string        represents actual text
-;   property      represents a text property e.g. bold
-;   overlay       represents ...
-
-
 ; subline : line integer integer -> line
 ;   Return new line consisting of the characters, properties and overlays
 ;   between the indices i1 and i2.
@@ -262,11 +252,12 @@
   (when (>= i (line-length l))
     (error 'line-ref "index ~a too large for line, got: ~a" i l))
   (let loop ([i i] [ss (line-strings l)])
-    (define s (first ss))
-    (define n (string-length s))
-    (if (< i n) 
-        (string-ref s i)
-        (loop (- i n) (rest ss)))))
+    (match (first ss)
+      [(? string? s) (define n (string-length s))
+                     (if (< i n) 
+                         (string-ref s i)
+                         (loop (- i n) (rest ss)))]
+      [_             (loop i (rest ss))])))
 
 (module+ test
   (define illead-text 
