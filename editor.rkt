@@ -151,8 +151,10 @@
 
 (module+ test (check-equal? (line->string (new-line "abc\n")) "abc\n"))
 
+
+
 (define (in-line l)
-  (struct pos (rest i))
+  (struct pos (rest i)) ; pos = comprehension position (not a text position)
   (define (pos->elm p)
     (match (first (pos-rest p))
       [(? string?   s) (string-ref s (pos-i p))]
@@ -203,11 +205,62 @@
                               (map new-line xs))))
 
 
+
+
+; (struct line (strings length) #:transparent #:mutable)
+; A line is a list of elements of the types:
+;   string        represents actual text
+;   property      represents a text property e.g. bold
+;   overlay       represents ...
+
+
+; subline : line integer integer -> line
+;   Return new line consisting of the characters, properties and overlays
+;   between the indices i1 and i2.
+;   If greedy any properties or overlays trailing the last string
+;   also becomes part of the new line.
+(define (subline l i1 i2 [greedy? #f])
+  (define n (line-length l))
+  (unless (<  i2 n)  (error 'subline "index ~a too large" i2))
+  (unless (<= i1 i2) (subline l i2 i1))
+  (define (skip-start i ss)
+    ; ss = list of strings, property, overlay
+    (if (= i 0) ss
+        (match ss
+          ['() '()]
+          [(cons (? string? s) more)
+           (define m (string-length s))
+           (cond 
+             [(< m i) (skip-start (- i m) more)]
+             [else    (cons (substring s i m) more)])]
+          [(cons _ more)
+           (skip-start i more)])))
+  (define (take-to i ss greedy?)
+    (cond
+      [(empty? ss) '()]
+      [(= i 0)     (define head (first ss))
+                   (if (and greedy? 
+                            (or (overlay? head) (property? head)))
+                       (cons head (take-to i (rest ss) greedy?))
+                       '())]
+      [(< i 0)     '()]
+      [else        (match ss
+                     [(cons (? string? s) more)
+                      (define n (string-length s))
+                      (if (<= n i) 
+                          (cons s (take-to (- i n) more greedy?))
+                          (list (substring s 0 i)))]
+                     [(cons (and head (or (? property? s) (? overlay? s))) more)
+                      (cons head (take-to i more greedy?))]
+                     [_ (error 'take-to "expected list of strings, properties and overlays")])]))
+  (take-to (- i2 i1) (skip-start i1 (line-strings l)) greedy?))
+
+
 ; line-ref : line index -> char
 ;   return the ith character of a line
 (define (line-ref l i)
   (when (>= i (line-length l))
-    (error 'line-ref "index ~a to large for line, got: ~a" i l))
+    (error 'line-ref "index ~a too large for line, got: ~a" i l))
   (let loop ([i i] [ss (line-strings l)])
     (define s (first ss))
     (define n (string-length s))
