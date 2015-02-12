@@ -1219,7 +1219,7 @@
   (line-insert-property! (dlist-ref (text-lines t) row) p col)
   #;(buffer-dirty! b))
 
-(define (buffer-insert-property! b p)
+(define (buffer-insert-property! b p [p-end p])
   ; if the region is active, the property is inserted
   ; before and after the region (consider: are all properties toggles?)
   ; if there are no region the property is simply inserted
@@ -1232,7 +1232,7 @@
      (mark-move-to-position! m rb)
      (buffer-insert-property-at-point! b p)
      (mark-move-to-position! m re)
-     (buffer-insert-property-at-point! b p)
+     (buffer-insert-property-at-point! b p-end)
      (mark-move-to-position! m old)]
     [else
      (buffer-insert-property-at-point! b p)]))
@@ -1895,6 +1895,12 @@
          ["M-S-right"     forward-word/extend-region]
          ["M-b"           (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]
          ["M-i"           (λ () (buffer-insert-property! (current-buffer) (property 'italics)))]
+         ["M-f1"          (λ () (buffer-insert-property! 
+                                 (current-buffer) (property yellow) (property text-color)))]
+         ["M-f2"          (λ () (buffer-insert-property! 
+                                 (current-buffer) (property orange) (property text-color)))]
+         ["M-f3"          (λ () (buffer-insert-property! 
+                                 (current-buffer) (property blue)   (property text-color)))]
          ["M-d"           (λ () (buffer-display (current-buffer)))]
          ["M-s"           save-buffer]
          ["M-S"           save-buffer-as]
@@ -2155,6 +2161,9 @@
 ;;; COLORS
 ;;;
 
+(define (color? x)
+  (is-a? x color%))
+
 (define (hex->color x)
   (define blue  (remainder           x        256))
   (define green (remainder (quotient x   256) 256))
@@ -2171,7 +2180,7 @@
 (define base2   (hex->color #xeee8d5)) ; white      background
 (define base3   (hex->color #xfdf6e3)) ; brwhite    background   (brightest)
 
-(define yellow  (hex->color #xb58900)) ; yellow     accent color33
+(define yellow  (hex->color #xb58900)) ; yellow     accent color
 (define orange  (hex->color #xcb4b16)) ; brred      accent color
 (define red     (hex->color #xdc322f)) ; red        accent color
 (define magenta (hex->color #xd33682)) ; magenta    accent color
@@ -2184,11 +2193,13 @@
 (define region-highlighted-color base00)
 (define text-color               base1)
 (define border-color             base00)
-(define border-pen       (new pen% [color base00] [width 1] [style 'solid] [cap 'butt] [join 'miter]))
 
-(define point-colors (circular-list base03 base03 base03 base02 base01 base00
-                                    base0 base1 base2 base3 base3 base2 base1 base0
-                                    base00 base01 base02 base03))
+(define border-pen    
+  (new pen% [color base00] [width 1] [style 'solid] [cap 'butt] [join 'miter]))
+
+(define point-colors (circular-list base03 base03 base02 base01 base00
+                                    base0  base1  base2  base3  base3  base2  base1 
+                                    base0  base00 base01 base02 base03 base03))
 
 ;;;
 ;;; FONT
@@ -2342,9 +2353,10 @@
                     (values (draw-string u x y) (+ p (string-length t)))))
                 ; return the next x position
                 (values next-x next-p)]        
-               [(property 'bold)     (toggle-bold)    (send dc set-font (get-font)) (values x p)]
-               [(property 'italics)  (toggle-italics) (send dc set-font (get-font)) (values x p)]
-               [_ (displayln (~a "Warning: Got " s))                                (values x p)]))
+               [(property 'bold)     (toggle-bold)    (send dc set-font (get-font))   (values x p)]
+               [(property 'italics)  (toggle-italics) (send dc set-font (get-font))   (values x p)]
+               [(property (? color? c))               (send dc set-text-foreground c) (values x p)]
+               [_ (displayln (~a "Warning: Got " s))                                  (values x p)]))
            (values (+ y ls)
                    (+ p (line-length l)))]))
       ; get point and mark height
