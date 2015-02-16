@@ -1,10 +1,15 @@
 #lang racket
+;;; TODO test with large file (words.txt)
+;;;        ok  - open large file
+;;;        ok  - end-of-buffer
+;;;        fix - cursor movements at end of file are *slow*
+;;; TODO [Sublime] If a selection is found elsewhere, they are boxed
 ;;; TODO Hydra: https://github.com/abo-abo/hydra
 ;;; TODO Implement undo
 ;;; TODO Implement subtext
 ;;; TODO Implement Move line/seletion up   [Sublime]
 ;;; TODO Implement Move line/seletion down
-;;; TODO test with large file (words.txt)
+
 ;;; TODO brace matching
 ;;; TODO recently opened files
 ;;; TODO indentation
@@ -12,7 +17,7 @@
 ;;; TODO filling
 ;;; TODO documentation
 ;;; TODO left and right needs to toggle transient-mode rather than deactivate the mark
-;;; TODO Properties and faces (done?)
+;;; TODO Properties and faces
 ;;; TODO Modes
 ;;; TODO previous-buffer (parallel to next-buffer)
 ;;; TODO Introduce global that controls which key to use for meta
@@ -1818,7 +1823,7 @@
                          (define pre (longest-common-prefix cs))
                          (message (~a "M-x " pre))
                          (list 'replace (cons "M-x" (string->list pre)))])]
-         [#\return    (define cmd-name (string-append* (map ~a more)))
+         ["return"    (define cmd-name (string-append* (map ~a more)))
                       (define cmd      (lookup-interactive-command cmd-name))
                       (message "")
                       cmd]
