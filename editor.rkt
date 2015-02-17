@@ -1,4 +1,9 @@
 #lang racket
+;;; TODO Finish eval-buffer
+;;;        ok use buffer-local namespace for evaluation
+;;;        - convenient initial namespace (now racket/base)
+;;;        - catch errors
+;;;        - output where?
 ;;; TODO test with large file (words.txt)
 ;;;        ok  - open large file
 ;;;        ok  - end-of-buffer
@@ -21,7 +26,6 @@
 ;;; TODO Modes
 ;;; TODO previous-buffer (parallel to next-buffer)
 ;;; TODO Introduce global that controls which key to use for meta
-;;; TODO Finish eval-buffer
 ;;; TODO Implement open-input-buffer
 ;;; TODO Allow negative numeric prefix
 ;;; TODO Holding M and typing a number should create a numeric prefix.
@@ -889,6 +893,9 @@
 ; new-buffer : -> buffer
 ;   create fresh buffer without an associated file
 (define (new-buffer [text (new-text)] [path #f] [name (generate-new-buffer-name "buffer")])
+  (define locals (make-base-empty-namespace))
+  (parameterize ([current-namespace locals])
+    (namespace-require 'racket/base))
   (define b (buffer text name path 
                     '()   ; points
                     '()   ; marks
@@ -897,7 +904,7 @@
                     0     ; num-chars
                     0     ; num-lines
                     #f    ; modified?
-                    (make-empty-namespace)))  ; locals
+                    locals))  ; locals
   (define point (new-mark b "*point*"))
   (define points (list point))
   (set-buffer-points! b points)
@@ -1622,8 +1629,9 @@
   (define t (buffer-text b))
   (define s (text->string t))
   (define in (open-input-string s))
+  (define ns (buffer-locals b))
   (for ([s-exp (in-port read in)])
-    (displayln (eval s-exp))))
+    (displayln (eval s-exp ns))))
 
 ; (self-insert-command k) : -> void
 ;   insert character k and move point
