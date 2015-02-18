@@ -1,6 +1,7 @@
 #lang racket
 ;;; TODO Finish eval-buffer
 ;;;        ok use buffer-local namespace for evaluation
+;;;        - fix new-buffer (buffer-top needs to be required)
 ;;;        - convenient initial namespace (now racket/base)
 ;;;        - catch errors
 ;;;        - output where?
@@ -890,12 +891,29 @@
               #:unless (get-buffer (name i)))
     (name i)))
 
+(module* buffer-top #f
+  (provide (rename-out [buffer-top #%top]))
+  ; (require (for-syntax racket/base syntax/parse))
+  (define-syntax (buffer-top stx)
+    (syntax-parse stx
+      [(_ . id:id)
+       #'(let ()
+           (define b (current-buffer))
+           (cond
+             [(ref-buffer-local b 'id #f) => values]
+             [else (lookup-default 'id)]))])))
+
+(require syntax/location)
+(define path-to-buffer-top (quote-module-path buffer-top))
+
 ; new-buffer : -> buffer
 ;   create fresh buffer without an associated file
 (define (new-buffer [text (new-text)] [path #f] [name (generate-new-buffer-name "buffer")])
   (define locals (make-base-empty-namespace))
   (parameterize ([current-namespace locals])
-    (namespace-require 'racket/base))
+    (namespace-require 'racket/base)
+    ; (eval `(require ,path-to-buffer-top))
+    )
   (define b (buffer text name path 
                     '()   ; points
                     '()   ; marks
@@ -915,8 +933,6 @@
   (set-buffer-num-chars! b num-chars)
   (register-buffer b)
   b)
-
-
 
 ; generate-new-buffer : string -> buffer
 (define (generate-new-buffer name)
@@ -1483,6 +1499,30 @@
 (define (completions->text so-far cs)
   (define explanation (list (~a "Completions for: " so-far)))
   (new-text (list->lines (for/list ([c (append explanation cs)]) (~a c "\n")))))
+
+;;;
+;;; BUFFER LOCALS
+;;;
+
+(define (set-buffer-local! b sym v)
+  (define ns (buffer-locals b))
+  (namespace-set-variable-value! sym v #f ns))
+
+(define (ref-buffer-local b sym 
+                          [on-error (λ () (error 'ref-buffer-local (~a sym " is undefined")))])
+  (define (on-failure) (if (procedure? on-error) (on-error) on-error))
+  (define ns (buffer-locals b))
+  (namespace-variable-value sym #t on-failure ns))
+
+(define-namespace-anchor default-namespace-anchor)
+(define default-namespace (namespace-anchor->namespace default-namespace-anchor))
+;;; TODO : What should the default namespace be?
+
+(define (lookup-default sym [on-error #f])
+  (namespace-variable-value sym #t on-error default-namespace))
+
+
+
 
 ;;;
 ;;; INTERACTIVE COMMANDS
