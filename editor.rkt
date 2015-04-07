@@ -1393,6 +1393,11 @@
 
 (require "ring-buffer.rkt")
 (define kill-ring (new-ring))
+(define current-clipboard-at-latest-kill (make-parameter #f))
+
+(define (update-current-clipboard-at-latest-kill)
+  (current-clipboard-at-latest-kill 
+   (send the-clipboard get-clipboard-string 0)))
 
 (define (kill-ring-insert! s)
   (ring-insert! kill-ring s))
@@ -1724,23 +1729,39 @@
 
 (define-interactive (kill-line)
   (buffer-kill-line)
+  (update-current-clipboard-at-latest-kill)
   (refresh-frame))
 
 (define-interactive (kill-whole-line)
   (buffer-kill-whole-line)
+  (update-current-clipboard-at-latest-kill)
   (refresh-frame))
 
 (define-interactive (kill-line-to-beginning)
   (buffer-kill-line-to-beginning)
+  (update-current-clipboard-at-latest-kill)
   (refresh-frame))
 
 (define-interactive (recenter-top-bottom)
   (maybe-recenter-top-bottom #t))
 
 (define-interactive (insert-latest-kill)
-  (buffer-insert-latest-kill))
+  ; If another application has put any text onto the system clipboard
+  ; later than the latest kill, that text is inserted.
+  ; Note: The timestamp is ignored in OS X.
+  (define s (send the-clipboard get-clipboard-string 0))
+  (cond
+    [(or (equal? s "") 
+         (equal? s (current-clipboard-at-latest-kill)))
+     ; no changes to the system clipboard, so latest kill is used
+     (buffer-insert-latest-kill)]
+    [else
+     ; system clipboard is newer
+     (buffer-insert-string-before-point! (current-buffer) s)
+     (refresh-frame)]))            
 
 (define-interactive (copy-region)
+  (update-current-clipboard-at-latest-kill)
   (kill-ring-push-region))
 
 ;;;
