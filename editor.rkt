@@ -939,7 +939,19 @@
   (unless (string? name) (error 'generate-new-buffer "string expected, got ~a" name))
   (new-buffer (new-text) #f (generate-new-buffer-name name)))
 
-(define scratch-buffer (new-buffer (new-text (list->lines '("The scratch buffer\n"))) #f "*scratch*"))
+(define scratch-text
+  '("Welcome to remacs, an Emacs style editor implemented in Racket.\n"
+    "The editor is still a work-in-progress.\n\n"
+    "\n"
+    "Search for keymap in the source to see the available keybindings.\n"
+    "    C-x 2      splits the window in two vertically\n"
+    "    C-x 3      splits the window in two horizontally\n"
+    "    C-x right  is bound to next-buffer\n\n" 
+    "\n"
+    "Happy Rackteering\n"
+    "/soegaard"))
+
+(define scratch-buffer (new-buffer (new-text (list->lines scratch-text)) #f "*scratch*"))
 (define current-buffer (make-parameter scratch-buffer))
 
 ; syntax: (save-current-buffer body ...)
@@ -2720,12 +2732,13 @@
 
 (module+ test
   (define ib illead-buffer)
-  (current-buffer ib)
+  ;(current-buffer ib)
+  (current-buffer scratch-buffer)
   (define f  (frame #f #f #f #f #f))
   (frame-install-frame%! f) ; installs frame% and panel
   
   (define p (frame-panel f))
-  (define w (new-window f p ib 'root))
+  (define w (new-window f p scratch-buffer 'root))
   
   ;(define sp (vertical-split-window f #f #f #f #f #f #f))  
   ; (define w  (window f #f c sp ib))
@@ -2734,6 +2747,7 @@
   ; (set-vertical-split-window-above! sp w)
   ; (set-vertical-split-window-below! sp w2)
   ; (set-frame-windows! f sp)
+  
   (set-frame-windows! f w)
   (current-window w)
   (current-frame f)
