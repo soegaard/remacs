@@ -147,7 +147,7 @@
   (line (list s) (string-length s)))
 
 ; new-line : string ->list
-;   antipating extra options for new-line
+;   anticipating extra options for new-line
 (define (new-line s)
   (string->line s))
 
