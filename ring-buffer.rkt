@@ -4,7 +4,7 @@
 ;;; RING BUFFER (AKA CIRCULAR STACK)
 ;;;
 
-(provide new-ring ring-insert! ring-ref ring->list in-ring)
+(provide new-ring ring-insert! ring-ref ring->list in-ring ring-empty?)
 
 ; A ring buffer holds up to max-size elements.
 ; The next element is inserted at index index.
@@ -49,6 +49,11 @@
   (define (continue-with-pos? p) (< (pos-i p) (pos-m p)))
   (make-do-sequence
    (λ () (values pos->elm next-pos initial-pos continue-with-pos? #f #f))))
+
+; ring-empty? : ring -> boolean
+;   is the ring empty?
+(define (ring-empty? r)
+  (= (ring-size r) 0))
 
 (module+ test (require rackunit)
   (define r (new-ring 5))
