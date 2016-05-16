@@ -1575,7 +1575,7 @@
 
 ;; Names from emacs
 (define-interactive (beginning-of-line)   (buffer-move-point-to-beginning-of-line! (current-buffer)))
-(define-interactive (end-of-line)         (buffer-move-point-to-end-of-line!      (current-buffer)))
+(define-interactive (end-of-line)         (buffer-move-point-to-end-of-line!       (current-buffer)))
 
 
 (define-interactive (move-to-column n)    (buffer-move-to-column!  (current-buffer) n)) ; n=numprefix 
@@ -1608,7 +1608,7 @@
          (command-set-mark)])
   (mark-activate! (region-mark)))
 
-(define-interactive (backward-char/extend-region) 
+(define-interactive (backward-char/extend-region)
   (prepare-extend-region)
   (buffer-move-point! (current-buffer) -1))
 (define-interactive (forward-char/extend-region)
@@ -1622,13 +1622,16 @@
   (buffer-move-point-down! (current-buffer)))
 (define-interactive (forward-word/extend-region) 
   (prepare-extend-region)
-  (buffer-forward-word!   (current-buffer)))
+  (buffer-forward-word! (current-buffer)))
 (define-interactive (backward-word/extend-region)
   (prepare-extend-region)
-  (buffer-backward-word!   (current-buffer)))
-
-
-
+  (buffer-backward-word! (current-buffer)))
+(define-interactive (beginning-of-line/extend-region)
+  (prepare-extend-region)
+  (buffer-move-point-to-beginning-of-line! (current-buffer)))
+(define-interactive (end-of-line/extend-region)
+  (prepare-extend-region)
+  (buffer-move-point-to-end-of-line! (current-buffer)))
 
 (define-interactive (save-buffer)         (save-buffer!    (current-buffer)) (refresh-frame))
 (define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
@@ -1970,6 +1973,8 @@
          ; Cmd + something
          ["D-left"        beginning-of-line]
          ["D-right"       end-of-line]
+         ["D-S-left"      beginning-of-line/extend-region]
+         ["D-S-right"     end-of-line/extend-region]
          ["D-o"           open-file-or-create]
          ["D-w"           'exit] ; Cmd-w (mac only)
          ["D-return"      insert-line-after]
@@ -2008,7 +2013,7 @@
 ;;; STATUS LINE
 ;;;
 
-; The status line is shown at the bottom om a buffer window.
+; The status line is shown at the bottom of a buffer window.
 (define (status-line-hook)
   (define b (current-buffer))
   (define-values (row col) (mark-row+column (buffer-point b)))
