@@ -5,6 +5,12 @@
 ;;;        - convenient initial namespace (now racket/base)
 ;;;        - catch errors
 ;;;        - output where?
+;;; TODO The height of the highligth coloring is slightly too big.
+;;;      This means that render un-highligthed characters on the next line
+;;;      removes the bottom of the highligthing.
+;;;      Two possible solutions:  1) reduce height
+;;;                               2) erase from end of line to right edge of window
+;;;      Both solutions needs to go into render-buffer.
 ;;; TODO test with large file (words.txt)
 ;;;        ok  - open large file
 ;;;        ok  - end-of-buffer
@@ -1646,8 +1652,14 @@
 (define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
 (define-interactive (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
 (define-interactive (beginning-of-buffer [b (current-buffer)]) (buffer-move-point-to-position! b 0))
-(define-interactive (end-of-buffer       [b (current-buffer)]) 
+(define-interactive (end-of-buffer       [b (current-buffer)])
   (buffer-move-point-to-position! b (- (buffer-length b) 1)))
+(define-interactive (end-of-buffer/extend-region)
+  (prepare-extend-region)
+  (end-of-buffer (current-buffer)))
+(define-interactive (beginning-of-buffer/extend-region)
+  (prepare-extend-region)
+  (beginning-of-buffer (current-buffer)))
 
 (define-interactive (open-file-or-create [path (finder:get-file)])
   (when path ; #f = none selected
@@ -1691,7 +1703,7 @@
 
 ; eval-buffer : -> void
 ;   read the s-expression in the current buffer one at a time,
-;   evaluate each line
+;   evaluate each s-expression
 ;   TODO: Note done: Introduce namespace for each buffer
 (define-interactive (eval-buffer)
   (define b (current-buffer))
@@ -1699,8 +1711,14 @@
   (define s (text->string t))
   (define in (open-input-string s))
   (define ns (buffer-locals b))
-  (for ([s-exp (in-port read in)])
-    (displayln (eval s-exp ns))))
+  (parameterize ([current-namespace ns])
+    (define (read1 in)
+      (define stx (read-syntax 'read-from-buffer in))
+      (if (syntax? stx)
+          (namespace-syntax-introduce stx)
+          stx)) ; probably eof
+    (for ([stx (in-port read1 in)])
+      (displayln (eval-syntax stx ns))))) ; todo : catch errors here
 
 ; (self-insert-command k) : -> void
 ;   insert character k and move point
@@ -1802,7 +1820,7 @@
 (struct keymap (bindings) #:transparent)
 
 (define (key-event->key event)
-  ;(newline)
+  ; (newline)
   #;(begin
       (write (list 'key-event->key
                    'key                (send event get-key-code)
@@ -1970,20 +1988,19 @@
          ["C-S-backspace" kill-whole-line]
          ["C-p"           previous-line]
          ["C-n"           next-line]
-         ["D-c"           copy-region]         ; copy  (Edit Menu)
          ["C-w"           kill-region]
+         ; Cmd + something
+         ["D-c"           copy-region]         ; copy  (Edit Menu)
          ["D-x"           kill-region]         ; cut   (Edit Menu)
          ["D-v"           insert-latest-kill]  ; paste (Edit Menu)
-         ; todo: Make M-< and M-> work
-         ; ["M-<"       beginning-of-buffer]
-         ["C-<"           beginning-of-buffer]
-         ["M->"           end-of-buffer]
-         ["C->"           end-of-buffer]
-         ; Cmd + something
          ["D-left"        beginning-of-line]
          ["D-right"       end-of-line]
-         ["D-S-left"      beginning-of-line/extend-region] ; todo: should move word wise? 
-         ["D-S-right"     end-of-line/extend-region]       ; todo: should move word wise?
+         ["D-down"        end-of-buffer]
+         ["D-up"          beginning-of-buffer]
+         ["D-S-left"      beginning-of-line/extend-region]   ; todo: should move word wise? 
+         ["D-S-right"     end-of-line/extend-region]         ; todo: should move word wise?
+         ["D-S-up"        beginning-of-buffer/extend-region] 
+         ["D-S-down"      end-of-buffer/extend-region]       
          ["D-o"           open-file-or-create]
          ["D-w"           'exit] ; Cmd-w (mac only)
          ["D-return"      insert-line-after]
@@ -2450,7 +2467,7 @@
                                (char=? (string-ref t (- (string-length t) 1)) #\newline)
                                (substring t 0 (max 0 (- (string-length t) 1))))
                           t))
-                    (values (draw-string u x y) (+ p (string-length t)))))
+                    (values (draw-string u x y) (+ p (string-length t)))))                
                 ; return the next x position
                 (values next-x next-p)]        
                [(property 'bold)     (toggle-bold)    (send dc set-font (get-font))   (values x p)]
@@ -2463,6 +2480,8 @@
       ;(define font-width  (send dc get-char-width))
       ;(define font-height (send dc get-char-height))
       (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
+      ; Note: The font-height is slightly larger than font-size
+      ; (displayln (list 'render-buffer 'font-height font-height 'font-size (font-size)))
       ; resume flush
       (send dc resume-flush)))
   ; draw points
