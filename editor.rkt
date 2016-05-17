@@ -142,9 +142,18 @@
 ;;; LINES
 ;;;
 
+(define (add-ending-newline-if-needed s)
+  (define n (string-length s))
+  (cond
+    [(= n 0)                                 "\n"]
+    [(eqv? (string-ref s (- n 1)) #\newline) s]
+    [else                                   (string-append s "\n")]))
+
+
 ; string->line : string -> line
 (define (string->line s)
-  (line (list s) (string-length s)))
+  (let ([s (add-ending-newline-if-needed s)])  
+    (line (list s) (string-length s))))
 
 ; new-line : string ->list
 ;   anticipating extra options for new-line
@@ -1682,7 +1691,7 @@
 
 ; eval-buffer : -> void
 ;   read the s-expression in the current buffer one at a time,
-;   evaluate each ine
+;   evaluate each line
 ;   TODO: Note done: Introduce namespace for each buffer
 (define-interactive (eval-buffer)
   (define b (current-buffer))
@@ -1973,8 +1982,8 @@
          ; Cmd + something
          ["D-left"        beginning-of-line]
          ["D-right"       end-of-line]
-         ["D-S-left"      beginning-of-line/extend-region]
-         ["D-S-right"     end-of-line/extend-region]
+         ["D-S-left"      beginning-of-line/extend-region] ; todo: should move word wise? 
+         ["D-S-right"     end-of-line/extend-region]       ; todo: should move word wise?
          ["D-o"           open-file-or-create]
          ["D-w"           'exit] ; Cmd-w (mac only)
          ["D-return"      insert-line-after]
