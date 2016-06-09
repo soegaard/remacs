@@ -5,6 +5,11 @@
 ;;;        - convenient initial namespace (now racket/base)
 ;;;        - catch errors
 ;;;        - output where?
+;;; TODO mark-whole-buffer  (normally bound to C-x h)
+;;; TODO Wordwrap
+;;; TODO #\tab now inserts 4 space
+;;;      But ... if a rendering breaks if the a file contains #\tab
+;;; TODO Let screen follow cursor rather than disappear to the right (for long lines)
 ;;; TODO The height of the highligth coloring is slightly too big.
 ;;;      This means that render un-highligthed characters on the next line
 ;;;      removes the bottom of the highligthing.
@@ -19,8 +24,8 @@
 ;;; TODO Hydra: https://github.com/abo-abo/hydra
 ;;; TODO Implement undo
 ;;; TODO Implement subtext
-;;; TODO Implement Move line/seletion up   [Sublime]
-;;; TODO Implement Move line/seletion down
+;;; TODO Implement Move line/selection up   [Sublime]
+;;; TODO Implement Move line/selection down
 
 ;;; TODO brace matching
 ;;; TODO recently opened files
@@ -698,6 +703,14 @@
 (define (mark-row+column m)
   (position-row+column (buffer-text (mark-buffer m))
                        (mark-position m)))
+
+
+; mark-on-last-line? : mark -> boolean
+;    is m on the last line of its buffer?
+(define (mark-on-last-line? m)
+  (define-values (row col) (mark-row+column m))
+  (define t (buffer-text (mark-buffer m)))
+  (= (+ row 1) (text-num-lines t)))
 
 ; mark-move-beginning-of-line! : mark -> void
 ;   move the mark to the beginning of its line
@@ -1554,8 +1567,6 @@
   (namespace-variable-value sym #t on-error default-namespace))
 
 
-
-
 ;;;
 ;;; INTERACTIVE COMMANDS
 ;;;
@@ -1604,9 +1615,12 @@
 (define-interactive (previous-line)       
   (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point-up!   (current-buffer)))
-(define-interactive (next-line)           
+(define-interactive (next-line)
   (cond [(region-mark) => mark-deactivate!])
-  (buffer-move-point-down! (current-buffer)))
+  (define b (current-buffer))
+  (if (mark-on-last-line? (buffer-point b))
+      (buffer-move-point-to-end-of-line! b)
+      (buffer-move-point-down! b)))
 (define-interactive (backward-word)
   (cond [(region-mark) => mark-deactivate!])
   (buffer-backward-word!   (current-buffer)))
@@ -1785,7 +1799,7 @@
   (refresh-frame))
 
 (define-interactive (recenter-top-bottom)
-  (maybe-recenter-top-bottom #t))
+  (maybe-recenter-top-bottom #t)) ; todo: changed this from #t
 
 (define-interactive (insert-latest-kill)
   ; If another application has put any text onto the system clipboard
@@ -1961,6 +1975,7 @@
          ['right      next-buffer]
          [_           #f])]
       [(list)
+       ; (write (list 'empty-prefix 'key key)) (newline)
        (match key
          ["ESC"          'prefix]
          ["C-x"          'prefix]
@@ -2026,6 +2041,8 @@
          [#\return        break-line]
          [#\backspace     backward-delete-char]                                            ; backspace
          [#\rubout        (λ () (error 'todo))]                                            ; delete
+         ; make tab insert 4 spaces
+         [#\tab           (λ() (define insert (self-insert-command #\space)) (for ([i 4]) (insert)))]
          ['home           (λ () (buffer-move-point-to-beginning-of-line! (current-buffer)))] ; fn+left
          ['end            (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
          ["C-space"       command-set-mark]
@@ -2364,11 +2381,11 @@
   (define width  (- xmax xmin))
   (define height (- ymax ymin))
   (define fs (font-size))
-  (define ls (+ fs 1))
+  (define ls (+ fs 1)) ; BUG todo this looks wrong: the font-size might not math the pixel size
   ;; Placement of point relative to lines on screen
   (define num-lines-on-screen   (max 0 (quotient height ls)))
   (define n num-lines-on-screen)
-  (define-values (row col)      (mark-row+column (buffer-point  b)))
+  (define-values (row col)      (mark-row+column (buffer-point b)))
   (define start-mark            (window-start-mark w))
   (define end-mark              (window-end-mark w))
   (define-values (start-row _)  (mark-row+column start-mark))
@@ -2483,7 +2500,8 @@
       ; Note: The font-height is slightly larger than font-size
       ; (displayln (list 'render-buffer 'font-height font-height 'font-size (font-size)))
       ; resume flush
-      (send dc resume-flush)))
+      (send dc resume-flush)
+      (void)))
   ; draw points
   (render-points w start-row end-row))
 
@@ -2524,6 +2542,8 @@
 (define (render-window w)
   (define c  (window-canvas w))
   (define dc (send c get-dc))
+  (send dc suspend-flush)
+
   ;; sane defaults
   (use-default-font-settings)
   (send dc set-font default-fixed-font)
@@ -2552,7 +2572,9 @@
     (send dc draw-line 0 0 0 ymax)
     (set! xmin (+ xmin 1)))
   (send dc set-pen op)
-  (render-buffer w))
+  (render-buffer w)
+
+  (send dc resume-flush))
 
 (define (render-windows win)
   (match win
@@ -2730,9 +2752,9 @@
     (new-menu-item em "Paste" #\v #f (λ (_ e) (insert-latest-kill)))
     ;; Edit | Text
     (define etm (new menu% (label "Text") (parent em)))
-    (new-menu-item etm "Kill Line"         #\k         '(ctl shift) (λ (_ e) (kill-whole-line)))
-    (new-menu-item etm "Kill to End"       #\k         '(ctl)       (λ (_ e) (kill-line)))
-    (new-menu-item etm "Kill to Beginning" #\backspace '(cmd)       (λ (_ e) (kill-line-to-beginning)))
+    (new-menu-item etm "Kill Line"         #\k         '(ctl shift)(λ (_ e) (kill-whole-line)))
+    (new-menu-item etm "Kill to End"       #\k         '(ctl)      (λ (_ e) (kill-line)))
+    (new-menu-item etm "Kill to Beginning" #\backspace '(cmd)      (λ (_ e) (kill-line-to-beginning)))
     
     ;; Help Menu
     (new menu% (label "Help") (parent mb))) 
@@ -2792,3 +2814,5 @@
     (λ ()
       (for ([l (in-lines)])
         (displayln l)))))
+
+
