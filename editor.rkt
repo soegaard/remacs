@@ -629,7 +629,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    (write (list prefix key)) (newline)    
+    ; (write (list prefix key)) (newline)    
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -1234,6 +1234,18 @@
   ; draw points
   (render-points w start-row end-row))
 
+; the parameter last-milliseconds tracks time when points are rendered,
+; this is used to fade the colors correctly 
+(define last-milliseconds (make-parameter #f))
+(define (millisseconds-delta)
+  (define now  (current-milliseconds))
+  (define last (last-milliseconds))
+  (unless last (last-milliseconds now) (set! last (- now 1)))
+  (define delta (- now (last-milliseconds)))
+  (last-milliseconds now)
+  delta)
+
+(define color-fuel (make-parameter 0))
 (define (render-points w start-row end-row)
   (define b  (window-buffer w))
   (define c  (window-canvas w))
@@ -1244,9 +1256,14 @@
   (define ymin 0)
   (define ymax (send c get-height))
   ; ---
+  ; (displayln (millisseconds-delta)) ; expect values around 100
   (define colors (current-point-color))
   (define points-pen (new pen% [color (car colors)]))
-  (current-point-color (cdr colors))
+  (define fuel  (color-fuel))
+  (define delta (millisseconds-delta))
+  (for ([i (quotient (+ fuel delta) 100)])
+    (current-point-color (cdr colors)))
+  (color-fuel (remainder (+ fuel delta) 100))
   (define points-off-pen (new pen% [color background-color]))
   
   ; get point and mark height
