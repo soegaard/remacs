@@ -10,7 +10,9 @@
 ;;; TODO #\tab now inserts 4 space
 ;;;      But ... if a rendering breaks if the a file contains #\tab
 ;;; TODO Let screen follow cursor rather than disappear to the right (for long lines)
-;;; TODO The height of the highligth coloring is slightly too big.
+;;; TODO The column position of the cursor when using down should stay the same
+;;;      even if one goes across short line.
+;;; TODO The height of the highlight coloring is slightly too big.
 ;;;      This means that render un-highligthed characters on the next line
 ;;;      removes the bottom of the highligthing.
 ;;;      Two possible solutions:  1) reduce height
@@ -48,246 +50,18 @@
 (require racket/gui/base)
 (require (only-in srfi/1 circular-list))
 
-;;;
-;;; REPRESENTATION
-;;;
-
-(struct line (strings length) #:transparent #:mutable)
-; A line is a list of elements of the types:
-;   string        represents actual text
-;   property      represents a text property e.g. bold
-;   overlay       represents ...
-
-; properties are copied as part of the text
-; overlays are not copied - they are specifically not part of the text
-(struct overlay  (specification) #:transparent)
-(struct property (specification) #:transparent)
-
-(struct linked-line dcons (version marks) #:transparent #:mutable)
-; the element of a linked-line is a line struct
-; marks is a set of marks located on the line
-; version will be used for the redisplay code
-
-(struct text (lines length) #:transparent #:mutable)
-; A text being edited is represented as a doubly linked list of lines.
-
-(struct stats (num-lines num-chars) #:transparent)
-; The number of lines and number of characters in a text.
-
-#;(struct buffer (text name path points marks modes cur-line num-chars num-lines modified? locals))
-(module buffer-struct racket/base
-  ; buffer-name and buffer-modified? are extendeded to handle current-buffer later on
-  (provide (except-out (struct-out buffer) buffer-name buffer-modified?) 
-           (rename-out [buffer-name -buffer-name] [buffer-modified? -buffer-modified?]))
-  (struct buffer (text name path points marks modes cur-line num-chars num-lines modified? locals)
-    #:transparent #:mutable))
-(require (submod "." buffer-struct))
-; A buffer is the basic unit of text being edited.
-; It contains a text being edited.
-; The buffer has a name, so the user can refer to the buffer.
-; The buffer might have an associated file:
-;   path = #f     <=>  buffer is not associated with a file
-;   path = path   <=>  reads and writes to the file given by the path
-; A point is a position between two characters. 
-; Insertions and deletion will happen at the points (usually only one).
-; If modified? is true, then the buffer has been modied since the last
-; read or save of the file.
-; The list modes contains the active modes (see below).
-; marks = list of marks
-; A buffer can have multiple marks:
-
-(struct mark (buffer link position name fixed? active?) #:transparent #:mutable)
-; A mark rembers a position in the text of a buffer.
-; The mark stores the link (linked-line) which hold the line.
-; The mark name can be used to refer to the mark.
-; fixed? = #f  A normal mark moves when insertions are made to the buffer.
-; fixed? = #t  A fixed-mark remain in place.
-; active? =#t  text between mark and point is an active region 
-; active? =#f  region is non-active (will not be highlighted)
-
-; If there is exactly one mark, the area between the point and the mark
-; is called a region.
-
-(struct mode (name) #:transparent)
-; A mode has a name (displayed in the status bar).
-
-(struct window (frame panel borders canvas parent buffer start-mark end-mark) #:mutable #:transparent)
-; A window is an area in which a buffer is displayed.
-; Multiple windows are grouped in a frame.
-; Split windows are backed by a panel.
-; Single windows are backed by a canvas into which the buffer is rendered.
-; borders is a set of symbols indicating which borders to draw
-;   'left 'right 'top 'bottom
-; start = mark of first position in buffer to display
-; end   = mark of last posistion in buffer to display
-; The marks start and end are updated on redisplay such that
-; the point is visible.
-
-(struct frame (frame% panel windows mini-window status-line) #:mutable #:transparent)
-; frame%      = gui frame 
-; panel       = gui panel holding panels/canvases of the windows in frame
-; windows     = split-window or window
-; mini-window = ?
-; status-line = status-line% at bottom of frame%
-
-; A frame contains one or multiple windows.
-
-(struct            split-window       window ()            #:mutable #:transparent)
-(struct horizontal-split-window split-window (left  right) #:mutable #:transparent)
-(struct   vertical-split-window split-window (above below) #:mutable #:transparent)
-
-; The buffer of a split window is #f.
-
-;;;
-;;; STRINGS
-;;;
-
-(define (string-whitespace? s)
-  (regexp-match? #px"^[[:space:]]*$" s))
-
-(module+ test 
-  (check-true  (string-whitespace? " \n\t"))
-  (check-false (string-whitespace? " x ")))
+(require "parameters.rkt"
+         "representation.rkt"
+         "buffer.rkt"
+         "line.rkt"
+         "mark.rkt"
+         "region.rkt"
+         "string-utils.rkt"
+         "text.rkt")
 
 ;;;
 ;;; LINES
 ;;;
-
-(define (add-ending-newline-if-needed s)
-  (define n (string-length s))
-  (cond
-    [(= n 0)                                 "\n"]
-    [(eqv? (string-ref s (- n 1)) #\newline) s]
-    [else                                   (string-append s "\n")]))
-
-
-; string->line : string -> line
-(define (string->line s)
-  (let ([s (add-ending-newline-if-needed s)])  
-    (line (list s) (string-length s))))
-
-; new-line : string ->list
-;   anticipating extra options for new-line
-(define (new-line s)
-  (string->line s))
-
-(module+ test (check-equal? (new-line "abc\n") (line '("abc\n") 4)))
-
-
-; line->string : line -> string
-;   return string contents of a line (i.e. remove properties and overlays)
-(define (line->string l)
-  (apply string-append (filter string? (line-strings l))))
-
-(module+ test (check-equal? (line->string (new-line "abc\n")) "abc\n"))
-
-
-
-(define (in-line l)
-  (struct pos (rest i)) ; pos = comprehension position (not a text position)
-  (define (pos->elm p)
-    (match (first (pos-rest p))
-      [(? string?   s) (string-ref s (pos-i p))]
-      [(? property? p) p]
-      [(? overlay?  o) o]
-      [else (error 'pos->elm "internal error")]))
-  (define (next-pos p)
-    (define r (pos-rest p))
-    (match (first r)
-      [(? string? s) (define i (pos-i p))
-                     (if (= (string-length s) (+ i 1))
-                         (pos (rest r) 0)
-                         (pos r (+ i 1)))]
-      [(? property? p) (pos (rest r) 0)]
-      [(? overlay? o)  (pos (rest r) 0)]
-      [else (error 'next-post "internal error")]))
-  (define initial-pos (pos (line-strings l) 0))
-  (define (continue-with-pos? p) (not (empty? (pos-rest p))))
-  (make-do-sequence
-   (λ () (values pos->elm next-pos initial-pos continue-with-pos? #f #f))))
-
-(define (line-blank? l)
-  (string-whitespace? (line->string l)))
-
-; list->lines : list-of-strings -> dlist-of-lines
-(define (list->lines xs)
-  (define (string->line s) (new-line s))
-  (define (recur p xs)
-    (cond 
-      [(null? xs) dempty]
-      [else       (define s (car xs))
-                  (define l (new-line s))
-                  (define d (linked-line l p #f #f (seteq)))
-                  (define n (recur d (cdr xs)))
-                  (set-dcons-n! d n)
-                  d]))
-  (cond 
-    [(null? xs)   (dlist (new-line "\n") dempty dempty)]
-    [else         (define s (car xs))
-                  (define l (new-line s))
-                  (define d (linked-line l dempty #f #f (seteq)))
-                  (define n (recur d (cdr xs)))
-                  (set-dcons-n! d n)
-                  d]))
-
-(module+ test (let ([xs '("ab\n" "cd\n")])
-                (check-equal? (for/list ([x (list->lines xs)]) x)
-                              (map new-line xs))))
-
-; subline : line integer integer -> line
-;   Return new line consisting of the characters, properties and overlays
-;   between the indices i1 and i2.
-;   If greedy any properties or overlays trailing the last string
-;   also becomes part of the new line.
-(define (subline l i1 i2 [greedy? #f])
-  (define n (line-length l))
-  (unless (<  i2 n)  (error 'subline "index ~a too large" i2))
-  (unless (<= i1 i2) (subline l i2 i1))
-  (define (skip-start i ss)
-    ; ss = list of strings, property, overlay
-    (if (= i 0) ss
-        (match ss
-          ['() '()]
-          [(cons (? string? s) more)
-           (define m (string-length s))
-           (cond 
-             [(< m i) (skip-start (- i m) more)]
-             [else    (cons (substring s i m) more)])]
-          [(cons _ more)
-           (skip-start i more)])))
-  (define (take-to i ss greedy?)
-    (cond
-      [(empty? ss) '()]
-      [(= i 0)     (define head (first ss))
-                   (if (and greedy? 
-                            (or (overlay? head) (property? head)))
-                       (cons head (take-to i (rest ss) greedy?))
-                       '())]
-      [(< i 0)     '()]
-      [else        (match ss
-                     [(cons (? string? s) more)
-                      (define n (string-length s))
-                      (if (<= n i) 
-                          (cons s (take-to (- i n) more greedy?))
-                          (list (substring s 0 i)))]
-                     [(cons (and head (or (? property? s) (? overlay? s))) more)
-                      (cons head (take-to i more greedy?))]
-                     [_ (error 'take-to "expected list of strings, properties and overlays")])]))
-  (take-to (- i2 i1) (skip-start i1 (line-strings l)) greedy?))
-
-
-; line-ref : line index -> char
-;   return the ith character of a line
-(define (line-ref l i)
-  (when (>= i (line-length l))
-    (error 'line-ref "index ~a too large for line, got: ~a" i l))
-  (let loop ([i i] [ss (line-strings l)])
-    (match (first ss)
-      [(? string? s) (define n (string-length s))
-                     (if (< i n) 
-                         (string-ref s i)
-                         (loop (- i n) (rest ss)))]
-      [_             (loop i (rest ss))])))
 
 (module+ test
   (define illead-text 
@@ -302,8 +76,7 @@
               "down to Hades, and many a hero did it yield a prey to dogs and vultures,\n"
               "for so were the counsels of Jove fulfilled from the day on which the\n"
               "son of Atreus, king of men, and great Achilles, first fell out with\n"
-              "one another.\n"))))
-  
+              "one another.\n"))))  
   
   ; recreate the same text file from scratch
   (define (create-new-test-file path)
@@ -313,197 +86,10 @@
                (display s))))
       #:exists 'replace)))
 
-(define (string-insert-char s i c)
-  (define n (string-length s))
-  (unless (<= i n) (error 'string-insert-char "index too large, got ~a ~a" s i))
-  (cond 
-    [(= i n) (string-append s (string s))]
-    [(= i 0) (string-append (string c) s)]
-    [else    (string-append (substring s 0 i) (string c) (substring s i n))]))
-
-; skip-strings : list-of-strings index -> index strings strings
-;   If (j, us, vs) is returned,
-;   then ss = (append us vs)
-;   and  (string-ref (concat ss) i) = (string-ref (first vs) j)
-(define (skip-strings ss i)
-  (let loop ([i i] [before '()] [after ss])
-    (cond 
-      [(null? after) (values #f (reverse before) '())]
-      [else          (define s (first after))
-                     (cond
-                       [(string? s) (define n (string-length s))
-                                    (if (< i n)
-                                        (values i (reverse before) after)
-                                        (loop (- i n) (cons s before) (rest after)))]
-                       [else         (loop i (cons s before) (rest after))])])))
-
-(module+ test
-  (check-equal? (call-with-values (λ () (skip-strings '("ab" "cde" "fg") 0)) list)
-                '(0 () ("ab" "cde" "fg")))
-  (check-equal? (call-with-values (λ () (skip-strings '("ab" "cde" "fg") 1)) list)
-                '(1 () ("ab" "cde" "fg")))
-  (check-equal? (call-with-values (λ () (skip-strings '("ab" "cde" "fg") 2)) list)
-                '(0 ("ab") ("cde" "fg"))))
-
-; line-insert-char! : line char index -> void
-;   insert char c in the line l at index i
-(define (line-insert-char! l c i)
-  (define n (line-length l))
-  (unless (<= i n) (error 'line-insert-char! "index i greater than line length, i=~a, l=~a" i l))
-  (define-values (j us vs) (skip-strings (line-strings l) i))
-  (define v (first vs))
-  (define vn (string-length v))
-  (define w (cond 
-              [(= j 0)  (string-append (string c) v)]
-              [(= j vn) (string-append v (string c))]
-              [else     (string-append (substring v 0 j) (string c) (substring v j vn))]))
-  (set-line-strings! l (append us (cons w (rest vs))))
-  (set-line-length!  l (+ n 1)))
-
-; line-insert-string! : line string index -> void
-;   insert string t in the line l at index i
-(define (line-insert-string! l t i)
-  (define n (line-length l))
-  (unless (<= i n) (error 'line-insert-string! "index i greater than line length, i=~a, l=~a" i l))
-  (define-values (j us vs) (skip-strings (line-strings l) i))
-  (define v (first vs))
-  (define vn (string-length v))
-  (define w (cond 
-              [(= j 0)  (string-append t v)]
-              [(= j vn) (string-append v t)]
-              [else     (string-append (substring v 0 j) t (substring v j vn))]))
-  (set-line-strings! l (append us (cons w (rest vs))))
-  (set-line-length!  l (+ n (string-length t))))
-
-
-; line-insert-property! : line property index -> void
-;   insert property p in the line l at index i
-(define (line-insert-property! l p i)
-  (define n (line-length l))
-  (unless (<= i n) (error 'line-insert-property! "index i greater than line length, i=~a, l=~a" i l))
-  (define-values (j us vs) (skip-strings (line-strings l) i))
-  (define v (first vs))
-  (define vn (string-length v))
-  (define w (cond 
-              [(= j 0)  (cons p (list v))]
-              [(= j vn) (append (list v) (list p))]
-              [else     (list (substring v 0 j) p (substring v j vn))]))
-  (set-line-strings! l (append us w (rest vs)))
-  (set-line-length!  l (+ n 1)))
-
-; line-split : line index -> line line
-;   split the line in two at the index
-(define (line-split l i)
-  (define n (line-length l))
-  (unless (<= i n) (error 'line-split "index ~a larger than line length ~a, the line is ~a" i n l))
-  (define-values (j us vs) (skip-strings (line-strings l) i))  
-  (cond
-    [(empty? vs) (values l (line '("\n") 0))]
-    [(= j 0)     (values (line (append us (list "\n")) (+ i 1))
-                         (line vs (- n i)))]
-    [else        (define s (first vs))
-                 (define sn (string-length s))
-                 (define s1 (substring s 0 j))
-                 (define s2 (substring s j sn))
-                 (values (line (append us (list (string-append s1 "\n"))) (+ i 1))
-                         (line (cons s2 (rest vs)) (- n i)))]))
-
-; line-append : line line -> line
-;   append two lines, note the line ending of l1 is removed
-(define (line-append l1 l2)
-  (define ws (let loop ([us (line-strings l1)])
-               ; we must remove the newline of the last string of us
-               (if (null? (rest us))
-                   (let ([s (substring (first us) 0 (- (string-length (first us)) 1))])
-                     (if (equal? "" s)
-                         (line-strings l2)
-                         (cons s (line-strings l2))))
-                   (cons (first us)
-                         (loop (rest us))))))
-  (line ws (+ (line-length l1) -1 (line-length l2))))
-
-(module+ test
-  (check-equal? (line-append (line '("a" "b\n") 3) (line '("c" "d\n") 3))
-                (line '("a" "b" "c" "d\n") 5)))
-
-; line-delete-backward-char! : line -> line
-(define (line-delete-backward-char! l i)
-  (unless (> i 0) (error 'line-delete-backward-char! "got ~a" i))
-  (define-values (j us vs) (skip-strings (line-strings l) (- i 1)))
-  ; (write (list 'back-char l i 'j j 'us us 'vs vs)) (newline)
-  (define s    (first vs))
-  (define n    (string-length s))
-  (define s1   (substring s 0 j)) 
-  (define s2   (substring s (+ j 1) n))
-  (define s1s2 (string-append s1 s2))
-  (define ws   (if (equal? "" s1s2)
-                   (append us (rest vs))
-                   (append us (cons s1s2 (rest vs)))))
-  (set-line-strings! l ws)
-  (set-line-length! l (- (line-length l) 1)))
-
-(module+ test
-  (define del-char line-delete-backward-char!)
-  (check-equal? (let ([l (line '("abc\n") 4)])     (del-char l 1) l) (line '("bc\n") 3))
-  (check-equal? (let ([l (line '("abc\n") 4)])     (del-char l 2) l) (line '("ac\n") 3))
-  (check-equal? (let ([l (line '("abc\n") 4)])     (del-char l 3) l) (line '("ab\n") 3))
-  (check-equal? (let ([l (line '("ab" "cd\n") 5)]) (del-char l 1) l) (line '("b" "cd\n") 4))
-  (check-equal? (let ([l (line '("ab" "cd\n") 5)]) (del-char l 2) l) (line '("a" "cd\n") 4))
-  (check-equal? (let ([l (line '("ab" "cd\n") 5)]) (del-char l 3) l) (line '("ab" "d\n") 4))
-  (check-equal? (let ([l (line '("ab" "cd\n") 5)]) (del-char l 4) l) (line '("ab" "c\n") 4)))
 
 ;;;
 ;;; TEXT
 ;;;
-
-; new-text : -> text
-;   create an empty text
-(define (new-text [lines dempty])
-  (cond 
-    [(dempty? lines) (text (linked-line (new-line "\n") dempty dempty "no-version-yet" '()) 1)]
-    [else            (text lines (for/sum ([l lines])
-                                   (line-length l)))]))
-
-; text-line : text integer -> line
-;   the the ith line
-(define (text-line t i)
-  (dlist-ref (text-lines t) i))
-
-; text-append! : text text -> text
-(define (text-append! t1 t2)
-  (text (dappend! (text-lines t1) (text-lines t2))
-        (+ (text-length t1) (text-length t2))))
-
-; text->string : text -> string
-;   convert the text to a string
-(define (text->string t)
-  (apply string-append
-    (for/list ([l (text-lines t)])
-      (line->string l))))
-
-; subtext->string : text integer integer -> string
-(define (subtext->string t p1 p2)
-  (define-values (r1 c1) (position-row+column t p1))
-  (define-values (r2 c2) (position-row+column t p2))
-  (define n (- r2 r1))
-  (cond
-    [(= r1 r2) (substring (line->string (text-line t r1)) c1 c2)]
-    [else      (string-append*
-                (for/list ([d (in-dlist (dlist-move (text-lines t) r1))]
-                           [i (in-range (+ n 1))])
-                  (define s (line->string d))
-                  (cond
-                    [(= i 0) (substring s c1 (string-length s))]
-                    [(= i n) (substring s 0 c2)]
-                    [else    s])))]))
-
-; path->text : path -> text
-;   create a text with contents from the file given by path
-(define (path->text path)
-  (define (DCons a p n) (linked-line a p n #f (seteq)))
-  (with-input-from-file path 
-    (λ () (new-text (for/dlist #:dcons DCons ([s (in-lines)])
-                      (string->line (string-append s "\n")))))))
 
 (module+ test
   (void (create-new-test-file "illead.txt"))
@@ -514,593 +100,9 @@
   ; (displayln "---")
   #;(check-equal? (path->text "illead.txt") illead-text))
 
-; text-num-lines : text -> natural
-;   return number of lines in the text
-(define (text-num-lines t)
-  (dlength (text-lines t)))
-
-(define (text-num-chars t)
-  (for/sum ([line (text-lines t)])
-    (line-length line)))
-
-(define (text-stats t)
-  (define-values (nlines nchars)
-    (for/fold ([nl 0] [nc 0]) ([l (text-lines t)])
-      (values (+ nl 1) (+ nc (line-length l)))))
-  (stats nlines nchars))
-
-(define (text-insert-char-at-mark! t m b c)
-  (define-values (row col) (mark-row+column m))
-  (define l (dlist-ref (text-lines t) row))
-  (line-insert-char! l c col)
-  (set-text-length! t (+ (text-length t) 1)))
-
-
-; text-break-line! : text natural natural -> void
-;   break line number row into two at index col
-(define (text-break-line! t row col)
-  (define d (dlist-move (text-lines t) row))
-  (define l (dfirst d))
-  (define-values (pre post) (line-split l col)) ; xxx
-  (set-dcons-a! d pre)
-  (dinsert-after! d post (λ (a p n) (linked-line a p n #f (seteq))))
-  (set-text-length! t (+ 1 (text-length t))))
-
-; text-delete-backward-char! : text natural natural -> void
-;   delete the char at line row before column col
-(define (text-delete-backward-char! t row col)
-  (define d (dlist-move (text-lines t) row))
-  (define l (dfirst d))
-  (define n (text-length t))
-  (cond
-    [(> col 0) (line-delete-backward-char! l col)
-               (set-text-length! t (- n 1))]
-    [(and (= col 0) (= row 0))
-     (beep "Beginning of buffer")]
-    [(= col 0) 
-     ; we need to append this line to the previous
-     (define p (dcons-p d))
-     (define pl (dfirst p))
-     (set-dcons-a! p (line-append pl l))
-     (dcons-remove! d)
-     (set-text-length! t (- n 1))]
-    [else      ; 
-     (error 'todo)]))
-
-(define beep void)
-
-;;;
-;;; MARKS
-;;;
-
-(define (mark-compare m1 m2 cmp)
-  (define (pos m) (if (mark? m) (mark-position m) m))
-  (cmp (pos m1) (pos m2)))
-(define (mark<  m1 m2) (mark-compare m1 m2 <))
-(define (mark=  m1 m2) (mark-compare m1 m2 =))
-(define (mark>  m1 m2) (mark-compare m1 m2 >))
-(define (mark<= m1 m2) (mark-compare m1 m2 <=))
-(define (mark>= m1 m2) (mark-compare m1 m2 >=))
-
-; new-mark : buffer string integer boolean -> mark
-(define (new-mark b name [pos 0] [fixed? #f] #:active? [active? #f])
-  ; (define link (text-lines (buffer-text b)))
-  (define link (text-lines (buffer-text b)))
-  (define m (mark b link pos name fixed? active?))
-  (set-linked-line-marks! link (set-add (linked-line-marks link) m))
-  m)
-
-; mark-deactivate! mark -> void
-(define (mark-deactivate! m)
-  (set-mark-active?! m #f))
-
-(define (mark-activate! m)
-  (set-mark-active?! m #t))
-
-; delete-mark! : mark -> void
-;   remove the mark from the line it belongs to
-(define (delete-mark! m)
-  ; remove mark from line
-  (define link (mark-link m))
-  (define b (mark-buffer m))
-  (set-linked-line-marks! link (set-remove (linked-line-marks link) m))
-  ; remove mark from buffer
-  (set-buffer-marks! b (filter (λ(x) (not (eq? x m))) (buffer-marks b))))
-
-; mark-move! : mark integer -> void
-;  move the mark n characters
-(define (mark-move! m n)
-  (define b  (mark-buffer m))
-  (define p  (mark-position m))
-  (define l  (dfirst (mark-link m)))
-  (define ln (line-length l))
-  (define-values (old-r old-c) (mark-row+column m))
-  ; new position
-  (define q (if (> n 0)
-                (min (+ p n) (max 0 (- (buffer-length b) 1)))
-                (max (+ p n) 0)))
-  (set-mark-position! m q)
-  (define-values (r c) (mark-row+column m))
-  (unless (= old-r r)
-    ; remove mark from old line
-    (define link (mark-link m))
-    (set-linked-line-marks! link (set-remove (linked-line-marks link) m))
-    ; insert mark in new line
-    (define new-link (dlist-move (first-dcons link) r))
-    ; (displayln new-link)
-    (set-linked-line-marks! new-link (set-add (linked-line-marks new-link) m))
-    ; the mark must point to the new line
-    (set-mark-link! m new-link)))
-
-; mark-adjust-insertion-after! : mark integer natural -> void
-;   adjust the position of the mark - an amount of a characters were inserted at position p
-(define (mark-adjust-insertion-after! m p a)
-  (define mp (mark-position m))
-  (when (> mp p)
-    ; the insertion was before the mark
-    (mark-move! m a)))
-
-; mark-adjust-insertion-before! : mark integer natural -> void
-;   adjust the position of the mark - an amount of a characters were inserted at position p
-(define (mark-adjust-insertion-before! m p a)
-  (define mp (mark-position m))
-  (when (>= mp p)
-    ; the insertion was before the mark
-    (mark-move! m a)))
-
-; mark-adjust-deletion-before! : mark integer natural -> void
-;   adjust the position of the mark - an amount of a characters were deleted before position p
-(define (mark-adjust-deletion-before! m p a)
-  (define mp (mark-position m))
-  (cond 
-    ; the entire deletion was before the mark
-    [(<= p mp)      (mark-move! m (- a))]
-    ; the entire deletion was after the mark
-    [(< mp (- p a)) (void)]
-    ; overlap
-    [else           (mark-move! m (- a (- p mp)))]))
-
-; mark-adjust-deletion-after! : mark integer natural -> void
-;   adjust the position of the mark - an amount of a characters were after before position p
-(define (mark-adjust-deletion-after! m p a)
-  (define mp (mark-position m))
-  (cond 
-    ; the entire deletion was after the mark
-    [(<= mp p)       (void)]
-    ; the entire deletion was before the mark
-    [(<= (+ p a) mp) (mark-move! m (- a))]
-    ; overlap
-    [else            (mark-move! m (- mp p))]))
-
-; clamp : number number number -> number
-;   if minimum <= x <= maximum, return x
-;   if x < minimum, return minimum
-;   if x > maximum, return maximum
-(define (clamp minimum x maximum)
-  (max minimum (min x maximum)))
-
-; mark-move-to-column! : mark integer -> void
-;   move mark to column n (stay at line)
-(define (mark-move-to-column! m n)
-  (define-values (r c) (mark-row+column m))
-  (unless (= n c)
-    (let ([n (clamp 0 n c)]) ; stay on same line
-      (mark-move! m (- n c)))))
-
-; position-row+column : text position -> integer integer
-;   return row and column number of the position (index)
-(define (position-row+column t p)
-  (let/ec return
-    (for/fold ([r 0] [q 0]) ([l (text-lines t)])
-      ; q is the first position on line r
-      (define n (line-length l))
-      (if (> (+ q n) p)
-          (return r (- p q))
-          (values (+ r 1) (+ q n))))))
-
-; mark-row+column : mark- > integer integer
-;   return row and column number for the mark m
-(define (mark-row+column m)
-  (position-row+column (buffer-text (mark-buffer m))
-                       (mark-position m)))
-
-
-; mark-on-last-line? : mark -> boolean
-;    is m on the last line of its buffer?
-(define (mark-on-last-line? m)
-  (define-values (row col) (mark-row+column m))
-  (define t (buffer-text (mark-buffer m)))
-  (= (+ row 1) (text-num-lines t)))
-
-; mark-move-beginning-of-line! : mark -> void
-;   move the mark to the beginning of its line
-(define (mark-move-beginning-of-line! m)
-  (define p (mark-position m))
-  (define-values (row col) (mark-row+column m))
-  (set-mark-position! m (- p col)))
-
-; position-of-end-of-line : [buffer or mark] -> integer
-;   return the position just before the newline of the line of point
-(define (position-of-end-of-line [b-or-m (current-buffer)])
-  (define m (cond
-              [(mark?   b-or-m) b-or-m]
-              [(buffer? b-or-m) (buffer-point b-or-m)]
-              [else (error 'position-of-end-line (~a "expected mark or buffer, got " b-or-m))]))
-  (define b (mark-buffer m))
-  (define-values (r c) (mark-row+column m))
-  (define n (line-length (dlist-ref (text-lines (buffer-text b)) r)))
-  (define p (mark-position m))
-  (+ p (- n c) -1))
-
-; position-of-beginning-of-line : [buffer or mark] -> integer
-;   return the position of the beginning of the line
-(define (position-of-beginning-of-line [b-or-m (current-buffer)])
-  (define m (cond
-              [(mark?   b-or-m) b-or-m]
-              [(buffer? b-or-m) (buffer-point b-or-m)]
-              [else (error 'position-of-end-line (~a "expected mark or buffer, got " b-or-m))]))
-  (define b (mark-buffer m))
-  (define-values (r c) (mark-row+column m))
-  (define p (mark-position m))
-  (- p c))
-
-
-(define (position-of-end [b (current-buffer)])
-  (text-length (buffer-text b)))
-
-; mark-move-end-of-line! : mark -> void
-;   move the mark to the end of its line
-(define (mark-move-end-of-line! m)
-  (set-mark-position! m (position-of-end-of-line m)))
-
-; mark-move-up! : mark -> void
-;   move mark up one line
-(define (mark-move-up! m [n 1])
-  ; todo : go from mark to line rather than use dlist-move
-  (define (move-one!)
-    (define p (mark-position m))
-    (define-values (row col) (mark-row+column m))
-    (unless (= row 0)
-      (define link (dlist-move (first-dcons (text-lines (buffer-text (mark-buffer m)))) (- row 1)))
-      (define l (dfirst link)) ; line
-      (define new-col (min (line-length l) col))
-      (define new-pos (- p col (line-length l) (- new-col)))
-      (set-mark-position! m new-pos)
-      (set-linked-line-marks! link (set-add (linked-line-marks link) m))
-      (define old-link (dlist-move link 1))
-      (unless (dempty? old-link) ; xxx
-        (set-linked-line-marks! old-link (set-remove (linked-line-marks link) m)))))
-  (cond
-    [(< n 0) (mark-move-down! m (- n))]
-    [else    (for ([i (in-range n)])
-               (move-one!))]))
-
-; mark-move-down! : mark -> void
-;  move mark down one line
-(define (mark-move-down! m [n 1])
-  (define (move-one!)
-    (define p (mark-position m))
-    (define-values (row col) (mark-row+column m))
-    (define t (buffer-text (mark-buffer m)))
-    (unless (= (+ row 1) (text-num-lines t))
-      (define d (dlist-move (text-lines t) row))
-      (unless (dempty? d)
-        (set-linked-line-marks! d (set-remove (linked-line-marks d) m))
-        (define l1 (dfirst d))
-        (define l2 (dlist-ref d 1))
-        (define new-col (min (line-length l2) col))
-        (define new-pos (+ p (- (line-length l1) col) new-col))
-        (set-mark-position! m new-pos)
-        (define d+ (dlist-move d 1))
-        (set-linked-line-marks! d+ (set-add (linked-line-marks d+) m)))))
-  (cond
-    [(< n 0) (mark-move-up! m (- n))]
-    [else    (for ([i (in-range n)])
-               (move-one!))]))
-
-; mark-backward-word! : mark -> void
-;   move mark backward until a word separator is found
-(define (mark-backward-word! m)
-  (define-values (row col) (mark-row+column m))
-  (define t (buffer-text (mark-buffer m)))
-  (define l (text-line t row))
-  ; first skip whitespace
-  (define i (for/first ([i (in-range (- col 1) -1 -1)]
-                        #:when (not (word-separator? (line-ref l i))))
-              i))
-  (cond
-    [(or (not i) (= i 0))
-     ; continue searching for word at previous line (unless at top line)
-     (mark-move-beginning-of-line! m)
-     (unless (= row 0)
-       (mark-move! m -1)
-       (mark-backward-word! m))]
-    [else
-     ; we have found a word, find the beginning
-     (define j (for/first ([j (in-range (or i (- col 1)) -1 -1)]
-                           #:when (word-separator? (line-ref l j)))
-                 j))
-     ; j is now the index of the first word separator
-     (mark-move! m (- (if j (- col (+ j 1)) col)))]))
-
-; mark-forward-word! : mark -> void
-;   move mark forward until a word separator is found
-(define (mark-forward-word! m)
-  (define-values (row col) (mark-row+column m))
-  (define t (buffer-text (mark-buffer m)))
-  (define l (text-line t row))
-  (define n (line-length l))
-  ; first skip whitespace
-  (define i (for/first ([i (in-range col n)]
-                        #:when (not (word-separator? (line-ref l i))))
-              i))
-  (cond
-    [(or (not i) (= i (- n 1)))
-     ; continue searching for word at next line (unless at bottom line)
-     (mark-move-end-of-line! m)
-     (unless (= row (- (text-num-lines t) 1))
-       (mark-move! m 1)
-       (mark-forward-word! m))]
-    [else
-     ; we have found a word, find the beginning
-     (define j (for/first ([j (in-range (or i (- col 1)) n)]
-                           #:when (word-separator? (line-ref l j)))
-                 j))
-     ; j is now the index of the first word separator
-     (mark-move! m (if j (- j col) col))]))
-
-(define (mark-move-to-position! m n)
-  ; remove mark from its current line
-  (define l (mark-link m))
-  (set-linked-line-marks! l (set-remove (linked-line-marks l) m))
-  ; find the new line
-  (define-values (row col) (mark-row+column m))
-  (define d (dlist-move (text-lines (buffer-text (mark-buffer m))) row))
-  ; add mark to the new line
-  (set-linked-line-marks! d (set-add (linked-line-marks d) m))
-  ; store the new position
-  (set-mark-position! m n))
-
-(define (mark-move-to-beginning-of-paragraph! m)
-  ;; TODO : improve efficiency (i.e. avoid vall to mark-move-up!)
-  ;; paragraphs are separated by one or more blank lines
-  (mark-move-beginning-of-line! m)
-  (let loop ([l (mark-link m)])
-    (cond
-      [(first-dcons? l)         (void)]
-      [(line-blank? (dfirst l)) (mark-move-down! m)]
-      [else                     (mark-move-up! m)
-                                (loop (mark-link m))]))) ; TODO does up and down update the link ?!!>?
-
-;;;
-;;; WORDS
-;;;
-
-(define (word-separator? c)
-  (char-whitespace? c))
-
 ;;;
 ;;; BUFFER
 ;;;
-
-; buffer-name : [buffer] -> string
-;   return name of buffer
-(define (buffer-name [b (current-buffer)]) 
-  (-buffer-name b))
-
-; all buffers are registered in buffers-ht
-(define buffers-ht (make-hash))  ; string -> buffer
-(define all-buffers '())
-
-; register-buffer : buffer [thunk-or-#f] -> void
-;   associate (buffer-name b) to b in buffers-ht,
-;   and put it all-buffers
-(define (register-buffer b [on-error #f])
-  (define name (buffer-name b))
-  (if (hash-ref buffers-ht name #f)
-      (cond 
-        [on-error (on-error)]
-        [else (error 'register-buffer 
-                     "attempt to register buffer with name already in use: ~a" name)])
-      (hash-set! buffers-ht name b))
-  (set! all-buffers (cons b all-buffers)))
-
-; get-buffer : buffer-or-string -> buffer-or-#f
-;   return buffer specified by buffer-or-name
-(define (get-buffer buffer-or-name)
-  (define b buffer-or-name)
-  (if (buffer? b) b (hash-ref buffers-ht b #f)))
-
-; generate-new-buffer-name : string -> string
-;   generate buffer name not in use
-(define (generate-new-buffer-name starting-name)
-  (define (name i) (if (= i 1) starting-name (~a starting-name i)))
-  (for/first ([i (in-naturals 1)]
-              #:unless (get-buffer (name i)))
-    (name i)))
-
-(module* buffer-top #f
-  (provide (rename-out [buffer-top #%top]))
-  ; (require (for-syntax racket/base syntax/parse))
-  (define-syntax (buffer-top stx)
-    (syntax-parse stx
-      [(_ . id:id)
-       #'(let ()
-           (define b (current-buffer))
-           (cond
-             [(ref-buffer-local b 'id #f) => values]
-             [else (lookup-default 'id)]))])))
-
-(require syntax/location)
-(define path-to-buffer-top (quote-module-path buffer-top))
-
-; new-buffer : -> buffer
-;   create fresh buffer without an associated file
-(define (new-buffer [text (new-text)] [path #f] [name (generate-new-buffer-name "buffer")])
-  (define locals (make-base-empty-namespace))
-  (parameterize ([current-namespace locals])
-    (namespace-require 'racket/base)
-    ; (eval `(require ,path-to-buffer-top))
-    )
-  (define b (buffer text name path 
-                    '()   ; points
-                    '()   ; marks
-                    '()   ; modes 
-                    0     ; cur-line
-                    0     ; num-chars
-                    0     ; num-lines
-                    #f    ; modified?
-                    locals))  ; locals
-  (define point (new-mark b "*point*"))
-  (define points (list point))
-  (set-buffer-points! b points)
-  (define stats (text-stats text))
-  (define num-lines (stats-num-lines stats))
-  (set-buffer-num-lines! b num-lines)
-  (define num-chars (stats-num-chars stats))
-  (set-buffer-num-chars! b num-chars)
-  (register-buffer b)
-  b)
-
-; generate-new-buffer : string -> buffer
-(define (generate-new-buffer name)
-  (unless (string? name) (error 'generate-new-buffer "string expected, got ~a" name))
-  (new-buffer (new-text) #f (generate-new-buffer-name name)))
-
-(define scratch-text
-  '("Welcome to remacs, an Emacs style editor implemented in Racket.\n"
-    "The editor is still a work-in-progress.\n\n"
-    "\n"
-    "Search for keymap in the source to see the available keybindings.\n"
-    "    C-x 2      splits the window in two vertically\n"
-    "    C-x 3      splits the window in two horizontally\n"
-    "    C-x right  is bound to next-buffer\n\n" 
-    "\n"
-    "Happy Rackteering\n"
-    "/soegaard"))
-
-(define scratch-buffer (new-buffer (new-text (list->lines scratch-text)) #f "*scratch*"))
-(define current-buffer (make-parameter scratch-buffer))
-
-; syntax: (save-current-buffer body ...)
-;   store current-buffer while evaluating body ...
-;   the return value is the result from the last body
-(define-syntax (save-current-buffer stx)
-  (syntax-parse stx
-    [(s-c-b body ...)
-     #'(let ([b (current-buffer)])
-         (begin0 (begin body ...)
-                 (current-buffer b)))]))
-
-; syntax (with-current-buffer buffer-or-name body ...)
-;   use buffer-or-name while evaluating body ...,
-;   restore current buffer afterwards
-(define-syntax (with-current-buffer stx)
-  (syntax-parse stx
-    [(w-c-b buffer-or-name body ...)
-     #'(parameterize ([current-buffer buffer-or-name])
-         ; (todo "lookup buffer if it is a name")
-         body ...)]))
-
-; TODO syntax  (with-temp-buffer body ...)
-
-; rename-buffer! : string -> string
-(define (rename-buffer! new-name [b (current-buffer)] [unique? #t])
-  (unless (string? new-name) (error 'rename-buffer "string expected, got " new-name))
-  ; todo: check that buffer-name is not in use, if it is signal error unless unique? is false
-  ;       in that case generate new name and return it
-  (set-buffer-name! b new-name)
-  new-name)
-
-(define (buffer-modified? [b (current-buffer)])
-  (-buffer-modified? b))
-
-(define (buffer-dirty! [b (current-buffer)])
-  (set-buffer-modified?! b #t))
-
-; set-buffer-modified! : any [buffer] -> void
-;   set modified?, redisplay mode line
-(define (set-buffer-modified! flag [b (current-buffer)])
-  ; TODO (redisplay-mode-line-for-current-buffer]
-  (when flag (set-buffer-modified?! b #t)))
-
-; get-buffer-create : buffer-or-name -> buffer
-;   get buffer with given name, if none exists, create it
-(define (get-buffer-create buffer-or-name)
-  (define b buffer-or-name)
-  (if (buffer? b) b (generate-new-buffer b)))
-
-(define (buffer-open-file-or-create file-path)
-  (define path (if (string? file-path) (string->path file-path) file-path))
-  (unless (file-exists? path)
-    (close-output-port (open-output-file path)))
-  (define filename (last (map path->string (explode-path path))))
-  (define text     (path->text path))
-  (new-buffer text path (generate-new-buffer-name filename)))
-
-
-; save-buffer : buffer -> void
-;   save contents of buffer to associated file
-;   do nothing if no file is associated
-(define (save-buffer! b)
-  (define file (buffer-path b))
-  (unless file
-    (set! file (finder:put-file)))
-  (when file
-    (with-output-to-file file
-      (λ () (for ([line (text-lines (buffer-text b))])
-              (for ([s (line-strings line)])
-                (display s))))
-      #:exists 'replace)
-    (set-buffer-modified?! b #f)))
-
-; save-buffer-as : buffer ->
-;   get new file name from user, 
-;   associate file with buffer,
-;   and save it
-(define (save-buffer-as! b)
-  (define file (finder:put-file))
-  (when file
-    (set-buffer-path! b file)
-    (set-buffer-name! b (path->string file))
-    (save-buffer! b)))
-
-(define (make-output-buffer b)
-  ;; State
-  (define count-lines? #f)
-  ;; Setup port
-  (define name (buffer-name b)) ; name for output port
-  (define evt  always-evt)      ; writes never block
-  (define write-out             ; handles writes to port
-    (λ (out-bytes start end buffered? enable-breaks?)
-      ; write bytes from out-bytes from index start (inclusive) to index end (exclusive)
-      (define the-bytes (subbytes out-bytes start end))
-      (define as-string (bytes->string/utf-8 the-bytes))
-      (buffer-insert-string-before-point! b as-string)
-      (buffer-dirty! b)
-      (refresh-frame)   ; todo how to find the correct the frame?
-      ; number of bytes written
-      (- end start)))
-  (define close                 ; closes port
-    (λ () (void)))
-  (define write-out-special     ; handles specials?
-    #f)                         ; (not yet)
-  (define get-write-evt         ; #f or procedure that returns synchronizable event
-    #f)
-  (define get-write-special-evt ; same for specials
-    #f)
-  (define get-location          ; #f or procedure that returns 
-    (λ ()                       ; line number, column number, and position
-      (when count-lines?
-        (define m (buffer-point b))
-        (define-values (row col) (mark-row+column m))
-        (values (+ 1 row) col (+ 1 (mark-position m))))))
-  (define count-lines!
-    (λ () (set! count-lines? #t)))
-  (define init-position (+ 1 (mark-position (buffer-point b)))) ; 
-  (define buffer-mode #f)
-  (make-output-port name evt write-out close write-out-special get-write-evt
-                    get-write-special-evt get-location count-lines! init-position buffer-mode))
 
 (module+ test
   (provide illead-buffer)
@@ -1108,35 +110,11 @@
   (save-buffer! illead-buffer)
   #;(check-equal? (path->text "illead.txt") illead-text))
 
-; read-buffer : buffer -> void
-;   replace text of buffer with file contents
-(define (read-buffer! b)
-  (define path (buffer-path b))
-  (unless path (error 'read-buffer "no associated file: ~a" b))
-  (define text (path->text path))
-  (define stats (text-stats text))
-  (set-buffer-text! b text)
-  (set-buffer-num-lines! b (stats-num-lines stats))
-  (set-buffer-num-chars! b (stats-num-chars stats))
-  (set-buffer-modified?! b #f)
-  (buffer-dirty! b))
-
 (module+ test
   (void (create-new-test-file "illead.txt"))
   (define b (new-buffer (new-text) "illead.txt" (generate-new-buffer-name "illead")))
   (read-buffer! b)
   #;(check-equal? b illead-buffer))
-
-; append-to-buffer-from-file : buffer path -> void
-;   append contents of file given by the path p to the text of the buffer b
-(define (append-to-buffer-from-file b p)
-  (define text-to-append (path->text p))
-  (define stats (text-stats text-to-append))
-  (set-buffer-text! b (text-append! (buffer-text b) text-to-append))
-  (set-buffer-num-lines! b (+ (buffer-num-lines b) (stats-num-lines stats)))
-  (set-buffer-num-chars! b (+ (buffer-num-chars b) (stats-num-chars stats)))
-  (set-buffer-modified?! b #t)
-  (buffer-dirty! b))
 
 (module+ test
   (void (create-new-test-file "illead.txt"))
@@ -1146,262 +124,9 @@
   (save-buffer! b) ; make sure the buffer is unmodified before comparison
   #;(check-equal? (buffer-text append-buffer) (text-append! illead-text illead-text)))
 
-; buffer-point : buffer -> mark
-;   return the first mark in the list of points
-(define (buffer-point b)
-  (first (buffer-points b)))
-
-; buffer-point-set! : buffer mark -> void
-;   set the point at the position given by the mark m
-
-(define (point [b (current-buffer)])
-  (buffer-point b))
-
-(define (buffer-move-point! b n)
-  (mark-move! (buffer-point b) n))
-
-(define (buffer-move-point-up! b)
-  (mark-move-up! (buffer-point b)))
-
-(define (buffer-move-point-down! b)
-  (mark-move-down! (buffer-point b)))
-
-(define (buffer-move-to-column! b n)
-  (mark-move-to-column! (buffer-point b) n))
-
-; buffer-backward-word! : buffer -> void
-;   move point forward until a word separator is found
-(define (buffer-backward-word! b)
-  (mark-backward-word! (buffer-point b)))
-
-; buffer-forward-word! : buffer -> void
-;   move point to until it a delimiter is found
-(define (buffer-forward-word! b)
-  (mark-forward-word! (buffer-point b)))
-
-
-(define (buffer-display b)
-  (define (line-display l)
-    (write l) (newline)
-    #;(display (~a "|" (regexp-replace #rx"\n$" (line->string l) "") "|\n")))
-  (define (text-display t)
-    (for ([l (text-lines t)])
-      (line-display l)))
-  (define (status-display)
-    (displayln (~a "--- buffer: " (buffer-name b) "    " (if (buffer-modified? b) "*" "saved") 
-                   " ---")))
-  (text-display (buffer-text b))
-  (status-display))
-
-(module+ test
-  #;(buffer-display illead-buffer))
-
-; buffer-insert-char! : buffer char -> void
-;   insert char after point (does not move point)
-(define (buffer-insert-char! b c)
-  (define m (buffer-point b))
-  (define t (buffer-text b))
-  (text-insert-char-at-mark! t m b c)
-  (buffer-dirty! b))
-
-; buffer-insert-char-after-point! : buffer char -> void
-;   insert character and move point
-(define (buffer-insert-char-after-point! b k)
-  ; note: the position of a single point does not change, but given multiple points...
-  (define m (buffer-point b))
-  (buffer-insert-char! b k)
-  (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) 1))
-
-; buffer-insert-char-before-point! : buffer char -> void
-;   insert character and move point
-(define (buffer-insert-char-before-point! b k)
-  (define m (buffer-point b))
-  (buffer-insert-char! b k)
-  (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) 1)
-  (buffer-move-point! b 1))
-
-; buffer-insert-string-before-point! : buffer string -> void
-;   insert string before point (and move point)
-(define (buffer-insert-string-before-point! b s)
-  ; todo: rewrite to insert entire string in one go
-  (for ([c s])
-    (if (char=? c #\newline)
-        (buffer-break-line! b)
-        (buffer-insert-char-before-point! b c))))
-
-(define (buffer-adjust-marks-due-to-insertion-after! b n a)
-  (for ([m (buffer-marks b)])
-    (mark-adjust-insertion-after! m n a)))
-
-(define (buffer-adjust-marks-due-to-insertion-before! b n a)
-  (for ([m (buffer-marks b)])
-    (mark-adjust-insertion-before! m n a)))
-
-; buffer-move-point-to-beginning-of-line! : buffer -> void
-;   move the point to the beginning of the line
-(define (buffer-move-point-to-beginning-of-line! b)
-  (define m (buffer-point b))
-  (mark-move-beginning-of-line! m))
-
-; buffer-move-point-to-end-of-line! : buffer -> void
-;   move the point to the end of the line
-(define (buffer-move-point-to-end-of-line! b)
-  (define m (buffer-point b))
-  (mark-move-end-of-line! m))
-
-; buffer-length : buffer -> natural
-;   return the total length of the text
-(define (buffer-length b)
-  (text-length (buffer-text b)))
-
-; buffer-break-line! : buffer -> void
-;   break line at point
-(define (buffer-break-line! b)
-  (define m (buffer-point b))
-  (define-values (row col) (mark-row+column m))
-  (text-break-line! (buffer-text b) row col)
-  ; (displayln b)
-  (mark-move! m 1)
-  (buffer-dirty! b))
-
-; buffer-delete-backward-char! : buffer [natural] -> void
-(define (buffer-delete-backward-char! b [count 1])
-  ; emacs: delete-backward-char
-  (define m (buffer-point b))
-  (define t (buffer-text b))
-  (for ([i count]) ; TODO improve efficiency!
-    (define-values (row col) (mark-row+column m))
-    (text-delete-backward-char! t row col)
-    (buffer-adjust-marks-due-to-deletion-before! b (mark-position m) 1)
-    (mark-move! m -1) ; point
-    (buffer-dirty! b)))
-
-(define (buffer-adjust-marks-due-to-deletion-before! b p a)
-  (for ([m (buffer-marks b)])
-    (mark-adjust-deletion-before! m p a)))
-
-(define (buffer-insert-property-at-point! b p)
-  (define m (buffer-point b))
-  (define t (buffer-text b))
-  (define-values (row col) (mark-row+column m))
-  (line-insert-property! (dlist-ref (text-lines t) row) p col)
-  #;(buffer-dirty! b))
-
-(define (buffer-insert-property! b p [p-end p])
-  ; if the region is active, the property is inserted
-  ; before and after the region (consider: are all properties toggles?)
-  ; if there are no region the property is simply inserted
-  (cond
-    [(use-region? b)
-     (define rb (region-beginning b))
-     (define re (region-end b))
-     (define m (buffer-point b))
-     (define old (mark-position m))
-     (mark-move-to-position! m rb)
-     (buffer-insert-property-at-point! b p)
-     (mark-move-to-position! m re)
-     (buffer-insert-property-at-point! b p-end)
-     (mark-move-to-position! m old)]
-    [else
-     (buffer-insert-property-at-point! b p)]))
-
-(define (buffer-move-point-to-position! b n)
-  (define m (buffer-point b))
-  (mark-move-to-position! m n))
-
-(define (buffer-set-mark [b (current-buffer)])
-  ; make new mark at current point and return it
-  (define p (buffer-point b))
-  (define fixed? #f)
-  (define active? #t)
-  (define name "*mark*")
-  (define l (mark-link p))
-  (define m (mark b l (mark-position p) name fixed? active?))
-  (set-linked-line-marks! l (set-add (linked-line-marks l) m))
-  (set-buffer-marks! b (set-add (buffer-marks b) m))
-  (mark-activate! m)
-  m)
-
-; list-next : list any (any any -> boolean)
-;   return the element after x,
-;   if x is the last element, then return the first element of xs,
-;   if x is not found in the list, return #f
-(define (list-next xs x =?)
-  (match xs
-    ['() #f]
-    [_   (define first-x (first xs))
-         (let loop ([xs xs])
-           (cond 
-             [(empty? xs)       #f]
-             [(=? (first xs) x) (if (empty? (rest xs)) first-x (first (rest xs)))]
-             [else              (loop (rest xs))]))]))
-
-(module+ test
-  (check-equal? (list-next '(a b c) 'a eq?) 'b)
-  (check-equal? (list-next '(a b c) 'b eq?) 'c)
-  (check-equal? (list-next '(a b c) 'c eq?) 'a)
-  (check-equal? (list-next '(a b c) 'd eq?) #f))
-
-
-; next-buffer : buffer -> buffer
-;   all buffers are in all-buffers, return the one following b
-(define (get-next-buffer [b (current-buffer)])
-  (list-next all-buffers b eq?))
-
-
-; buffer-point-marker! : buffer -> mark
-;   set new mark at point (i.e. "copy point")
-#;(define (buffer-point-marker! b)
-    (define p (buffer-point b))
-    ...)
-
 ;;;
-;;; REGIONS
+;;; REGION
 ;;;
-
-; region = text between point and the first mark is known as the region.
-; set-mark-command sets a mark, and then a region exists
-
-
-(define (region-beginning [b (current-buffer)])
-  (define marks (buffer-marks b))
-  (and (not (empty? marks))
-       (let ()
-         (define mark (first marks))
-         (define point (buffer-point b))
-         (min (mark-position mark)
-              (mark-position point)))))
-
-(define (region-end [b (current-buffer)])
-  (define marks (buffer-marks b))
-  (and (not (empty? marks))
-       (let ()
-         (define mark (first marks))
-         (define point (buffer-point b))
-         (max (mark-position mark)
-              (mark-position point)))))
-
-(define (region->string [b (current-buffer)])
-  (cond
-    [(use-region? b)
-     (define t (buffer-text b))
-     (subtext->string t (region-beginning b) (region-end b))]
-    [else #f]))
-
-(define (use-region? b)
-  (define marks (buffer-marks b))
-  (and #t ; (transient-mode-on? b)
-       (not (empty? marks))
-       (mark-active? (first marks))
-       (let ()
-         (define beg (region-beginning b))
-         (define end (region-end b))
-         (and beg end (> end beg)))))
-
-(define (region-mark [b (current-buffer)])
-  (define marks (buffer-marks b))
-  (and (not (empty? marks))
-       (first marks)))
 
 ; Note: Emacs has delete-active-region, delete-and-extract-region, and, delete-region
 
@@ -1465,7 +190,7 @@
 ;   Kill text from point to end of line.
 ;   If point is at end of line, the newline is deleted.
 ;   Point is at end of line, if text from point to newline is all whitespace.
-(define (buffer-kill-line [b (current-buffer)])
+(define (buffer-kill-line [b (current-buffer)] [called-by-kill-whole-line #f])
   ; TODO : store deleted text in kill ring
   (define m (buffer-point b))
   (define p1 (mark-position m))
@@ -1476,16 +201,17 @@
   (buffer-move-point-to-end-of-line! b)
   (delete-region b)
   ; maybe delete newline
-  (when (and (string-whitespace? rest-of-line)
-             (not (= (+ (mark-position m) 1) (position-of-end b))))
-    (forward-char b)
-    (buffer-backward-delete-char! b)))
+  (unless called-by-kill-whole-line
+    (when (and (string-whitespace? rest-of-line)
+               (not (= (+ (mark-position m) 1) (position-of-end b))))
+      (forward-char b)
+      (buffer-backward-delete-char! b))))
 
 ; buffer-kill-whole-line : [buffer] -> void
 ;   kill whole line including its newline
 (define (buffer-kill-whole-line [b (current-buffer)])
   (buffer-move-point-to-beginning-of-line! b)
-  (buffer-kill-line b)
+  (buffer-kill-line b #t)  
   (forward-char b)
   (buffer-backward-delete-char! b))
 
@@ -1834,7 +560,7 @@
 (struct keymap (bindings) #:transparent)
 
 (define (key-event->key event)
-  ; (newline)
+  #;(newline)
   #;(begin
       (write (list 'key-event->key
                    'key                (send event get-key-code)
@@ -1903,7 +629,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    ; (write (list prefix key)) (newline)    
+    (write (list prefix key)) (newline)    
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -1955,9 +681,10 @@
          [_           (message (string-append* `("M-x " ,@(map ~a more) ,(~a key))))
                       'prefix])]
       [(list "C-u" (? digit-char? ds) ...)
+       (displayln "HERE")
        (match key
          [(? digit-char?) 'prefix]
-         [#\c             (λ () (move-to-column (digits->number ds)))]
+         [#\c             (displayln "X") (λ () (move-to-column (digits->number ds)))]
          [else            #f])]
       [(list "ESC") 
        (match key
@@ -2282,6 +1009,8 @@
 (define (refresh-frame [f (current-frame)])
   (when (and f (frame? f))
     (render-frame f)))
+
+(current-refresh-frame refresh-frame)
 
 (define (frame-window-tree [f (current-frame)])
   (define (loop w)
@@ -2752,8 +1481,8 @@
     (new-menu-item em "Paste" #\v #f (λ (_ e) (insert-latest-kill)))
     ;; Edit | Text
     (define etm (new menu% (label "Text") (parent em)))
-    (new-menu-item etm "Kill Line"         #\k         '(ctl shift)(λ (_ e) (kill-whole-line)))
-    (new-menu-item etm "Kill to End"       #\k         '(ctl)      (λ (_ e) (kill-line)))
+    (new-menu-item etm "Kill line"         #\k         '(ctl)      (λ (_ e) (kill-line)))
+    (new-menu-item etm "Kill Whole Line"   #\k         '(ctl shift)(λ (_ e) (kill-whole-line)))    
     (new-menu-item etm "Kill to Beginning" #\backspace '(cmd)      (λ (_ e) (kill-line-to-beginning)))
     
     ;; Help Menu
