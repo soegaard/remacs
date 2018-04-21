@@ -1089,6 +1089,13 @@
 (define (toggle-italics) (font-style  (if (eq? (font-style)  'normal) 'italic 'normal)))
 (define default-fixed-font  (get-font))
 
+;;; 
+;;; LINES
+;;;
+
+; The size of a line is the same as the font size plus one.
+(define (line-size) (+ (font-size) 1))
+
 ;;;
 ;;; GUI
 ;;;
@@ -1097,20 +1104,25 @@
 (define current-show-points?        (make-parameter #f))
 (define current-point-color         (make-parameter point-colors)) ; circular list of colors
 
+(define (canvas-dimensions c)
+  (define dc (send c get-dc))
+  (define xmin 0)
+  (define xmax (send c get-width))
+  (define ymin 0)
+  (define ymax (send c get-height))
+  (values xmin xmax ymin ymax))
+
 (define (maybe-recenter-top-bottom [force? #f] [w (current-window)])
   ; move current buffer line to center of window
   (define b (window-buffer w))
   (define c (window-canvas w))
   ; Canvas Dimensions
-  (define xmin 0)
-  (define xmax (send c get-width))
-  (define ymin 0)
-  (define ymax (send c get-height))
+  (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
   ;; Dimensions
   (define width  (- xmax xmin))
   (define height (- ymax ymin))
   (define fs (font-size))
-  (define ls (+ fs 1)) ; BUG todo this looks wrong: the font-size might not math the pixel size
+  (define ls (line-size)) ; BUG todo this looks wrong: the font-size might not match the pixel size
   ;; Placement of point relative to lines on screen
   (define num-lines-on-screen   (max 0 (quotient height ls)))
   (define n num-lines-on-screen)
@@ -1132,20 +1144,18 @@
     (set! end-row   new-end-row))
   (values start-row end-row))
 
+
 (define (render-buffer w)
   (define b  (window-buffer w))
   (define c  (window-canvas w))
   (define dc (send c get-dc))
   ;; Canvas Dimensions
-  (define xmin 0)
-  (define xmax (send c get-width))
-  (define ymin 0)
-  (define ymax (send c get-height))
+  (define-values (xmin xmax ymin ymax) (canvas-dimensions c))  
   ;; Dimensions
   (define width  (- xmax xmin))
   (define height (- ymax ymin))
   (define fs (font-size))
-  (define ls (+ fs 1)) ; linesize -- 1 pixel for spacing
+  (define ls (line-size)) ; ls = fs + 1
   ;; Placement of point relative to lines on screen
   (define num-lines-on-screen   (max 0 (quotient height ls)))
   (define-values (row col)      (mark-row+column (buffer-point  b)))
@@ -1237,7 +1247,7 @@
 ; the parameter last-milliseconds tracks time when points are rendered,
 ; this is used to fade the colors correctly 
 (define last-milliseconds (make-parameter #f))
-(define (millisseconds-delta)
+(define (milliseconds-delta)
   (define now  (current-milliseconds))
   (define last (last-milliseconds))
   (unless last (last-milliseconds now) (set! last (- now 1)))
@@ -1256,11 +1266,11 @@
   (define ymin 0)
   (define ymax (send c get-height))
   ; ---
-  ; (displayln (millisseconds-delta)) ; expect values around 100
+  ; (displayln (milliseconds-delta)) ; expect values around 100
   (define colors (current-point-color))
   (define points-pen (new pen% [color (car colors)]))
   (define fuel  (color-fuel))
-  (define delta (millisseconds-delta))
+  (define delta (milliseconds-delta))
   (for ([i (quotient (+ fuel delta) 100)])
     (current-point-color (cdr colors)))
   (color-fuel (remainder (+ fuel delta) 100))
@@ -1395,6 +1405,27 @@
   (define prefix '())
   (define (add-prefix! key) (set! prefix (append prefix (list key))))
   (define (clear-prefix!)   (set! prefix '()))
+
+  (define (handle-mouse-left-down e)
+    ; a left click will move the point to the location clicked
+    (define-values (x y) (values (send e get-x) (send e get-y)))
+    (define c  (window-canvas this-window))
+    (define dc (send c get-dc))
+    ; Canvas Dimensions
+    (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
+    ;; Dimensions
+    (define width  (- xmax xmin))
+    (define height (- ymax ymin))
+    (define fs (font-size))
+    (define ls (line-size))
+    (define num-lines-on-screen   (max 0 (quotient height ls)))
+    (define n num-lines-on-screen)
+    ; font width and height
+    (define-values (w h _ __) (send dc get-text-extent "x"))
+    (define row (quotient y ls))
+    (define col (quotient x w))
+    ; row and col refer to the screen row, so we need to add the 
+    (displayln (list 'x x 'y y 'row row 'col col 'fs fs 'ls ls)))
   
   (define window-canvas%
     (class canvas%
@@ -1404,6 +1435,11 @@
       (define (set-buffer b) (set! the-buffer b))
       (define (get-buffer b) the-buffer)
       ;;; Focus Events
+      (define/override (on-event e) ; mouse events
+        (define type (send e get-event-type))
+        ;(displayln type)
+        (case type
+          [(left-down) (handle-mouse-left-down e)]))
       (define/override (on-focus event)
         (define w this-window)
         (define b (window-buffer w))
