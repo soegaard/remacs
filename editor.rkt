@@ -1538,6 +1538,9 @@
     (new-menu-item etm "Kill line"         #\k         '(ctl)      (λ (_ e) (kill-line)))
     (new-menu-item etm "Kill Whole Line"   #\k         '(ctl shift)(λ (_ e) (kill-whole-line)))    
     (new-menu-item etm "Kill to Beginning" #\backspace '(cmd)      (λ (_ e) (kill-line-to-beginning)))
+    ;; Evaluation Menu
+    (define        evm (new menu% (label "Evaluation") (parent mb)))
+    (new-menu-item evm "Evaluate Buffer" #f #f (λ (_ e) (eval-buffer)))
     
     ;; Help Menu
     (new menu% (label "Help") (parent mb))) 
