@@ -5,6 +5,7 @@
          (struct-out linked-line)
          (struct-out text)
          position-row+column
+         row+column->position
          (struct-out stats)
          (struct-out buffer)
          buffer-dirty!
@@ -156,6 +157,19 @@
       (if (> (+ q n) p)
           (return r (- p q))
           (values (+ r 1) (+ q n))))))
+
+; row+column->position : text integer integer -> position
+(define (row+column->position t row col)
+  (let/ec return
+    (define-values (last-row last-pos)
+      (for/fold ([r 0] [q 0]) ([l (text-lines t)])
+        ; q is the first position on line r
+        (define n (line-length l))
+        (if (= row r)
+            (return (+ q (min col (- n 1))))
+            (values (+ r 1) (+ q n)))))
+    ; since we got here, row is larger than the larges row index in text
+    last-pos))
 
 ; mark-row+column : mark- > integer integer
 ;   return row and column number for the mark m

@@ -290,19 +290,22 @@
   (set-mark-position! m n))
 
 (define (mark-move-to-row+column! m r c)
+  ; get the number of lines in the text
+  (define b  (mark-buffer m))
+  (define t  (buffer-text b))
+  (define nt (text-num-lines t))
   ; remove mark from its current line
   (define l (mark-link m))
   (set-linked-line-marks! l (set-remove (linked-line-marks l) m))
   ; find the new position
-  (define-values (row col) (mark-row+column m))
+  (define n (row+column->position t r c))
+  (define end? (>= r nt))
+  (define row (if end? (- nt 1) r))
   (define d (dlist-move (text-lines (buffer-text (mark-buffer m))) row))
   ; add mark to the new line
   (set-linked-line-marks! d (set-add (linked-line-marks d) m))
   ; store the new position
-  (define b (mark-buffer m))
-  (define t (buffer-text b))
-  (define n (row+column->position t r c))
-  (set-mark-position! m n))
+  (set-mark-position! m (if end? (- n 1) n)))
 
 
 (define (mark-move-to-beginning-of-paragraph! m)

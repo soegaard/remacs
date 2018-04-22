@@ -681,7 +681,7 @@
          [_           (message (string-append* `("M-x " ,@(map ~a more) ,(~a key))))
                       'prefix])]
       [(list "C-u" (? digit-char? ds) ...)
-       (displayln "HERE")
+       ;(displayln "HERE")
        (match key
          [(? digit-char?) 'prefix]
          [#\c             (displayln "X") (λ () (move-to-column (digits->number ds)))]
@@ -1408,7 +1408,8 @@
 
   (define (handle-mouse-left-down e)
     ; a left click will move the point to the location clicked
-    (define-values (x y) (values (send e get-x) (send e get-y)))
+    (define (exact r) (exact-floor r))
+    (define-values (x y) (values (exact (send e get-x)) (exact (send e get-y))))
     (define c  (window-canvas this-window))
     (define dc (send c get-dc))
     ; Canvas Dimensions
@@ -1416,16 +1417,25 @@
     ;; Dimensions
     (define width  (- xmax xmin))
     (define height (- ymax ymin))
-    (define fs (font-size))
-    (define ls (line-size))
+    (define fs (exact (font-size)))
+    (define ls (exact (line-size)))
     (define num-lines-on-screen   (max 0 (quotient height ls)))
-    (define n num-lines-on-screen)
-    ; font width and height
-    (define-values (w h _ __) (send dc get-text-extent "x"))
-    (define row (quotient y ls))
-    (define col (quotient x w))
-    ; row and col refer to the screen row, so we need to add the 
-    (displayln (list 'x x 'y y 'row row 'col col 'fs fs 'ls ls)))
+    (define n num-lines-on-screen)    
+    (define-values (w h _ __) (send dc get-text-extent "x")) ; font width and height
+    (set! h (exact h)) (set! w (exact w))
+    ; compute screen row and column
+    (define screen-row (quotient y ls))
+    (define screen-col (quotient x w))
+    ; find first row displayed on screen
+    (define start-mark              (window-start-mark this-window))
+    (define-values (start-row ___)  (mark-row+column start-mark))
+    ; Add start-row and row to get the buffer start row
+    (define row (+ start-row screen-row))
+    (define col screen-col)  ; TODO: change this when wrapping of long lines gets support
+    (define m (buffer-point (window-buffer this-window)))
+    (mark-move-to-row+column! m row col)
+    (maybe-recenter-top-bottom #t this-window)
+    (refresh-frame)) ; todo - does this-window have the current frame?    
   
   (define window-canvas%
     (class canvas%
