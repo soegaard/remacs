@@ -1060,9 +1060,11 @@
 (define border-pen    
   (new pen% [color base00] [width 1] [style 'solid] [cap 'butt] [join 'miter]))
 
-(define point-colors (circular-list base03 base03 base02 base01 base00
-                                    base0  base1  base2  base3  base3  base2  base1 
-                                    base0  base00 base01 base02 base03 base03))
+; Note: point-colors starts with the brightest colors.
+(define point-colors (circular-list base3  base3  base2  base1 
+                                    base0  base00 base01 base02 base03 base03
+                                    base03 base03 base02 base01 base00
+                                    base0  base1  base2))
 
 ;;;
 ;;; FONT
@@ -1435,7 +1437,7 @@
     (define m (buffer-point (window-buffer this-window)))
     (mark-move-to-row+column! m row col)
     (maybe-recenter-top-bottom #t this-window)
-    (refresh-frame)) ; todo - does this-window have the current frame?    
+    (refresh-frame))
   
   (define window-canvas%
     (class canvas%
@@ -1458,6 +1460,7 @@
         (current-window w))
       ;; Key Events
       (define/override (on-char event)
+        (current-point-color point-colors) ; make points visible when keyboard is active
         ; TODO syntax  (with-temp-buffer body ...)
         (define key-code (send event get-key-code))
         (unless (equal? key-code 'release)
