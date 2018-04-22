@@ -275,22 +275,10 @@
 ;;; BUFFER LOCALS
 ;;;
 
-(define (set-buffer-local! b sym v)
-  (define ns (buffer-locals b))
-  (namespace-set-variable-value! sym v #f ns))
+(require "buffer-locals.rkt")
 
-(define (ref-buffer-local b sym 
-                          [on-error (λ () (error 'ref-buffer-local (~a sym " is undefined")))])
-  (define (on-failure) (if (procedure? on-error) (on-error) on-error))
-  (define ns (buffer-locals b))
-  (namespace-variable-value sym #t on-failure ns))
-
-(define-namespace-anchor default-namespace-anchor)
-(define default-namespace (namespace-anchor->namespace default-namespace-anchor))
 ;;; TODO : What should the default namespace be?
 
-(define (lookup-default sym [on-error #f])
-  (namespace-variable-value sym #t on-error default-namespace))
 
 
 ;;;

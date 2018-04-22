@@ -72,6 +72,7 @@
 ; The list modes contains the active modes (see below).
 ; marks = list of marks
 ; A buffer can have multiple marks:
+; 
 
 (struct mark (buffer link position name fixed? active?) #:transparent #:mutable)
 ; A mark rembers a position in the text of a buffer.

@@ -46,29 +46,13 @@
               #:unless (get-buffer (name i)))
     (name i)))
 
-(module* buffer-top #f
-  (provide (rename-out [buffer-top #%top]))
-  ; (require (for-syntax racket/base syntax/parse))
-  (define-syntax (buffer-top stx)
-    (syntax-parse stx
-      [(_ . id:id)
-       #'(let ()
-           (define b (current-buffer))
-           (cond
-             [(ref-buffer-local b 'id #f) => values]
-             [else (lookup-default 'id)]))])))
-
-(require syntax/location)
-(define path-to-buffer-top (quote-module-path buffer-top))
-
 ; new-buffer : -> buffer
 ;   create fresh buffer without an associated file
 (define (new-buffer [text (new-text)] [path #f] [name (generate-new-buffer-name "buffer")])
   (define locals (make-base-empty-namespace))
   (parameterize ([current-namespace locals])
     (namespace-require 'racket/base)
-    ; (eval `(require ,path-to-buffer-top))
-    )
+    (namespace-require '(submod "buffer-local.rkt" buffer-top)))
   (define b (buffer text name path 
                     '()   ; points
                     '()   ; marks
@@ -103,7 +87,7 @@
     "    C-x 3      splits the window in two horizontally\n"
     "    C-x right  is bound to next-buffer\n\n" 
     "\n"
-    "Happy Rackteering\n"
+    "Happy Racketeering\n"
     "/soegaard"))
 
 (define scratch-buffer (new-buffer (new-text (list->lines scratch-text)) #f "*scratch*"))
