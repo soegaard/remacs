@@ -1,4 +1,7 @@
 #lang racket
+;;; TODO C-u <digit> ... now sets current-prefix-argument.
+;;;      but only self-insert-char actually uses the prefix argument.
+;;;      Use current-prefix-argument in other commands as well.
 ;;; TODO Finish eval-buffer
 ;;;        ok use buffer-local namespace for evaluation
 ;;;        ok fix new-buffer (buffer-top needs to be required)
@@ -459,7 +462,10 @@
   ; (display "Inserting: ") (write k) (newline)
   (define b (current-buffer))
   (when (use-region? b) (delete-region b))
-  (buffer-insert-char-before-point! b k))
+  (define pa (current-prefix-argument))
+  (define i (or (and (integer? pa) (positive? pa) pa) 1))
+  (for ([_ (in-range i)])
+    (buffer-insert-char-before-point! b k)))
 
 (define-interactive (break-line [b (current-buffer)])
   (buffer-break-line! b))
@@ -620,6 +626,8 @@
   (if (null? xs) xs
       (reverse (rest (reverse xs)))))
 
+(define current-prefix-argument (make-parameter #f)) ; set by C-u
+
 (define global-keymap
   (λ (prefix key)
     ; (write (list prefix key)) (newline)    
@@ -628,7 +636,7 @@
     ; if unbound and not prefix, return #f
     (define (digits->number ds) (string->number (list->string ds)))
     (define (digit-char? x) (and (char? x) (char<=? #\0 x #\9)))
-    ; todo: allow negativ numeric prefix
+    ; todo: allow negative numeric prefix
     (match prefix
       [(list "M-x" more ...)
        (match key
@@ -673,12 +681,12 @@
                       cmd]
          [_           (message (string-append* `("M-x " ,@(map ~a more) ,(~a key))))
                       'prefix])]
-      [(list "C-u" (? digit-char? ds) ...)
-       ;(displayln "HERE")
+      [(list "C-u" (? digit-char? ds) ... x ...)
        (match key
          [(? digit-char?) 'prefix]
-         [#\c             (displayln "X") (λ () (move-to-column (digits->number ds)))]
-         [else            #f])]
+         [#\c             (displayln (digits->number ds)) (λ () (move-to-column (digits->number ds)))]
+         [else            (current-prefix-argument (digits->number ds))
+                          (global-keymap x key)])]
       [(list "ESC") 
        (match key
          [#\b         backward-word]
@@ -1466,7 +1474,7 @@
                               (and (char? key-code)
                                    (global-keymap prefix key-code))))
           (match binding
-            [(? procedure? thunk)  (clear-prefix!) (thunk)]
+            [(? procedure? thunk)  (clear-prefix!) (thunk) (current-prefix-argument #f)]
             [(list 'replace pre)   (set! prefix pre)]
             ['prefix               (add-prefix! key)]
             ['ignore               (void)]
