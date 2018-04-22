@@ -176,6 +176,14 @@
 (define (position-of-end [b (current-buffer)])
   (text-length (buffer-text b)))
 
+(define (mark-move-end-of-buffer! m)
+  (define b (mark-buffer m))
+  (set-mark-position! m (position-of-end b)))
+
+(define (mark-move-beginning-of-buffer! m)
+  (set-mark-position! m 0))
+
+
 ; mark-move-end-of-line! : mark -> void
 ;   move the mark to the end of its line
 (define (mark-move-end-of-line! m)

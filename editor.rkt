@@ -5,7 +5,7 @@
 ;;;        - convenient initial namespace (now racket/base)
 ;;;        - catch errors
 ;;;        - output where?
-;;; TODO mark-whole-buffer  (normally bound to C-x h)
+
 ;;; TODO Wordwrap
 ;;; TODO #\tab now inserts 4 space
 ;;;      But ... if a rendering breaks if the a file contains #\tab
@@ -146,6 +146,7 @@
                           (buffer-delete-backward-char! b n)]
       [else               (void)])
     (mark-deactivate! mark)))
+
 
 ;;;
 ;;; KILLING
@@ -688,8 +689,9 @@
          [#\0         delete-window]
          [#\2         split-window-below]
          [#\3         split-window-right]
+         [#\h         mark-whole-buffer]
          [#\s         save-some-buffers]
-         [#\o         other-window]
+         [#\o         other-window]         
          ["C-s"       save-buffer]
          ['right      next-buffer]
          [_           #f])]
