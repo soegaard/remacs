@@ -1,0 +1,55 @@
+#lang racket
+(provide (all-defined-out))
+(require "representation.rkt"
+         "parameters.rkt"
+         "text.rkt"
+         "mark.rkt")
+
+;;;
+;;; REGIONS
+;;;
+
+; region = text between point and the first mark is known as the region.
+; set-mark-command sets a mark, and then a region exists
+
+
+(define (region-beginning [b (current-buffer)])
+  (define marks (buffer-marks b))
+  (and (not (empty? marks))
+       (let ()
+         (define mark (first marks))
+         (define point (buffer-point b))
+         (min (mark-position mark)
+              (mark-position point)))))
+
+(define (region-end [b (current-buffer)])
+  (define marks (buffer-marks b))
+  (and (not (empty? marks))
+       (let ()
+         (define mark (first marks))
+         (define point (buffer-point b))
+         (max (mark-position mark)
+              (mark-position point)))))
+
+(define (region->string [b (current-buffer)])
+  (cond
+    [(use-region? b)
+     (define t (buffer-text b))
+     (subtext->string t (region-beginning b) (region-end b))]
+    [else #f]))
+
+(define (use-region? b)
+  (define marks (buffer-marks b))
+  (and #t ; (transient-mode-on? b)
+       (not (empty? marks))
+       (mark-active? (first marks))
+       (let ()
+         (define beg (region-beginning b))
+         (define end (region-end b))
+         (and beg end (> end beg)))))
+
+(define (region-mark [b (current-buffer)])
+  (define marks (buffer-marks b))
+  (and (not (empty? marks))
+       (first marks)))
+
