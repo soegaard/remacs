@@ -52,7 +52,7 @@
   (define locals (make-base-empty-namespace))
   (parameterize ([current-namespace locals])
     (namespace-require 'racket/base)
-    (namespace-require '(submod "buffer-local.rkt" buffer-top)))
+    (namespace-require '(submod "buffer-locals.rkt" buffer-top)))
   (define b (buffer text name path 
                     '()   ; points
                     '()   ; marks

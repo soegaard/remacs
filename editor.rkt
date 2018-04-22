@@ -1,7 +1,7 @@
 #lang racket
 ;;; TODO Finish eval-buffer
 ;;;        ok use buffer-local namespace for evaluation
-;;;        - fix new-buffer (buffer-top needs to be required)
+;;;        ok fix new-buffer (buffer-top needs to be required)
 ;;;        - convenient initial namespace (now racket/base)
 ;;;        - catch errors
 ;;;        - output where?
