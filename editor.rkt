@@ -160,6 +160,7 @@
 (define kill-ring (new-ring))
 (define current-clipboard-at-latest-kill (make-parameter #f))
 
+
 (define (update-current-clipboard-at-latest-kill)
   (current-clipboard-at-latest-kill 
    (send the-clipboard get-clipboard-string 0)))
@@ -362,7 +363,10 @@
   (buffer-move-point-up! (current-buffer)))
 (define-interactive (next-line/extend-region)
   (prepare-extend-region)
-  (buffer-move-point-down! (current-buffer)))
+  (define b (current-buffer))
+  (if (mark-on-last-line? (buffer-point b))
+      (buffer-move-point-to-end-of-line! b)
+      (buffer-move-point-down! b)))
 (define-interactive (forward-word/extend-region) 
   (prepare-extend-region)
   (buffer-forward-word! (current-buffer)))
@@ -528,7 +532,7 @@
     [else
      ; system clipboard is newer
      (buffer-insert-string-before-point! (current-buffer) s)
-     (refresh-frame)]))            
+     (refresh-frame)]))
 
 (define-interactive (copy-region)
   (update-current-clipboard-at-latest-kill)
