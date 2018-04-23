@@ -83,6 +83,7 @@
     "The editor is still a work-in-progress.\n\n"
     "\n"
     "Search for keymap in the source to see the available keybindings.\n"
+    "    C-x 1      delete other windows\n"
     "    C-x 2      splits the window in two vertically\n"
     "    C-x 3      splits the window in two horizontally\n"
     "    C-x right  is bound to next-buffer\n\n" 
