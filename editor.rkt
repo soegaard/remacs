@@ -1,7 +1,11 @@
 #lang racket
+;;; TODO Add C-x left which is bound to prev-buffer
 ;;; TODO C-u <digit> ... now sets current-prefix-argument.
 ;;;      but only self-insert-char actually uses the prefix argument.
 ;;;      Use current-prefix-argument in other commands as well.
+;;; TODO Allow negative numeric prefix
+;;; TODO Holding M and typing a number should create a numeric prefix.
+
 ;;; TODO Finish eval-buffer
 ;;;        ok use buffer-local namespace for evaluation
 ;;;        ok fix new-buffer (buffer-top needs to be required)
@@ -44,8 +48,6 @@
 ;;; TODO previous-buffer (parallel to next-buffer)
 ;;; TODO Introduce global that controls which key to use for meta
 ;;; TODO Implement open-input-buffer
-;;; TODO Allow negative numeric prefix
-;;; TODO Holding M and typing a number should create a numeric prefix.
 ;;; TODO Completions ala http://sublimetext.info/docs/en/extensibility/completions.html
 
 (module+ test (require rackunit))
@@ -420,6 +422,13 @@
 (define-interactive (delete-window [w (current-window)])
   (window-delete! w))
 
+(define-interactive (delete-other-windows [w (current-window)])
+  (define ws (frame-window-tree (window-frame w)))
+  (for ([win (in-list ws)])
+    (unless (eq? w win)
+      (delete-window win)))
+  (refresh-frame))
+
 (define-interactive (maximize-frame [f (current-frame)]) ; maximize / demaximize frame
   (when (frame? f)
     (define f% (frame-frame% f))
@@ -695,6 +704,7 @@
       [(list "C-x")
        (match key
          [#\0         delete-window]
+         [#\1         delete-other-windows]
          [#\2         split-window-below]
          [#\3         split-window-right]
          [#\h         mark-whole-buffer]
@@ -702,6 +712,9 @@
          [#\o         other-window]         
          ["C-s"       save-buffer]
          ['right      next-buffer]
+         ; ['left     previous-buffer]  TODO
+         ; ["C-b"     list-buffers]     TODO
+         
          [_           #f])]
       [(list)
        ; (write (list 'empty-prefix 'key key)) (newline)
