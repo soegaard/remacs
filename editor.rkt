@@ -1,6 +1,4 @@
 #lang racket
-;;; TODO Add C-x left which is bound to previous-buffer
-;;; TODO previous-buffer (parallel to next-buffer)
 ;;; TODO C-u <digit> ... now sets current-prefix-argument.
 ;;;      but only self-insert-char actually uses the prefix argument.
 ;;;      Use current-prefix-argument in other commands as well.
