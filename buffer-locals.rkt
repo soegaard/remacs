@@ -4,6 +4,7 @@
          lookup-default)
 
 (require "representation.rkt"
+         ; "parameters.rkt"            ; for current-buffer
          (for-syntax syntax/parse))
 
 ;;;
@@ -18,8 +19,9 @@
       [(_ . id:id)
        (syntax/loc stx
          (let ()
-           (define b (current-buffer))
+           (define b (current-buffer2))
            (cond
+             [(eq? b #f) (displayln "buffer is #f ?!?") 'huh]
              [(ref-buffer-local b 'id #f) => values]
              [else (lookup-default 'id)])))])))
 

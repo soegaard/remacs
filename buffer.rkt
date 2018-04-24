@@ -440,6 +440,8 @@
 (define (get-next-buffer [b (current-buffer)])
   (list-next all-buffers b eq?))
 
+(define (get-previous-buffer [b (current-buffer)])
+  (list-next (reverse all-buffers) b eq?))
 
 ; buffer-point-marker! : buffer -> mark
 ;   set new mark at point (i.e. "copy point")

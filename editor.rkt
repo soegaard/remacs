@@ -1,5 +1,6 @@
 #lang racket
-;;; TODO Add C-x left which is bound to prev-buffer
+;;; TODO Add C-x left which is bound to previous-buffer
+;;; TODO previous-buffer (parallel to next-buffer)
 ;;; TODO C-u <digit> ... now sets current-prefix-argument.
 ;;;      but only self-insert-char actually uses the prefix argument.
 ;;;      Use current-prefix-argument in other commands as well.
@@ -45,7 +46,6 @@
 ;;; TODO left and right needs to toggle transient-mode rather than deactivate the mark
 ;;; TODO Properties and faces
 ;;; TODO Modes
-;;; TODO previous-buffer (parallel to next-buffer)
 ;;; TODO Introduce global that controls which key to use for meta
 ;;; TODO Implement open-input-buffer
 ;;; TODO Completions ala http://sublimetext.info/docs/en/extensibility/completions.html
@@ -412,6 +412,12 @@
   (set-window-buffer! w b)
   (current-buffer b))
 
+(define-interactive (previous-buffer) ; show next buffer in current window
+  (define w (current-window))
+  (define b (get-previous-buffer))
+  (set-window-buffer! w b)
+  (current-buffer b))
+
 (define-interactive (other-window) ; switch current window and buffer
   (define ws (frame-window-tree (current-frame)))
   (define w (list-next ws (current-window) eq?))
@@ -452,11 +458,13 @@
 ;   TODO: Note done: Introduce namespace for each buffer
 (define-interactive (eval-buffer)
   (define b (current-buffer))
+  (displayln (if b (buffer-name b) "no buffer?"))
   (define t (buffer-text b))
   (define s (text->string t))
   (define in (open-input-string s))
   (define ns (buffer-locals b))
-  (parameterize ([current-namespace ns])
+  (parameterize ([current-namespace ns]
+                 [current-buffer    b])
     (define (read1 in)
       (define stx (read-syntax 'read-from-buffer in))
       (if (syntax? stx)
@@ -712,7 +720,7 @@
          [#\o         other-window]         
          ["C-s"       save-buffer]
          ['right      next-buffer]
-         ; ['left     previous-buffer]  TODO
+         ['left       previous-buffer]
          ; ["C-b"     list-buffers]     TODO
          
          [_           #f])]
@@ -1531,7 +1539,7 @@
 (define (frame-install-frame%! this-frame)
   ;;; FRAME SIZE
   (define min-width  800)
-  (define min-height 800)
+  (define min-height 400)
   ;;; FRAME  
   (define frame (new frame% [label "Editor"] [style '(fullscreen-button)]))
   (set-frame-frame%! this-frame frame)
@@ -1565,19 +1573,31 @@
     (new-menu-item etm "Kill line"         #\k         '(ctl)      (λ (_ e) (kill-line)))
     (new-menu-item etm "Kill Whole Line"   #\k         '(ctl shift)(λ (_ e) (kill-whole-line)))    
     (new-menu-item etm "Kill to Beginning" #\backspace '(cmd)      (λ (_ e) (kill-line-to-beginning)))
+    ;; Window Menu
+    (define        wm (new menu% (label "Window") (parent mb)))
+    (new-menu-item wm "C-x 0       Delete Window"        #f #f (λ (_ e) (delete-window)))
+    (new-menu-item wm "C-x 1       Delete Other Windows" #f #f (λ (_ e) (delete-other-windows)))
+    (new-menu-item wm "C-x 2       Split Window Below"   #f #f (λ (_ e) (split-window-below)))
+    (new-menu-item wm "C-x 3       Split Window Right"   #f #f (λ (_ e) (split-window-right)))
+    (new-menu-item wm "C-x o       Other Window"         #f #f (λ (_ e) (other-window)))
+    (new-menu-item wm "C-x <right> Next Buffer"          #f #f (λ (_ e) (next-buffer)))
+    ;; Buffer Menu
+    (define        bm (new menu% (label "Buffer") (parent mb)))
+    (new-menu-item bm "C-s s Save Buffer"          #f #f (λ (_ e) (save-buffer)))
+    (new-menu-item bm "C-x s Save Some Buffers"    #f #f (λ (_ e) (save-some-buffers)))
+    (new-menu-item bm "C-x h Mark Whole Buffer"    #f #f (λ (_ e) (mark-whole-buffer)))
     ;; Evaluation Menu
     (define        evm (new menu% (label "Evaluation") (parent mb)))
     (new-menu-item evm "Evaluate Buffer" #f #f (λ (_ e) (eval-buffer)))
-    
     ;; Help Menu
     (new menu% (label "Help") (parent mb))) 
   (create-menubar)
   ;; PANEL
   ; The holds contains the shown window 
   (define panel (new vertical-panel% 
-                     [parent frame]
-                     [min-width min-width]
-                     [min-height 200]))
+                     [parent     frame]
+                     [min-width  min-width]
+                     [min-height min-height]))
   (set-frame-panel! this-frame panel)
   ;;; CANVAS
   ; Non-split windows are rendered into an associated canvas.
@@ -1627,5 +1647,3 @@
     (λ ()
       (for ([l (in-lines)])
         (displayln l)))))
-
-
