@@ -13,17 +13,15 @@
 
 (module* buffer-top #f
   (provide (rename-out [buffer-top #%top]))
-  ; (require (for-syntax racket/base syntax/parse))
+  (require "parameters.rkt")
+  (define (on-error sym) (error 'buffer-top (~a sym " is undefined")))
   (define-syntax (buffer-top stx)
     (syntax-parse stx
       [(_ . id:id)
        (syntax/loc stx
-         (let ()
-           (define b (current-buffer2))
-           (cond
-             [(eq? b #f) (displayln "buffer is #f ?!?") 'huh]
-             [(ref-buffer-local b 'id #f) => values]
-             [else (lookup-default 'id)])))])))
+         (cond
+           [(namespace-variable-value 'id #t (λ () (on-error 'id))) => values]
+           [else (lookup-default 'id)]))])))
 
 (define-namespace-anchor default-namespace-anchor)
 (define default-namespace (namespace-anchor->namespace default-namespace-anchor))

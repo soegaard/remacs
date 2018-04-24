@@ -1481,6 +1481,7 @@
         (current-window w))
       ;; Key Events
       (define/override (on-char event)
+        (displayln (list 'current-buffer (buffer-name (current-buffer))))
         (current-point-color point-colors) ; make points visible when keyboard is active
         ; TODO syntax  (with-temp-buffer body ...)
         (define key-code (send event get-key-code))
