@@ -8,7 +8,8 @@
          "dlist.rkt"
          "mark.rkt"
          "line.rkt"
-         "region.rkt")
+         "region.rkt"
+         "mode.rkt")
 ;;;
 ;;; BUFFER
 ;;;
@@ -52,7 +53,8 @@
   (define locals (make-base-empty-namespace))
   (parameterize ([current-namespace locals])
     (namespace-require 'racket/base)
-    (namespace-require '(submod "buffer-locals.rkt" buffer-top)))
+    (namespace-require '(submod "buffer-locals.rkt" buffer-top))
+    (namespace-set-variable-value! 'major-mode (current-default-major-mode)))
   (define b (buffer text name path 
                     '()   ; points
                     '()   ; marks

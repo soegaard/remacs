@@ -285,6 +285,15 @@
 ;;; TODO : What should the default namespace be?
 
 
+;;;
+;;; MODES
+;;;
+
+; The buffer-local variable  major-mode  holds a symbol representing the major mode.
+; Example: the symbol 'fundemental-mode represents the fundemental mode.
+
+(require "mode.rkt")
+
 
 ;;;
 ;;; INTERACTIVE COMMANDS
