@@ -54,7 +54,8 @@
   (parameterize ([current-namespace locals])
     (namespace-require 'racket/base)
     (namespace-require '(submod "buffer-locals.rkt" buffer-top))
-    (namespace-set-variable-value! 'major-mode (current-default-major-mode)))
+    (namespace-set-variable-value! 'major-mode (current-default-major-mode))
+    (namespace-set-variable-value! 'mode-name  "Fundamental")) ; TODO: fix
   (define b (buffer text name path 
                     '()   ; points
                     '()   ; marks

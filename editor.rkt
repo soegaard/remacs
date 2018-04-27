@@ -1,4 +1,6 @@
 #lang racket
+;;; TODO Introduce double buffering to avoid any flicker.
+;;;      https://www.facebook.com/notes/daniel-colascione/buttery-smooth-emacs/10155313440066102/
 ;;; TODO C-u <digit> ... now sets current-prefix-argument.
 ;;;      but only self-insert-char actually uses the prefix argument.
 ;;;      Use current-prefix-argument in other commands as well.
@@ -276,24 +278,6 @@
   (define explanation (list (~a "Completions for: " so-far)))
   (new-text (list->lines (for/list ([c (append explanation cs)]) (~a c "\n")))))
 
-;;;
-;;; BUFFER LOCALS
-;;;
-
-(require "buffer-locals.rkt")
-
-;;; TODO : What should the default namespace be?
-
-
-;;;
-;;; MODES
-;;;
-
-; The buffer-local variable  major-mode  holds a symbol representing the major mode.
-; Example: the symbol 'fundemental-mode represents the fundemental mode.
-
-(require "mode.rkt")
-
 
 ;;;
 ;;; INTERACTIVE COMMANDS
@@ -524,12 +508,13 @@
 (define-interactive (backward-delete-char [n 1])
   (buffer-backward-delete-char! (current-buffer) n))
 
+; select all
 (define-interactive (mark-whole-buffer [b (current-buffer)])
   (parameterize ([current-buffer b])
     (end-of-buffer)
     (command-set-mark)
-    (beginning-of-buffer)))
-
+    (beginning-of-buffer)
+    (refresh-frame)))
 
 (define-interactive (kill-line)
   (buffer-kill-line)
@@ -567,6 +552,29 @@
 (define-interactive (copy-region)
   (update-current-clipboard-at-latest-kill)
   (kill-ring-push-region))
+
+;;;
+;;; BUFFER LOCALS
+;;;
+
+(require "buffer-locals.rkt")
+
+;;; TODO : What should the default namespace be?
+
+
+;;;
+;;; MODES
+;;;
+
+; The buffer-local variable  major-mode  holds a symbol representing the major mode.
+; Example: the symbol 'fundamental-mode represents the fundamental mode.
+
+(require "mode.rkt")
+
+(define-interactive (text-mode)
+  (set-major-mode! 'text)
+  (set-mode-name!  "Text"))
+
 
 ;;;
 ;;; KEYMAP
@@ -761,6 +769,7 @@
          ["C-n"           next-line]
          ["C-w"           kill-region]
          ; Cmd + something
+         ["D-a"           mark-whole-buffer]   ; select all 
          ["D-c"           copy-region]         ; copy  (Edit Menu)
          ["D-x"           kill-region]         ; cut   (Edit Menu)
          ["D-v"           insert-latest-kill]  ; paste (Edit Menu)
@@ -818,9 +827,10 @@
   (define-values (row col) (mark-row+column (buffer-point b)))
   (define save-status (if (buffer-modified? b) "***" "---"))
   (~a save-status  
-      "  " "Buffer: "          (buffer-name) "    " "(" row "," col ")"
-      "  " "Position: " (mark-position (buffer-point (current-buffer)))
-      "  " "Length: "   (buffer-length (current-buffer))))
+      "   " "Buffer: "          (buffer-name) "    " "(" row "," col ")"
+      "   " "Position: " (mark-position (buffer-point (current-buffer)))
+      "   " "Length: "   (buffer-length (current-buffer))
+      "   " "Mode: "     "(" (get-mode-name) ")"))
 
 ;;;
 ;;; WINDOWS
@@ -1571,9 +1581,10 @@
     (new-menu-item fm "Save As..." #\s '(shift cmd) (λ (_ e) (save-buffer-as)))
     ;; Edit Menu
     (define em (new menu% (label "Edit") (parent mb)))
-    (new-menu-item em "Copy"  #\c #f (λ (_ e) (copy-region)))
-    (new-menu-item em "Cut"   #\x #f (λ (_ e) (kill-region)))
-    (new-menu-item em "Paste" #\v #f (λ (_ e) (insert-latest-kill)))
+    (new-menu-item em "Select All" #\a #f (λ (_ e) (mark-whole-buffer)))
+    (new-menu-item em "Copy"       #\c #f (λ (_ e) (copy-region)))
+    (new-menu-item em "Cut"        #\x #f (λ (_ e) (kill-region)))
+    (new-menu-item em "Paste"      #\v #f (λ (_ e) (insert-latest-kill)))
     ;; Edit | Text
     (define etm (new menu% (label "Text") (parent em)))
     (new-menu-item etm "Kill line"         #\k         '(ctl)      (λ (_ e) (kill-line)))
