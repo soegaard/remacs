@@ -1,4 +1,6 @@
 #lang racket
+;;; TODO rewrite (buffer-insert-string-before-point! b s)
+;;;      to insert entire string at one go
 ;;; TODO Introduce double buffering to avoid any flicker.
 ;;;      https://www.facebook.com/notes/daniel-colascione/buttery-smooth-emacs/10155313440066102/
 ;;; TODO C-u <digit> ... now sets current-prefix-argument.
@@ -191,7 +193,7 @@
                      (ring-ref kill-ring 0))
                 ""))
   (buffer-insert-string-before-point! b s)
-  (refresh-frame))
+  #;(refresh-frame))
 
 ; buffer-kill-line : buffer -> void
 ;   Kill text from point to end of line.
@@ -307,7 +309,9 @@
      (syntax/loc stx
        (begin
          (add-name-to-completions 'name)
-         (define (name . args) expr ...)
+         (define (name . args)
+           (with-suspended-rendering               
+               expr ...))
          (add-interactive-command 'name name)))]
     [_ (raise-syntax-error 'define-interactive "bad syntax" stx)]))
 
@@ -339,6 +343,32 @@
 (define-interactive (forward-word)
   (cond [(region-mark) => mark-deactivate!])
   (buffer-forward-word!    (current-buffer)))
+(define current-next-screen-context-lines (make-parameter 2)) ; TODO use a buffer local?
+(define-interactive (page-down [w (current-window)])
+  (define point                (buffer-point (window-buffer w)))
+  (define start-mark           (window-start-mark w))
+  (define end-mark             (window-end-mark w))
+  (define-values (start-row _) (mark-row+column start-mark))
+  (define-values (end-row  __) (mark-row+column end-mark))  
+  (define delta                (max 0 (- (number-of-lines-on-screen w)
+                                         (current-next-screen-context-lines))))
+  (mark-move-down! point      delta)
+  (mark-move-down! start-mark delta)
+  (mark-move-down! end-mark   delta)
+  (refresh-frame))
+(define-interactive (page-up [w (current-window)])
+  (define point                (buffer-point (window-buffer w)))
+  (define start-mark           (window-start-mark w))
+  (define end-mark             (window-end-mark w))
+  (define-values (start-row _) (mark-row+column start-mark))
+  (define-values (end-row  __) (mark-row+column end-mark))  
+  (define delta                (max 0 (- (number-of-lines-on-screen w)
+                                         (current-next-screen-context-lines))))
+  (mark-move-up! point      delta)
+  (mark-move-up! start-mark delta)  
+  (mark-move-up! end-mark   delta)
+  (refresh-frame))
+
 
 (define (prepare-extend-region)
   (define marks (buffer-marks (current-buffer)))
@@ -810,6 +840,8 @@
          [#\tab           (λ() (define insert (self-insert-command #\space)) (for ([i 4]) (insert)))]
          ['home           (λ () (buffer-move-point-to-beginning-of-line! (current-buffer)))] ; fn+left
          ['end            (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
+         ['next           page-down] 
+         ['prior          page-up]
          ["C-space"       command-set-mark]
          ; place self inserting characters after #\return and friends
          ["space"         (self-insert-command #\space)]
@@ -1046,8 +1078,9 @@
 (define current-frame (make-parameter #f))
 
 (define (refresh-frame [f (current-frame)])
-  (when (and f (frame? f))
-    (render-frame f)))
+  (unless (current-rendering-suspended?)
+    (when (and f (frame? f))
+      (render-frame f))))
 
 (current-refresh-frame refresh-frame)
 
@@ -1130,20 +1163,9 @@
 (define (toggle-italics) (font-style  (if (eq? (font-style)  'normal) 'italic 'normal)))
 (define default-fixed-font  (get-font))
 
-;;; 
-;;; LINES
 ;;;
-
-; The size of a line is the same as the font size plus one.
-(define (line-size) (+ (font-size) 1))
-
+;;; CANVAS
 ;;;
-;;; GUI
-;;;
-
-(define current-render-points-only? (make-parameter #f))
-(define current-show-points?        (make-parameter #f))
-(define current-point-color         (make-parameter point-colors)) ; circular list of colors
 
 (define (canvas-dimensions c)
   (define dc (send c get-dc))
@@ -1153,29 +1175,58 @@
   (define ymax (send c get-height))
   (values xmin xmax ymin ymax))
 
-(define (maybe-recenter-top-bottom [force? #f] [w (current-window)])
-  ; move current buffer line to center of window
+;;; 
+;;; LINES
+;;;
+
+; The size of a line is the same as the font size plus one.
+(define (line-size) (+ (font-size) 1))
+
+(define (number-of-lines-on-screen w)
   (define b (window-buffer w))
   (define c (window-canvas w))
-  ; Canvas Dimensions
   (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
-  ;; Dimensions
   (define width  (- xmax xmin))
   (define height (- ymax ymin))
   (define fs (font-size))
   (define ls (line-size)) ; BUG todo this looks wrong: the font-size might not match the pixel size
   ;; Placement of point relative to lines on screen
-  (define num-lines-on-screen   (max 0 (quotient height ls)))
-  (define n num-lines-on-screen)
-  (define-values (row col)      (mark-row+column (buffer-point b)))
-  (define start-mark            (window-start-mark w))
-  (define end-mark              (window-end-mark w))
-  (define-values (start-row _)  (mark-row+column start-mark))
-  (define-values (end-row   __) (mark-row+column end-mark))  
+  (define n (max 0 (quotient height ls)))
+  n)
+
+;;;
+;;; GUI
+;;;
+
+(define current-render-points-only?  (make-parameter #f))
+(define current-show-points?         (make-parameter #f))
+(define current-point-color          (make-parameter point-colors)) ; circular list of colors
+(define current-rendering-suspended? (make-parameter #f))
+(define current-rendering-needed?    (make-parameter #f))
+
+(define-syntax (with-suspended-rendering stx)
+  (syntax-parse stx
+    [(_with-suspended-rendering body ...)
+     (syntax/loc stx
+       (let ()
+         (parameterize ([current-rendering-suspended? #t])
+           body ...)
+         (render-frame (current-frame))))]))
+
+
+(define (maybe-recenter-top-bottom [force? #f] [w (current-window)])
+  ; move current buffer line to center of window
+  (define b                    (window-buffer w))
+  (define n                    (number-of-lines-on-screen w))
+  (define-values (row col)     (mark-row+column (buffer-point b)))
+  (define start-mark           (window-start-mark w))
+  (define end-mark             (window-end-mark w))
+  (define-values (start-row _) (mark-row+column start-mark))
+  (define-values (end-row  __) (mark-row+column end-mark))  
   ;(displayln (list 'before: 'row row 'start-row start-row 'end-row end-row 'n num-lines-on-screen))
   (when (or force?
             (not (and (<= start-row row) (< row (+ start-row n)))))
-    (define n num-lines-on-screen)
+    ;(define n num-lines-on-screen)
     (define n/2 (quotient n 2))
     (define new-start-row (max (- row n/2) 0))
     (define new-end-row   (+ new-start-row n))
@@ -1187,103 +1238,101 @@
 
 
 (define (render-buffer w)
-  (define b  (window-buffer w))
-  (define c  (window-canvas w))
-  (define dc (send c get-dc))
-  ;; Canvas Dimensions
-  (define-values (xmin xmax ymin ymax) (canvas-dimensions c))  
-  ;; Dimensions
-  (define width  (- xmax xmin))
-  (define height (- ymax ymin))
-  (define fs (font-size))
-  (define ls (line-size)) ; ls = fs + 1
-  ;; Placement of point relative to lines on screen
-  (define num-lines-on-screen   (max 0 (quotient height ls)))
-  (define-values (row col)      (mark-row+column (buffer-point  b)))
-  (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
-  (define num-lines-to-skip   start-row)
-  ;; Render
-  (unless (current-render-points-only?)
-    (when b
-      ;; Highlighting for region between mark and point
-      (define text-background-color (send dc get-text-background))
-      (define (set-text-background-color highlight?)
-        (define background-color (if highlight? region-highlighted-color text-background-color))
-        (send dc set-text-background background-color))
-      ;; Placement of region
-      (define-values (reg-begin reg-end)
-        (if (use-region? b) (values (region-beginning b) (region-end b)) (values #f #f)))
-      ; (displayln (list 'first-line first-row-on-screen 'last-line last-row-on-screen))
-      (send dc suspend-flush)
-      ; draw-string : string real real -> real
-      ;   draw string t at (x,y), return point to draw next string
-      (define (draw-string t x y)
-        (define-values (w h _ __) (send dc get-text-extent t))
-        (send dc draw-text t x y)
-        (+ x w))
-      ; draw text
-      (for/fold ([y ymin] [p 0]) ; p the position of start of line
-                ([l (text-lines (buffer-text b))]
-                 [i (in-range (+ start-row num-lines-on-screen))])
-        (cond
-          [(< i num-lines-to-skip)
-           (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t))
-           (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f))
-           (values y (+ p (line-length l)))]
-          [else
-           (define strings (line-strings l))
-           (define n (length strings))
-           (define (sort-numbers xs) (sort xs <))
-           (for/fold ([x xmin] [p p]) ([s strings] [i (in-range n)])
-             ; p is the start position of the string s
-             (match s
-               [(? string?)
-                (define sn (string-length s))
-                ; find positions of points and marks in the string
-                (define positions-in-string
-                  (sort-numbers
-                   (append (for/list ([m (buffer-marks b)]  #:when (<= p (mark-position m) (+ p sn)))
-                             (mark-position m))
-                           (for/list ([m (buffer-points b)] #:when (<= p (mark-position m) (+ p sn)))
-                             (mark-position m)))))
-                ; split the string at the mark positions (there might be a color change)
-                (define start-positions (cons p positions-in-string))
-                (define end-positions   (append positions-in-string (list (+ p sn))))
-                (define substrings      (map (λ (start end) (substring s (- start p) (- end p)))
-                                             start-positions end-positions))
-                ; draw the strings one at a time
-                (define-values (next-x next-p)
-                  (for/fold ([x x] [p p]) ([t substrings])
-                    ; turn region colors on/off
-                    (when (and reg-begin (<= reg-begin p) (< p reg-end)) 
-                      (set-text-background-color #t))
-                    (when (and reg-end   (<= reg-end   p))               
-                      (set-text-background-color #f))
-                    (define u ; remove final newline if present
-                      (or (and (not (equal? t ""))
-                               (char=? (string-ref t (- (string-length t) 1)) #\newline)
-                               (substring t 0 (max 0 (- (string-length t) 1))))
-                          t))
-                    (values (draw-string u x y) (+ p (string-length t)))))                
-                ; return the next x position
-                (values next-x next-p)]        
-               [(property 'bold)     (toggle-bold)    (send dc set-font (get-font))   (values x p)]
-               [(property 'italics)  (toggle-italics) (send dc set-font (get-font))   (values x p)]
-               [(property (? color? c))               (send dc set-text-foreground c) (values x p)]
-               [_ (displayln (~a "Warning: Got " s))                                  (values x p)]))
-           (values (+ y ls)
-                   (+ p (line-length l)))]))
-      ; get point and mark height
-      ;(define font-width  (send dc get-char-width))
-      ;(define font-height (send dc get-char-height))
-      (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
-      ; Note: The font-height is slightly larger than font-size
-      ; (displayln (list 'render-buffer 'font-height font-height 'font-size (font-size)))
-      ; resume flush
-      (send dc resume-flush)
-      (void)))
-  ; draw points
-  (render-points w start-row end-row))
+  (unless (current-rendering-suspended?)
+    (define b  (window-buffer w))
+    (define c  (window-canvas w))
+    (define dc (send c get-dc))
+    ;; Canvas Dimensions
+    (define-values (xmin xmax ymin ymax) (canvas-dimensions c))  
+    (define num-lines-on-screen   (number-of-lines-on-screen w))
+    ;; Placement of point relative to lines on screen
+    (define-values (row col)           (mark-row+column (buffer-point  b)))
+    (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
+    (define num-lines-to-skip   start-row)
+    ;; Render
+    (unless (current-render-points-only?)
+      (when b
+        ;; Highlighting for region between mark and point
+        (define text-background-color (send dc get-text-background))
+        (define (set-text-background-color highlight?)
+          (define background-color (if highlight? region-highlighted-color text-background-color))
+          (send dc set-text-background background-color))
+        ;; Placement of region
+        (define-values (reg-begin reg-end)
+          (if (use-region? b) (values (region-beginning b) (region-end b)) (values #f #f)))
+        ; (displayln (list 'first-line first-row-on-screen 'last-line last-row-on-screen))
+        (send dc suspend-flush)
+        ; draw-string : string real real -> real
+        ;   draw string t at (x,y), return point to draw next string
+        (define (draw-string t x y)
+          (define-values (w h _ __) (send dc get-text-extent t))
+          (send dc draw-text t x y)
+          (+ x w))
+        ; draw text
+        (for/fold ([y ymin] [p 0]) ; p the position of start of line
+                  ([l (text-lines (buffer-text b))]
+                   [i (in-range (+ start-row num-lines-on-screen))])
+          (cond
+            [(< i num-lines-to-skip)
+             (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t))
+             (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f))
+             (values y (+ p (line-length l)))]
+            [else
+             (define strings (line-strings l))
+             (define n (length strings))
+             (define (sort-numbers xs) (sort xs <))
+             (for/fold ([x xmin] [p p]) ([s strings] [i (in-range n)])
+               ; p is the start position of the string s
+               (match s
+                 [(? string?)
+                  (define sn (string-length s))
+                  ; find positions of points and marks in the string
+                  (define positions-in-string
+                    (sort-numbers
+                     (append (for/list ([m (buffer-marks b)]
+                                        #:when (<= p (mark-position m) (+ p sn)))
+                               (mark-position m))
+                             (for/list ([m (buffer-points b)]
+                                        #:when (<= p (mark-position m) (+ p sn)))
+                               (mark-position m)))))
+                  ; split the string at the mark positions (there might be a color change)
+                  (define start-positions (cons p positions-in-string))
+                  (define end-positions   (append positions-in-string (list (+ p sn))))
+                  (define substrings      (map (λ (start end) (substring s (- start p) (- end p)))
+                                               start-positions end-positions))
+                  ; draw the strings one at a time
+                  (define-values (next-x next-p)
+                    (for/fold ([x x] [p p]) ([t substrings])
+                      ; turn region colors on/off
+                      (when (and reg-begin (<= reg-begin p) (< p reg-end)) 
+                        (set-text-background-color #t))
+                      (when (and reg-end   (<= reg-end   p))               
+                        (set-text-background-color #f))
+                      (define u ; remove final newline if present
+                        (or (and (not (equal? t ""))
+                                 (char=? (string-ref t (- (string-length t) 1)) #\newline)
+                                 (substring t 0 (max 0 (- (string-length t) 1))))
+                            t))
+                      (values (draw-string u x y) (+ p (string-length t)))))                
+                  ; return the next x position
+                  (values next-x next-p)]        
+                 [(property 'bold)     (toggle-bold)    (send dc set-font (get-font))   (values x p)]
+                 [(property 'italics)  (toggle-italics) (send dc set-font (get-font))   (values x p)]
+                 [(property (? color? c))               (send dc set-text-foreground c) (values x p)]
+                 [_ (displayln (~a "Warning: Got " s))                                 (values x p)]))
+             (values (+ y (line-size)) ; in pixels
+                     (+ p (line-length l)))]))
+        ; get point and mark height
+        ;(define font-width  (send dc get-char-width))
+        ;(define font-height (send dc get-char-height))
+        (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
+        ; Note: The font-height is slightly larger than font-size
+        ; (displayln (list 'render-buffer 'font-height font-height 'font-size (font-size)))
+        ; resume flush
+        (send dc resume-flush)
+        (void)))
+    ; draw points
+    (render-points w start-row end-row)))
 
 ; the parameter last-milliseconds tracks time when points are rendered,
 ; this is used to fade the colors correctly 
@@ -1298,43 +1347,40 @@
 
 (define color-fuel (make-parameter 0))
 (define (render-points w start-row end-row)
-  (define b  (window-buffer w))
-  (define c  (window-canvas w))
-  (define dc (send c get-dc))
-  ;; Canvas Dimensions
-  (define xmin 0)
-  (define xmax (send c get-width))
-  (define ymin 0)
-  (define ymax (send c get-height))
-  ; ---
-  ; (displayln (milliseconds-delta)) ; expect values around 100
-  (define colors (current-point-color))
-  (define points-pen (new pen% [color (car colors)]))
-  (define fuel  (color-fuel))
-  (define delta (milliseconds-delta))
-  (for ([i (quotient (+ fuel delta) 100)])
-    (current-point-color (cdr colors)))
-  (color-fuel (remainder (+ fuel delta) 100))
-  (define points-off-pen (new pen% [color background-color]))
+  (unless (current-rendering-suspended?)
+    (define b  (window-buffer w))
+    (define c  (window-canvas w))
+    (define dc (send c get-dc))
+    ;; Canvas Dimensions
+    (define-values (xmin xmax ymin ymax) (canvas-dimensions c))  
+    ; (displayln (milliseconds-delta)) ; expect values around 100
+    (define colors (current-point-color))
+    (define points-pen (new pen% [color (car colors)]))
+    (define fuel  (color-fuel))
+    (define delta (milliseconds-delta))
+    (for ([i (quotient (+ fuel delta) 100)])
+      (current-point-color (cdr colors)))
+    (color-fuel (remainder (+ fuel delta) 100))
+    (define points-off-pen (new pen% [color background-color]))
   
-  ; get point and mark height
-  (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
-  (when b
-    (define active? (send (window-canvas w) has-focus?))
-    (when active?
-      (define on? (current-show-points?))
-      (for ([p (buffer-points b)])
-        (define-values (r c) (mark-row+column p))
-        (when #t #;(<= start-row r end-row)
-          (define x (+ xmin (* c    font-width)))
-          (define y (+ ymin (* (- r start-row) (+ font-height -2)))) ; why -2 ?
-          (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
-            (define old-pen (send dc get-pen))
-            (send dc set-pen (if #t ;on? 
-                                 points-pen
-                                 points-off-pen))
-            (send dc draw-line x y x (min ymax (+ y font-height -1)))
-            (send dc set-pen old-pen)))))))
+    ; get point and mark height
+    (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
+    (when b
+      (define active? (send (window-canvas w) has-focus?))
+      (when active?
+        (define on? (current-show-points?))
+        (for ([p (buffer-points b)])
+          (define-values (r c) (mark-row+column p))
+          (when #t #;(<= start-row r end-row)
+            (define x (+ xmin (* c    font-width)))
+            (define y (+ ymin (* (- r start-row) (+ font-height -2)))) ; why -2 ?
+            (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
+              (define old-pen (send dc get-pen))
+              (send dc set-pen (if #t ;on? 
+                                   points-pen
+                                   points-off-pen))
+              (send dc draw-line x y x (min ymax (+ y font-height -1)))
+              (send dc set-pen old-pen))))))))
 
 (define (render-window w)
   (define c  (window-canvas w))
@@ -1353,11 +1399,7 @@
   (send dc set-text-foreground text-color)
   
   ;; render buffer
-  (define xmin 0)
-  (define xmax (send c get-width))
-  (define ymin 0)
-  (define ymax (send c get-height))
-  
+  (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
   ;; draw borders
   (define bs (window-borders w))
   (define op (send dc get-pen))
@@ -1531,23 +1573,27 @@
         (when (eq? (window-buffer this-window) (current-buffer))
           (send (frame-status-line f) set-label s)))
       (define (on-paint-points on?) ; render points only
-        (parameterize ([current-render-points-only? #t]
-                       [current-show-points?        on?])
-          (display-status-line (status-line-hook))
-          (render-frame f)))     
+        (unless (current-rendering-suspended?)
+          (parameterize ([current-render-points-only? #t]
+                         [current-show-points?        on?])
+            (display-status-line (status-line-hook))
+            (render-frame f))))     
       (define/override (on-paint) ; render everything
-        (parameterize ([current-show-points? #t])
-          (display-status-line (status-line-hook))
-          (render-frame f)))
+        (unless (current-rendering-suspended?)
+          (parameterize ([current-show-points? #t])
+            (display-status-line (status-line-hook))
+            (render-frame f))))
       (super-new)))
   (define canvas (new window-canvas% [parent panel]))
   (set-window-canvas! this-window canvas)
   (send canvas min-client-width  20)
   (send canvas min-client-height 20)
+  ;;; blinking cursor / point
   ; start update-points thread
   (thread (λ () (let loop ([on? #t])
                   (sleep/yield 0.1)
-                  (send canvas on-paint-points on?)
+                  (unless (current-rendering-suspended?)
+                    (send canvas on-paint-points on?))
                   (loop (not on?)))))
   canvas)
 
