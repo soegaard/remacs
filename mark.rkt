@@ -35,6 +35,12 @@
   (set-linked-line-marks! link (set-add (linked-line-marks link) m))
   m)
 
+; copy-mark : mark -> mark
+(define (copy-mark m)
+  (match m
+    [(mark buffer link position name fixed? active?)
+     (mark buffer link position name fixed? active?)]))
+
 ; mark-deactivate! mark -> void
 (define (mark-deactivate! m)
   (set-mark-active?! m #f))
