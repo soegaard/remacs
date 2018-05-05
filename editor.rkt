@@ -137,7 +137,8 @@
 ;;;
 
 (define (get-mark [b (current-buffer)])
-  (first (buffer-marks b)))
+  (define marks (buffer-marks b))
+  (if (empty? marks) #f (first marks)))
 
 (define (get-point [b (current-buffer)])
   (buffer-point b))
@@ -665,9 +666,15 @@
   (kill-ring-push-region))
 
 (define-interactive (kill-word)
-  ; Kill to end of word
+  ; kill to end of word
   (cond [(get-mark) => mark-deactivate!])  
   (forward-word/extend-region)
+  (kill-region))
+
+(define-interactive (backward-kill-word)
+  ; Kill to beginning of word
+  (cond [(get-mark) => mark-deactivate!])  
+  (backward-word/extend-region)
   (kill-region))
 
 ;;;
@@ -917,6 +924,7 @@
                                  (current-buffer) (property blue)   (property text-color)))]
          ; ["M-d"           (λ () (buffer-display (current-buffer)))]
          ["M-d"           kill-word]
+         ["M-backspace"   backward-kill-word]
          ["M-s"           save-buffer]
          ["M-S"           save-buffer-as]
          ["M-e"           eval-buffer]
