@@ -19,7 +19,7 @@
 
 ;;; TODO Wordwrap
 ;;; TODO #\tab now inserts 4 space
-;;;      But ... if a rendering breaks if the a file contains #\tab
+;;;      But ... if rendering breaks if the a file contains #\tab
 ;;; TODO Let screen follow cursor rather than disappear to the right (for long lines)
 ;;; TODO The column position of the cursor when using down should stay the same
 ;;;      even if one goes across short line.
@@ -223,9 +223,9 @@
 ;   If before? is true, prepend it otherwise postpend it.
 (define (kill-append s before?)
   (define latest (ring-ref kill-ring 0))
-  (define new (if before?
-                  (string-append s latest)
-                  (string-append latest s)))
+  (define new    (if before?
+                     (string-append s latest)
+                     (string-append latest s)))
   (ring-set! kill-ring 0 new))
 
 (define (kill-region-between-marks beg end [b (current-buffer)])
@@ -664,6 +664,12 @@
   (update-current-clipboard-at-latest-kill)
   (kill-ring-push-region))
 
+(define-interactive (kill-word)
+  ; Kill to end of word
+  (cond [(get-mark) => mark-deactivate!])  
+  (forward-word/extend-region)
+  (kill-region))
+
 ;;;
 ;;; BUFFER LOCALS
 ;;;
@@ -909,7 +915,8 @@
                                  (current-buffer) (property orange) (property text-color)))]
          ["M-f3"          (λ () (buffer-insert-property! 
                                  (current-buffer) (property blue)   (property text-color)))]
-         ["M-d"           (λ () (buffer-display (current-buffer)))]
+         ; ["M-d"           (λ () (buffer-display (current-buffer)))]
+         ["M-d"           kill-word]
          ["M-s"           save-buffer]
          ["M-S"           save-buffer-as]
          ["M-e"           eval-buffer]
