@@ -195,26 +195,37 @@
   (buffer-insert-string-before-point! b s)
   #;(refresh-frame))
 
+#;(define (move-line-up [b (current-buffer)])
+  (define p  (buffer-point b))
+  (define m1 (copy-mark p))
+  (define m2 (copy-mark p))
+  (mark-move-beginning-of-line! m1)
+  (mark-move-end-of-line! m2)
+  
+  ...
+  )
+  
+
 ; buffer-kill-line : buffer -> void
 ;   Kill text from point to end of line.
 ;   If point is at end of line, the newline is deleted.
 ;   Point is at end of line, if text from point to newline is all whitespace.
 (define (buffer-kill-line [b (current-buffer)] [called-by-kill-whole-line #f])
-  ; TODO : store deleted text in kill ring
+  ; setup region, then use kill-ring-push-region and delete-region
   (define m (buffer-point b))
   (define p1 (mark-position m))
   (define p2 (position-of-end-of-line m))
   (define rest-of-line (subtext->string (buffer-text b) p1 p2))
   ; delete to end of line
-  (buffer-set-mark b)
+  (buffer-set-mark b)  
   (buffer-move-point-to-end-of-line! b)
-  (delete-region b)
   ; maybe delete newline
   (unless called-by-kill-whole-line
     (when (and (string-whitespace? rest-of-line)
                (not (= (+ (mark-position m) 1) (position-of-end b))))
-      (forward-char b)
-      (buffer-backward-delete-char! b))))
+      (forward-char b)))
+  (kill-ring-push-region)
+  (delete-region b))
 
 ; buffer-kill-whole-line : [buffer] -> void
 ;   kill whole line including its newline
