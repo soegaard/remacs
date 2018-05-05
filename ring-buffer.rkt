@@ -4,7 +4,7 @@
 ;;; RING BUFFER (AKA CIRCULAR STACK)
 ;;;
 
-(provide new-ring ring-insert! ring-ref ring->list in-ring ring-empty?)
+(provide new-ring ring-insert! ring-ref ring-set! ring->list in-ring ring-empty?)
 
 ; A ring buffer holds up to max-size elements.
 ; The next element is inserted at index index.
@@ -33,6 +33,14 @@
   (unless (< j s)
     (error 'ring-ref (~a "index " j " larger than ring size " s)))
   (vector-ref b (modulo (- i 1 j) m)))
+
+; ring-set! : ring index element -> element
+;   set the j'th element in the ring to the element e
+(define (ring-set! r j e)
+  (match-define (ring b i s m) r)
+  (unless (< j s)
+    (error 'ring-set! (~a "index " j " larger than ring size " s)))
+  (vector-set! b (modulo (- i 1 j) m) e))
 
 ; ring->list : ring -> list
 ;   return a list of the elements in the ring r
