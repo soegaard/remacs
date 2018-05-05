@@ -103,7 +103,6 @@
 ;   adjust the position of the mark - an amount of a characters were deleted before position p
 (define (mark-adjust-deletion-before! m p a)
   (define mp (mark-position m))
-  (displayln (list 'mark-adjust-deletion-before! 'a a 'mp mp))
   (cond 
     ; the entire deletion was before the mark
     [(<= p mp)      (mark-move! m (- a))]
