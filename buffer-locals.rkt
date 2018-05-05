@@ -4,7 +4,6 @@
          lookup-default)
 
 (require "representation.rkt"
-         ; "parameters.rkt"            ; for current-buffer
          (for-syntax syntax/parse))
 
 ;;;

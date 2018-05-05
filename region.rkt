@@ -38,6 +38,11 @@
      (subtext->string t (region-beginning b) (region-end b))]
     [else #f]))
 
+(define (region-between-marks->string beg end [b (current-buffer)])
+  (define from (min (mark-position beg) (mark-position end)))
+  (define to   (max (mark-position beg) (mark-position end)))
+  (subtext->string (buffer-text b) from to))
+
 (define (use-region? b)
   (define marks (buffer-marks b))
   (and #t ; (transient-mode-on? b)

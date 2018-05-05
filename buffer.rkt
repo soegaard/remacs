@@ -254,7 +254,7 @@
 ;   set the point at the position given by the mark m
 
 (define (point [b (current-buffer)])
-  (buffer-point b))
+  (buffer-point b))  
 
 (define (buffer-move-point! b n)
   (mark-move! (buffer-point b) n))

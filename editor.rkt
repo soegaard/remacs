@@ -1,4 +1,5 @@
 #lang racket
+;;; TODO timestamp for blinking cursor needs to be on a per window base
 ;;; TODO rewrite (buffer-insert-string-before-point! b s)
 ;;;      to insert entire string at one go
 ;;; TODO Introduce double buffering to avoid any flicker.
@@ -135,25 +136,61 @@
 ;;; REGION
 ;;;
 
+(define (get-mark [b (current-buffer)])
+  (first (buffer-marks b)))
+
+(define (get-point [b (current-buffer)])
+  (buffer-point b))
+
+
 ; Note: Emacs has delete-active-region, delete-and-extract-region, and, delete-region
+
+(define (set-point! m [b (current-buffer)])
+  (set-buffer-points! b (cons m (rest (buffer-points b)))))
+
+(define-syntax (with-saved-point stx)
+  (syntax-parse stx
+    [(_with-saved-point body ...)
+     (syntax/loc stx
+       (let* ([b         (current-buffer)]
+              [points    (buffer-points b)]
+              [old-point (first points)]
+              [new-point (copy-mark old-point)])
+         (set-point! new-point b)
+         body ...
+         (set-point! old-point b)))]))
+
+
+; region-delete-between! : [buffer] -> void
+;   Delete all characters in region.
+(define (region-delete-between! beg end [b (current-buffer)])
+  (cond    
+    [(mark< beg end) (buffer-dirty! b)
+                     (define n (- (mark-position end) (mark-position beg)))
+                     (define end-is-a-mark? (member end (buffer-marks b) eq?))
+                     ; buffer-delete-backward-char! will update the positions
+                     ; of all marks in buffer-marks, so if end is a mark (not the point)
+                     ; we need to temporarily remove it.
+                     (when end-is-a-mark?
+                       (set-buffer-marks! b (remove end (buffer-marks b) eq?)))
+                     (with-saved-point
+                         (begin                           
+                           (set-point! end)
+                           (buffer-delete-backward-char! b n)))
+                     (when end-is-a-mark?
+                       (set-buffer-marks! b (cons end (buffer-marks b))))]
+    [(mark< end beg) (region-delete-between! end beg b)]
+    [else            (void)]))
 
 ; region-delete! : [buffer] -> void
 ;   Delete all characters in region.
 (define (region-delete [b (current-buffer)])
+  (define mark  (get-mark b))
+  (define point (get-point b))
   (when (use-region? b)
     (buffer-dirty! b)
-    (define marks (buffer-marks b))
-    (define mark  (first marks))
-    (define point (buffer-point b))
-    (cond
-      [(mark< mark point) (define n (- (mark-position point) (mark-position mark)))
-                          (buffer-delete-backward-char! b n)]
-      [(mark< point mark) (define n (- (mark-position mark) (mark-position point)))
-                          (buffer-move-point! b n)
-                          (buffer-delete-backward-char! b n)]
-      [else               (void)])
+    (region-delete-between! mark point)
     (mark-deactivate! mark)))
-
 
 ;;;
 ;;; KILLING
@@ -166,9 +203,9 @@
 
 (require "ring-buffer.rkt")
 (define kill-ring (new-ring))
+(ring-insert! kill-ring "") ; make the kill ring non-empty
+
 (define current-clipboard-at-latest-kill (make-parameter #f))
-
-
 (define (update-current-clipboard-at-latest-kill)
   (current-clipboard-at-latest-kill 
    (send the-clipboard get-clipboard-string 0)))
@@ -176,7 +213,38 @@
 (define (kill-ring-insert! s)
   (ring-insert! kill-ring s))
 
+; kill-new : string -> void
+;   Insert the string s in the kill ring as the latest kill.
+(define (kill-new s)
+  (kill-ring-insert! s))
+
+; kill-append : string boolean -> void
+;   Append the string s to the latest kill in the kill buffer.
+;   If before? is true, prepend it otherwise postpend it.
+(define (kill-append s before?)
+  (define latest (ring-ref kill-ring 0))
+  (define new (if before?
+                  (string-append s latest)
+                  (string-append latest s)))
+  (ring-set! kill-ring 0 new))
+
+(define (kill-region-between-marks beg end [b (current-buffer)])
+  (define s (region-between-marks->string beg end))
+  (when s
+    (kill-new s)
+    (region-delete-between! beg end)))
+
 (define (kill-region [b (current-buffer)])
+  (kill-region-between-marks (get-mark) (get-point) b)
+  (mark-deactivate! (get-mark))
+  (update-current-clipboard-at-latest-kill)
+  (refresh-frame))
+
+; kill-region : ...
+;   Delete the region and save the text in the kill ring.
+;   Function that kills should use this function.
+;   Use delete-region for deletion.
+#;(define (kill-region [beg (get-mark)] [end (get-point)] [b (current-buffer)])  
   (define s (kill-ring-push-region b))
   (when s
     (delete-region b)
@@ -212,18 +280,20 @@
 ;   Point is at end of line, if text from point to newline is all whitespace.
 (define (buffer-kill-line [b (current-buffer)] [called-by-kill-whole-line #f])
   ; setup region, then use kill-ring-push-region and delete-region
-  (define m (buffer-point b))
+  (define m  (buffer-point b))
   (define p1 (mark-position m))
   (define p2 (position-of-end-of-line m))
   (define rest-of-line (subtext->string (buffer-text b) p1 p2))
+  (define eol? (and (string-whitespace? rest-of-line)
+                    (not (= (+ (mark-position m) 1) (position-of-end b)))))
+  (displayln eol?)
   ; delete to end of line
   (buffer-set-mark b)  
   (buffer-move-point-to-end-of-line! b)
-  ; maybe delete newline
-  (unless called-by-kill-whole-line
-    (when (and (string-whitespace? rest-of-line)
-               (not (= (+ (mark-position m) 1) (position-of-end b))))
-      (forward-char b)))
+  (when eol?
+    (buffer-move-point! b +1)
+    #;(forward-char b))
+  
   (kill-ring-push-region)
   (delete-region b))
 
