@@ -1,5 +1,4 @@
 #lang racket
-;;; TODO extend forward-word
 ;;; TODO timestamp for blinking cursor needs to be on a per window base
 ;;; TODO rewrite (buffer-insert-string-before-point! b s)
 ;;;      to insert entire string at one go
@@ -425,13 +424,17 @@
   (buffer-backward-word!   (current-buffer)))
 (define-interactive (forward-word)
   (cond [(region-mark) => mark-deactivate!])
-  (buffer-forward-word!    (current-buffer)))
-(define-interactive (mark-word)
-  ; The place mark goes is the same place M-f would move to with the same argument.
-  ; Set mark after next word (doesn't move point)  
-  (with-saved-point (buffer-forward-word! (current-buffer)) (command-set-mark)))
+  (buffer-forward-word!   (current-buffer)))
 (define-interactive (exchange-point-and-mark)
   (buffer-exchange-point-and-mark! (current-buffer)))
+(define-interactive (mark-word) ; Set mark after next word (doesn't move point)
+  (with-saved-point
+      (cond [(and m (mark-active? m)) (exchange-point-and-mark)
+                                      (if (mark< (get-point) (get-mark))
+                                          (forward-word) (backward-word))
+                                      (exchange-point-and-mark)]
+            [else                     (forward-word)
+                                      (command-set-mark)])))
 (define current-next-screen-context-lines (make-parameter 2)) ; TODO use a buffer local?
 (define-interactive (page-down [w (current-window)])
   (define point                (buffer-point (window-buffer w)))
