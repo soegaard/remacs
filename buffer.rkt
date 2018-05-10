@@ -76,6 +76,14 @@
   (register-buffer b)
   b)
 
+(define (buffer-exchange-point-and-mark! b)
+  (define ps (buffer-points b))
+  (define p  (first ps))
+  (define ms (buffer-marks b))
+  (define m  (first ms))
+  (set-buffer-marks!  b (cons p (rest ms)))
+  (set-buffer-points! b (cons m (rest ps))))
+
 ; generate-new-buffer : string -> buffer
 (define (generate-new-buffer name)
   (unless (string? name) (error 'generate-new-buffer "string expected, got ~a" name))
