@@ -1,4 +1,7 @@
 #lang racket
+;;; TODO .remacs
+;;; TODO goto-char
+;;; TODO buffer narrowing
 ;;; TODO timestamp for blinking cursor needs to be on a per window base
 ;;; TODO rewrite (buffer-insert-string-before-point! b s)
 ;;;      to insert entire string at one go
@@ -426,7 +429,8 @@
   (cond [(region-mark) => mark-deactivate!])
   (buffer-forward-word!   (current-buffer)))
 (define-interactive (exchange-point-and-mark)
-  (buffer-exchange-point-and-mark! (current-buffer)))
+  (buffer-exchange-point-and-mark! (current-buffer))
+  (mark-activate! (get-mark)))
 (define-interactive (mark-word) ; Set mark after next word (doesn't move point)
   (define m (get-mark))
   (define swap exchange-point-and-mark)
@@ -1444,18 +1448,7 @@
     ; draw points
     (render-points w start-row end-row)))
 
-; the parameter last-milliseconds tracks time when points are rendered,
-; this is used to fade the colors correctly 
-(define last-milliseconds (make-parameter #f))
-(define (milliseconds-delta)
-  (define now  (current-milliseconds))
-  (define last (last-milliseconds))
-  (unless last (last-milliseconds now) (set! last (- now 1)))
-  (define delta (- now (last-milliseconds)))
-  (last-milliseconds now)
-  delta)
 
-(define color-fuel (make-parameter 0))
 (define (render-points w start-row end-row)
   (unless (current-rendering-suspended?)
     (define b  (window-buffer w))
@@ -1466,11 +1459,10 @@
     ; (displayln (milliseconds-delta)) ; expect values around 100
     (define colors (current-point-color))
     (define points-pen (new pen% [color (car colors)]))
-    (define fuel  (color-fuel))
-    (define delta (milliseconds-delta))
-    (for ([i (quotient (+ fuel delta) 100)])
+    (define now   (remainder (current-milliseconds) 100000))
+    (for ([i (quotient now 100)])
       (current-point-color (cdr colors)))
-    (color-fuel (remainder (+ fuel delta) 100))
+    ;(color-fuel (remainder now 100))
     (define points-off-pen (new pen% [color background-color]))
   
     ; get point and mark height
@@ -1510,7 +1502,8 @@
   
   ;; render buffer
   (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
-  ;; draw borders
+  (render-buffer w)
+  ;; draw borders (draw borders last to avoid flickering)  
   (define bs (window-borders w))
   (define op (send dc get-pen))
   (send dc set-pen border-pen)
@@ -1521,7 +1514,7 @@
     (send dc draw-line 0 0 0 ymax)
     (set! xmin (+ xmin 1)))
   (send dc set-pen op)
-  (render-buffer w)
+  
 
   (send dc resume-flush))
 
@@ -1717,7 +1710,7 @@
           (parameterize ([current-render-points-only? #t]
                          [current-show-points?        on?])
             (display-status-line (status-line-hook))
-            (render-frame f))))     
+            (render-window this-window))))
       (define/override (on-paint) ; render everything
         (unless (current-rendering-suspended?)
           (parameterize ([current-show-points? #t])
