@@ -428,13 +428,14 @@
 (define-interactive (exchange-point-and-mark)
   (buffer-exchange-point-and-mark! (current-buffer)))
 (define-interactive (mark-word) ; Set mark after next word (doesn't move point)
-  (with-saved-point
-      (cond [(and m (mark-active? m)) (exchange-point-and-mark)
-                                      (if (mark< (get-point) (get-mark))
-                                          (forward-word) (backward-word))
-                                      (exchange-point-and-mark)]
-            [else                     (forward-word)
-                                      (command-set-mark)])))
+  (define m (get-mark))
+  (define swap exchange-point-and-mark)
+  (cond [(and m (mark-active? m))
+         (with-saved-point
+             (cond
+               [(mark<= (get-point) m) (swap) (forward-word)  (swap)]
+               [else                   (swap) (backward-word) (swap)]))]
+        [else              (command-set-mark) (mark-word)]))
 (define current-next-screen-context-lines (make-parameter 2)) ; TODO use a buffer local?
 (define-interactive (page-down [w (current-window)])
   (define point                (buffer-point (window-buffer w)))
