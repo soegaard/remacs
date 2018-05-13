@@ -1599,39 +1599,62 @@
   (define (add-prefix! key) (set! prefix (append prefix (list key))))
   (define (clear-prefix!)   (set! prefix '()))
 
-  (define (handle-mouse-left-down e)
-    ; a left click will move the point to the location clicked
-    (define (exact r) (exact-floor r))
-    (define-values (x y) (values (exact (send e get-x)) (exact (send e get-y))))
-    (define c  (window-canvas this-window))
-    (define dc (send c get-dc))
-    ; Canvas Dimensions
-    (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
-    ;; Dimensions
-    (define width  (- xmax xmin))
-    (define height (- ymax ymin))
-    (define fs (exact (font-size)))
-    (define ls (exact (line-size)))
-    (define num-lines-on-screen   (max 0 (quotient height ls)))
-    (define n num-lines-on-screen)    
-    (define-values (w h _ __) (send dc get-text-extent "x")) ; font width and height
-    (set! h (exact h)) (set! w (exact w))
-    ; compute screen row and column
-    (define screen-row (quotient y ls))
-    (define screen-col (quotient x w))
-    ; find first row displayed on screen
-    (define start-mark              (window-start-mark this-window))
-    (define-values (start-row ___)  (mark-row+column start-mark))
-    ; Add start-row and row to get the buffer start row
-    (define row (+ start-row screen-row))
-    (define col screen-col)  ; TODO: change this when wrapping of long lines gets support
-    (define m (get-mark))
-    (when (and m (mark-active? m))
-      (mark-deactivate! m))
-    (define p (buffer-point (window-buffer this-window)))
-    (mark-move-to-row+column! p row col)
-    (maybe-recenter-top-bottom #t this-window)
-    (refresh-frame))
+  (define handle-mouse
+    (let ([left-down? #f]
+          [last-left-click-row #f] [last-left-click-col #f])          
+      (λ (e type)
+      (unless (member type '(left-down left-up motion))
+        (error "expected 'left-down, 'left-up or 'motion got: ~a" type))
+      ; a left click will move the point to the location clicked
+      (define (exact r) (exact-floor r))
+      (define-values (x y) (values (exact (send e get-x)) (exact (send e get-y))))
+      (define c  (window-canvas this-window))
+      (define dc (send c get-dc))
+      ; Canvas Dimensions
+      (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
+      ;; Dimensions
+      (define width  (- xmax xmin))
+      (define height (- ymax ymin))
+      (define fs (exact (font-size)))
+      (define ls (exact (line-size)))
+      (define num-lines-on-screen   (max 0 (quotient height ls)))
+      (define n num-lines-on-screen)    
+      (define-values (w h _ __) (send dc get-text-extent "x")) ; font width and height
+      (set! h (exact h)) (set! w (exact w))
+      ; compute screen row and column
+      (define screen-row (quotient y ls))
+      (define screen-col (quotient x w))      
+      ; find first row displayed on screen
+      (define start-mark              (window-start-mark this-window))
+      (define-values (start-row ___)  (mark-row+column start-mark))
+      ; Add start-row and row to get the buffer start row
+      (define row (+ start-row screen-row))
+      (define col screen-col)  ; TODO: change this when wrapping of long lines gets support
+      ; Left: up or down?
+      (cond
+        [(eq? type 'left-down)
+         (set! left-down? #t)
+         (set! last-left-click-row row)
+         (set! last-left-click-col col)]
+        [(or (eq? type 'left-up)
+             (and (eq? type 'motion) left-down?))
+         (when (eq? type 'left-up) (set! left-down? #f))
+         (define m (get-mark))
+         (define b (window-buffer this-window))
+         (define p (buffer-point b))
+         (when (and m (mark-active? m)) (mark-deactivate! m))
+         (cond
+           [(and (equal? last-left-click-row row) (equal? last-left-click-col col))
+            ; no drag         
+            (mark-move-to-row+column! p row col)]
+           [else ; mouse dragged
+            (mark-move-to-row+column! p row col)
+            (unless m (buffer-set-mark b) (set! m (get-mark)))
+            (when (and last-left-click-row last-left-click-col)
+              (mark-move-to-row+column! m last-left-click-row last-left-click-col))
+            (mark-activate! m)])
+         (maybe-recenter-top-bottom #t this-window)
+         (refresh-frame)]))))
   
   (define window-canvas%
     (class canvas%
@@ -1645,7 +1668,9 @@
         (define type (send e get-event-type))
         ;(displayln type)
         (case type
-          [(left-down) (handle-mouse-left-down e)]))
+          [(left-down) (handle-mouse e 'left-down)]
+          [(left-up)   (handle-mouse e 'left-up)]
+          [(motion)    (handle-mouse e 'motion)]))
       (define/override (on-focus event)
         (define w this-window)
         (define b (window-buffer w))
