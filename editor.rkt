@@ -16,8 +16,10 @@
 ;;; TODO Finish eval-buffer
 ;;;        ok use buffer-local namespace for evaluation
 ;;;        ok fix new-buffer (buffer-top needs to be required)
+;;;        ok catch errors
+;;;        - on error: send point to offending expression
+;;;        - on error: stop at first expression with error?
 ;;;        - convenient initial namespace (now racket/base)
-;;;        - catch errors
 ;;;        - output where?
 
 ;;; TODO Wordwrap
@@ -58,7 +60,7 @@
 
 (module+ test (require rackunit))
 (require "dlist.rkt" (for-syntax syntax/parse) framework)
-(require racket/gui/base)
+(require racket/gui/base syntax/to-string)
 (require (only-in srfi/1 circular-list))
 
 (require "parameters.rkt"
@@ -586,9 +588,24 @@
       (define stx (read-syntax 'read-from-buffer in))
       (if (syntax? stx)
           (namespace-syntax-introduce stx)
-          stx)) ; probably eof
+          stx)) ; probably eof    
     (for ([stx (in-port read1 in)])
-      (displayln (eval-syntax stx ns))))) ; todo : catch errors here
+      (with-handlers
+          ([exn:fail? (λ (e)
+                        ; position
+                        (define pos (syntax-position stx))
+                        (set! pos (and pos (- pos 1))) ; syntax positions count from 1
+                        ; expression
+                        (define str   (syntax->string stx))
+                        (define datum (syntax->datum  stx))
+                        (when (list? datum) (set! str (string-append "\"" str "\"")))
+                        ; display it
+                        (displayln "Error: Exception triggered during evaluation.")
+                        (display   "Exn:   ") (displayln e)
+                        (display   "Pos:   ") (displayln pos)
+                        (display   "Stx:   ") (displayln stx)
+                        (display   "Expr:  ") (displayln str))])
+        (displayln (eval-syntax stx ns))))))
 
 ; (self-insert-command k) : -> void
 ;   insert character k and move point
