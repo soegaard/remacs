@@ -1625,8 +1625,11 @@
     ; Add start-row and row to get the buffer start row
     (define row (+ start-row screen-row))
     (define col screen-col)  ; TODO: change this when wrapping of long lines gets support
-    (define m (buffer-point (window-buffer this-window)))
-    (mark-move-to-row+column! m row col)
+    (define m (get-mark))
+    (when (and m (mark-active? m))
+      (mark-deactivate! m))
+    (define p (buffer-point (window-buffer this-window)))
+    (mark-move-to-row+column! p row col)
     (maybe-recenter-top-bottom #t this-window)
     (refresh-frame))
   
