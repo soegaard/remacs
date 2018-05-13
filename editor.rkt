@@ -1630,22 +1630,24 @@
       ; Add start-row and row to get the buffer start row
       (define row (+ start-row screen-row))
       (define col screen-col)  ; TODO: change this when wrapping of long lines gets support
-      ; Left: up or down?
-      (cond
+      (cond        
         [(eq? type 'left-down)
+         ; register where left mouse clicked happened
+         ; wait for left-up or motion to do anythin         
          (set! left-down? #t)
          (set! last-left-click-row row)
          (set! last-left-click-col col)]
         [(or (eq? type 'left-up)
              (and (eq? type 'motion) left-down?))
+         ; register mouse up
          (when (eq? type 'left-up) (set! left-down? #f))
+         ; for both up and motion, create region
          (define m (get-mark))
          (define b (window-buffer this-window))
          (define p (buffer-point b))
          (when (and m (mark-active? m)) (mark-deactivate! m))
-         (cond
-           [(and (equal? last-left-click-row row) (equal? last-left-click-col col))
-            ; no drag         
+         (cond   ; no drag
+           [(and (equal? last-left-click-row row) (equal? last-left-click-col col)) 
             (mark-move-to-row+column! p row col)]
            [else ; mouse dragged
             (mark-move-to-row+column! p row col)
