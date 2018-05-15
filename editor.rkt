@@ -1,5 +1,6 @@
 #lang racket
-(define-interactive (test) (set-mark 4) (goto-char 10))
+;;; TODO run fundamental-mode in upstart
+;;; TODO cursor blinking stops when menu bar is active ?!
 ;;; TODO .remacs
 ;;; TODO buffer narrowing
 ;;; TODO timestamp for blinking cursor needs to be on a per window base
@@ -409,6 +410,8 @@
          (add-interactive-command 'name name)))]
     [_ (raise-syntax-error 'define-interactive "bad syntax" stx)]))
 
+(define-interactive (test) (set-mark 4) (goto-char 10))
+
 ;; Names from emacs
 (define-interactive (beginning-of-line)   (buffer-move-point-to-beginning-of-line! (current-buffer)))
 (define-interactive (end-of-line)         (buffer-move-point-to-end-of-line!       (current-buffer)))
@@ -756,10 +759,18 @@
 
 (require "mode.rkt")
 
+(define-interactive (fundamental-mode)
+  (set-major-mode! 'fundamental)
+  (set-mode-name!  "Fundamental")
+  ; add all interactive commands defined here to fundamental mode
+  (for ([(name cmd) (in-hash all-interactive-commands-ht)])
+    (define sym (string->symbol name))
+    (set-buffer-local! (current-buffer) sym cmd)))
+
 (define-interactive (text-mode)
+  (fundamental-mode)       ; add all commands from fundamental mode
   (set-major-mode! 'text)
   (set-mode-name!  "Text"))
-
 
 ;;;
 ;;; KEYMAP
