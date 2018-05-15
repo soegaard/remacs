@@ -1,6 +1,6 @@
 #lang racket
+(define-interactive (test) (set-mark 4) (goto-char 10))
 ;;; TODO .remacs
-;;; TODO goto-char
 ;;; TODO buffer narrowing
 ;;; TODO timestamp for blinking cursor needs to be on a per window base
 ;;; TODO rewrite (buffer-insert-string-before-point! b s)
@@ -151,6 +151,13 @@
 
 ; Note: Emacs has delete-active-region, delete-and-extract-region, and, delete-region
 
+(define (push-mark [pos-or-mark 0] [b (current-buffer)] #:name [name "*mark*"])
+  (define m  (or (and (mark? pos-or-mark) pos-or-mark)
+                 (new-mark b name pos-or-mark)))
+  (define ms (buffer-marks b))
+  (set-buffer-marks! b (cons m ms))
+  m)
+
 (define (set-point! m [b (current-buffer)])
   (set-buffer-points! b (cons m (rest (buffer-points b)))))
 
@@ -294,7 +301,7 @@
                     (not (= (+ (mark-position m) 1) (position-of-end b)))))
   (displayln eol?)
   ; delete to end of line
-  (buffer-set-mark b)  
+  (buffer-set-mark-to-point b)  
   (buffer-move-point-to-end-of-line! b)
   (when eol?
     (buffer-move-point! b +1)
@@ -322,7 +329,7 @@
   (define p2 (position-of-beginning-of-line m))
   (define rest-of-line (subtext->string (buffer-text b) p2 p1))
   ; delete to beginning of line
-  (buffer-set-mark b)
+  (buffer-set-mark-to-point b)
   (buffer-move-point-to-beginning-of-line! b)
   (delete-region b)
   ; maybe delete newline
@@ -431,6 +438,7 @@
   (cond [(region-mark) => mark-deactivate!])
   (buffer-forward-word!   (current-buffer)))
 (define-interactive (exchange-point-and-mark)
+  (unless (get-mark) (new-mark (current-buffer) "*mark*")) ; TODO
   (buffer-exchange-point-and-mark! (current-buffer))
   (mark-activate! (get-mark)))
 (define-interactive (mark-word) ; Set mark after next word (doesn't move point)
@@ -562,7 +570,27 @@
       (send f% maximize (not (send f% is-maximized?))))))
 
 (define-interactive (command-set-mark)
-  (buffer-set-mark (current-buffer)))
+  (buffer-set-mark-to-point (current-buffer)))
+
+(define (position->index pos)
+  (if (mark? pos) (mark-position pos) pos))
+
+(define (check-position who what)
+  (unless (or (number? what) (mark? what))
+    (error who "expected a position (index or mark), got ~a" what)))
+
+(define-interactive (goto-char pos)
+  (check-position 'goto-char pos)
+  ; todo: add narrowing
+  (buffer-move-point-to-position! (current-buffer) (position->index pos)))
+
+(define-interactive (set-mark pos)
+  (check-position 'set-mark pos)
+  (with-saved-point
+      (goto-char pos)
+      (mark-activate!
+       (buffer-set-mark-to-point))))
+
 
 ; create-new-buffer :  -> void
 ;   create new buffer and switch to it
@@ -882,6 +910,7 @@
          [_           #f])]
       [(list "C-x")
        (match key
+         [#\t         test]
          [#\0         delete-window]
          [#\1         delete-other-windows]
          [#\2         split-window-below]
@@ -893,8 +922,7 @@
          ["C-x"       exchange-point-and-mark]
          ['right      next-buffer]
          ['left       previous-buffer]
-         ; ["C-b"     list-buffers]     TODO
-         
+         ; ["C-b"     list-buffers]     TODO        
          [_           #f])]
       [(list)
        ; (write (list 'empty-prefix 'key key)) (newline)
@@ -1661,7 +1689,7 @@
             (mark-move-to-row+column! p row col)]
            [else ; mouse dragged
             (mark-move-to-row+column! p row col)
-            (unless m (buffer-set-mark b) (set! m (get-mark)))
+            (unless m (buffer-set-mark-to-point b) (set! m (get-mark)))
             (when (and last-left-click-row last-left-click-col)
               (mark-move-to-row+column! m last-left-click-row last-left-click-col))
             (mark-activate! m)])
