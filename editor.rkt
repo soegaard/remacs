@@ -857,7 +857,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    ; (write (list prefix key)) (newline)    
+    ;(write (list prefix key)) (newline)    
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -982,6 +982,8 @@
          ["D-w"           'exit] ; Cmd-w (mac only)
          ["D-return"      insert-line-after]
          ["D-S-return"    insert-line-before]
+         ["D-S-="         (λ () (text-scale-adjust  1))]
+         ["D-S--"         (λ () (text-scale-adjust -1))]
          ; Meta + something
          ["M-S-@"         mark-word]
          ["M-left"        backward-word]
@@ -1311,15 +1313,17 @@
 ;;;
 ;;; FONT
 ;;;
+(define default-font-size 16)
 
 (define font-style  (make-parameter 'normal))  ; style  in '(normal italic)
 (define font-weight (make-parameter 'normal))  ; weight in '(normal bold)
-(define font-size   (make-parameter 16))
+(define the-font-size default-font-size)
+(define (font-size [n #f]) (when n (set! the-font-size n)) the-font-size)
 (define font-family (make-parameter 'modern))  ; fixed width
 (define (use-default-font-settings)
   (font-style  'normal)
   (font-weight 'normal)
-  (font-size   16)
+  ;(font-size   16)
   (font-family 'modern))
 (define font-ht (make-hash))                   ; (list size family style weight) -> font  
 (define (get-font)
@@ -1331,7 +1335,11 @@
   font)
 (define (toggle-bold)    (font-weight (if (eq? (font-weight) 'normal) 'bold   'normal)))
 (define (toggle-italics) (font-style  (if (eq? (font-style)  'normal) 'italic 'normal)))
-(define default-fixed-font  (get-font))
+(define (default-fixed-font)  (get-font))
+
+(define-interactive (text-scale-adjust m)
+  (displayln `(text-scale-adjust ,m))
+  (font-size (min 40 (max 1 (+ (font-size) m)))))
 
 ;;;
 ;;; CANVAS
@@ -1531,7 +1539,7 @@
           (define-values (r c) (mark-row+column p))
           (when #t #;(<= start-row r end-row)
             (define x (+ xmin (* c    font-width)))
-            (define y (+ ymin (* (- r start-row) (+ font-height -2)))) ; why -2 ?
+            (define y (+ ymin (* (- r start-row) (line-size))))
             (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
               (define old-pen (send dc get-pen))
               (send dc set-pen (if #t ;on? 
@@ -1547,7 +1555,7 @@
 
   ;; sane defaults
   (use-default-font-settings)
-  (send dc set-font default-fixed-font)
+  (send dc set-font (default-fixed-font))
   (send dc set-text-mode 'solid) ; solid -> use text background color
   (send dc set-background background-color)
   (unless (current-render-points-only?)
