@@ -1,4 +1,6 @@
 #lang racket
+;;; TODO window-delete! must remove window from all-windows
+;;; TODO make the title bar of a frame display the file name
 ;;; TODO run fundamental-mode in upstart
 ;;; TODO cursor blinking stops when menu bar is active ?!
 ;;; TODO .remacs
@@ -635,6 +637,22 @@
                         (display   "Expr:  ") (displayln str))])
         (displayln (eval-syntax stx ns))))))
 
+(define-interactive (test-buffer-output)
+  (define b (new-buffer (new-text) #f (generate-new-buffer-name "*output*")))
+  (set-window-buffer! (current-window) b)
+  (current-buffer b)
+  (refresh-frame (current-refresh-frame))
+  (define n 0)  
+  (parameterize ([current-output-port   (make-output-buffer b)]
+                 [current-refresh-frame (current-refresh-frame)]) 
+    (thread
+     (λ ()
+       (let loop ()
+         (displayln n)
+         (set! n (+ n 1))
+         (sleep 1.)
+         (loop))))))
+
 ; (self-insert-command k) : -> void
 ;   insert character k and move point
 (define ((self-insert-command k))
@@ -995,6 +1013,7 @@
                                  (current-buffer) (property orange) (property text-color)))]
          ["M-f3"          (λ () (buffer-insert-property! 
                                  (current-buffer) (property blue)   (property text-color)))]
+         ["f1"            test-buffer-output]
          ; ["M-d"           (λ () (buffer-display (current-buffer)))]
          ["M-d"           kill-word]
          ["M-backspace"   backward-kill-word]
@@ -1041,7 +1060,7 @@
 ; Windows are grouped into frames.
 ; Each frame contains at least one window.
 
-(define window-ht (make-hash))
+(define all-windows '())
 (define current-window (make-parameter #f))
 
 ; new-window : frame panel buffer -> window
@@ -1053,13 +1072,14 @@
   (mark-move! end (buffer-length b))
   (define w (window f panel bs #f parent b start end))
   (window-install-canvas! w panel)
+  (set! all-windows (cons w all-windows))
   w)
 
 ; get-buffer-window : [buffer-or-name] -> window
 ;   return first window in which buffer is displayed
 (define (get-buffer-window [buffer-or-name (current-buffer)])
   (define b (get-buffer buffer-or-name))
-  (for/first ([w window-ht]
+  (for/first ([w all-windows]
               #:when (eq? (get-buffer (buffer-name (window-buffer w))) b))
     w))
 
@@ -1067,9 +1087,23 @@
 ;   get list of all windows in which buffer is displayed
 (define (get-buffer-window-list [buffer-or-name (current-buffer)])
   (define b (get-buffer buffer-or-name))
-  (for/list ([w window-ht]
+  (for/list ([w all-windows]
              #:when (eq? (get-buffer (window-buffer w)) b))
     w))
+
+; get-buffer-frame-list : [buffer-or-name] -> list-of-frame
+;   get list of all frames in which buffer is displayed
+(define (get-buffer-frame-list [buffer-or-name (current-buffer)])
+  (define ws (get-buffer-window-list buffer-or-name))
+  (set->list (list->set (map window-frame ws))))
+
+(define (get-buffer-frame [buffer-or-name (current-buffer)])
+  (define fs (get-buffer-frame-list buffer-or-name))
+  (if (empty? fs) #f (first fs)))
+
+(define (refresh-buffer [buffer-or-name (current-buffer)])
+  (refresh-frame (get-buffer-frame buffer-or-name)))
+(current-refresh-buffer refresh-buffer)
 
 ; REMINDER
 ;    (struct window (frame canvas parent buffer) #:mutable)
@@ -1373,11 +1407,8 @@
 ;;; GUI
 ;;;
 
-(define current-render-points-only?  (make-parameter #f))
-(define current-show-points?         (make-parameter #f))
-(define current-point-color          (make-parameter point-colors)) ; circular list of colors
-(define current-rendering-suspended? (make-parameter #f))
-(define current-rendering-needed?    (make-parameter #f))
+
+(current-point-color point-colors)
 
 (define-syntax (with-suspended-rendering stx)
   (syntax-parse stx
@@ -1575,7 +1606,6 @@
     (send dc draw-line 0 0 0 ymax)
     (set! xmin (+ xmin 1)))
   (send dc set-pen op)
-  
 
   (send dc resume-flush))
 
@@ -1797,7 +1827,7 @@
   (define min-width  800)
   (define min-height 400)
   ;;; FRAME  
-  (define frame (new frame% [label "Editor"] [style '(fullscreen-button)]))
+  (define frame (new frame% [label "Remacs  -  The Racket Editor"] [style '(fullscreen-button)]))
   (set-frame-frame%! this-frame frame)
   (define msg (new message% [parent frame] [label "No news"]))
   (current-message msg)
@@ -1814,8 +1844,8 @@
                  (new menu-item% [label l] [parent par] [shortcut sc] [callback cb])))]))
     (define mb (new menu-bar% (parent frame)))
     ;; Remacs Menu
-    (define rm (new menu% (label "Remacs") (parent mb)))
-    (new-menu-item rm "About   "   #f #f            (λ (_ e) (about-remacs)))
+    (define m (new menu% (label "Remacs") (parent mb)))
+    (new-menu-item m "About   "   #f #f            (λ (_ e) (about-remacs)))
     ;; File Menu
     (define fm (new menu% (label "File") (parent mb)))
     (new-menu-item fm "New File"   #\n #f           (λ (_ e) (create-new-buffer)))
@@ -1833,6 +1863,9 @@
     (new-menu-item etm "Kill line"         #\k         '(ctl)      (λ (_ e) (kill-line)))
     (new-menu-item etm "Kill Whole Line"   #\k         '(ctl shift)(λ (_ e) (kill-whole-line)))    
     (new-menu-item etm "Kill to Beginning" #\backspace '(cmd)      (λ (_ e) (kill-line-to-beginning)))
+    ;; Racket Menu
+    (define rm (new menu% (label "Racket") (parent mb)))
+    (new-menu-item rm "Run"                #\r #f (λ (_ e) (test-buffer-output)))
     ;; Window Menu
     (define        wm (new menu% (label "Window") (parent mb)))
     (new-menu-item wm "C-x 0       Delete Window"        #f #f (λ (_ e) (delete-window)))

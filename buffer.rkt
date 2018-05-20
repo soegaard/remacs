@@ -193,7 +193,11 @@
 (define (refresh-frame)
   ((current-refresh-frame)))
 
+(define (refresh-buffer [b (current-buffer)])
+  ((current-refresh-buffer) b))
+
 (define (make-output-buffer b)
+  ;(displayln (list 'make-output-buffer 'current-frame (refresh-frame)))
   ;; State
   (define count-lines? #f)
   ;; Setup port
@@ -206,7 +210,8 @@
       (define as-string (bytes->string/utf-8 the-bytes))
       (buffer-insert-string-before-point! b as-string)
       (buffer-dirty! b)
-      (refresh-frame)   ; todo how to find the correct the frame?
+      (parameterize ([current-rendering-suspended? #f])
+        (refresh-buffer name))     ; todo how to find the correct the frame?
       ; number of bytes written
       (- end start)))
   (define close                 ; closes port
@@ -412,7 +417,7 @@
   (define m (buffer-point b))
   (mark-move-to-position! m n))
 
-(define (buffer-set-mark [b (current-buffer)])
+(define (buffer-set-mark-to-point [b (current-buffer)])
   ; make new mark at current point and return it
   (define p (buffer-point b))
   (define fixed? #f)
@@ -424,6 +429,7 @@
   (set-buffer-marks! b (set-add (buffer-marks b) m))
   (mark-activate! m)
   m)
+
 
 ; list-next : list any (any any -> boolean)
 ;   return the element after x,
