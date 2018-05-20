@@ -758,6 +758,10 @@
 
 (require "buffer-locals.rkt")
 
+(define (buffer-local-keymap [b (current-buffer)])
+  (ref-buffer-local b 'local-keymap #f))
+
+
 ;;; TODO : What should the default namespace be?
 
 
@@ -783,6 +787,19 @@
   (set-major-mode! 'text)
   (set-mode-name!  "Text"))
 
+(define-interactive (racket-mode [b (current-buffer)])
+  (fundamental-mode)       ; add all commands from fundamental mode
+  (set-major-mode! 'racket)
+  (set-mode-name!  "Racket")
+  (set-buffer-local!
+   b 'local-keymap
+   (λ (prefix key)
+     (match prefix
+       [(list)
+        (match key
+          ["return" (λ() (message "foo"))]
+          [_        #f])]
+       [_ #f]))))
 ;;;
 ;;; KEYMAP
 ;;;
@@ -1768,7 +1785,9 @@
         (unless (equal? key-code 'release)
           (define key (key-event->key event))
           ; (send msg set-label (~a "key: " key))
-          (define binding (or (global-keymap prefix key)
+          (define local-keymap (buffer-local-keymap (current-buffer)))
+          (define binding (or (and local-keymap (local-keymap prefix key))
+                              (global-keymap prefix key)
                               ; If A-<key> is unbound, then use the character as-is.
                               ; This makes A-a insert å.
                               (and (char? key-code)
