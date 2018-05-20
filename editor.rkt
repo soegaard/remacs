@@ -149,9 +149,6 @@
 (define (get-point [b (current-buffer)])
   (buffer-point b))
 
-
-; Note: Emacs has delete-active-region, delete-and-extract-region, and, delete-region
-
 (define (push-mark [pos-or-mark 0] [b (current-buffer)] #:name [name "*mark*"])
   (define m  (or (and (mark? pos-or-mark) pos-or-mark)
                  (new-mark b name pos-or-mark)))
@@ -174,6 +171,7 @@
          body ...
          (set-point! old-point b)))]))
 
+; Note: Emacs has delete-active-region, delete-and-extract-region, and, delete-region
 
 ; region-delete-between! : [buffer] -> void
 ;   Delete all characters in region.
@@ -415,7 +413,6 @@
 ;; Names from emacs
 (define-interactive (beginning-of-line)   (buffer-move-point-to-beginning-of-line! (current-buffer)))
 (define-interactive (end-of-line)         (buffer-move-point-to-end-of-line!       (current-buffer)))
-
 
 (define-interactive (move-to-column n)    (buffer-move-to-column!  (current-buffer) n)) ; n=numprefix 
 
@@ -982,8 +979,8 @@
          ["D-w"           'exit] ; Cmd-w (mac only)
          ["D-return"      insert-line-after]
          ["D-S-return"    insert-line-before]
-         ["D-S-="         (λ () (text-scale-adjust  1))]
-         ["D-S--"         (λ () (text-scale-adjust -1))]
+         ["D-="           (λ () (text-scale-adjust  1))]
+         ["D--"           (λ () (text-scale-adjust -1))]
          ; Meta + something
          ["M-S-@"         mark-word]
          ["M-left"        backward-word]
@@ -1816,6 +1813,9 @@
                       [shortcut-prefix (if (list? m) m (list m))])
                  (new menu-item% [label l] [parent par] [shortcut sc] [callback cb])))]))
     (define mb (new menu-bar% (parent frame)))
+    ;; Remacs Menu
+    (define rm (new menu% (label "Remacs") (parent mb)))
+    (new-menu-item rm "About   "   #f #f            (λ (_ e) (about-remacs)))
     ;; File Menu
     (define fm (new menu% (label "File") (parent mb)))
     (new-menu-item fm "New File"   #\n #f           (λ (_ e) (create-new-buffer)))
@@ -1877,6 +1877,25 @@
   
   ; (struct frame (frame% panel windows mini-window) #:mutable)
   (make-frame frame panel #f #f status-line))
+
+(define (about-remacs)
+  (define blank   "")
+  (define welcome "
+    Welcome to Remacs  -  version 0.01 May 2018.    ")  
+  (define blurb   "
+    Remacs is a text editor.
+    Remacs is extensible.
+    Remacs is scriptable.
+    Remacs is Emacs-inspired.")
+  (define authors "
+    Authors:                                        
+      - Jens Axel Søgaard")
+  (define f (new frame% [label "About Remacs"]))
+  (define v (new vertical-pane% [parent f]))
+  (for ([l (list welcome blurb blank authors)])
+    (new message% [label l] [parent v]))
+  (send f show #t))
+                 
 
 (module+ test
   (define ib illead-buffer)
