@@ -1,5 +1,4 @@
 #lang racket
-;;; TODO window-delete! must remove window from all-windows
 ;;; TODO make the title bar of a frame display the file name
 ;;; TODO run fundamental-mode in upstart
 ;;; TODO cursor blinking stops when menu bar is active ?!
@@ -639,19 +638,16 @@
 
 (define-interactive (test-buffer-output)
   (define b (new-buffer (new-text) #f (generate-new-buffer-name "*output*")))
+  (define p (make-output-buffer b))
   (set-window-buffer! (current-window) b)
-  (current-buffer b)
-  (refresh-frame (current-refresh-frame))
-  (define n 0)  
-  (parameterize ([current-output-port   (make-output-buffer b)]
-                 [current-refresh-frame (current-refresh-frame)]) 
+  (parameterize ([current-buffer      b]
+                 [current-output-port p])                  
     (thread
      (λ ()
-       (let loop ()
+       (let loop ([n 0])
          (displayln n)
-         (set! n (+ n 1))
          (sleep 1.)
-         (loop))))))
+         (loop (+ n 1)))))))
 
 ; (self-insert-command k) : -> void
 ;   insert character k and move point
@@ -1212,6 +1208,7 @@
     (if (eq? z x) y z)))
 
 (define (window-delete! w)
+  (set! all-windows (remq w all-windows))
   (define fp (window-panel (frame-windows (current-frame))))
   (send fp begin-container-sequence)
   (define (window-backend w)
