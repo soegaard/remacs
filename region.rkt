@@ -3,7 +3,8 @@
 (require "representation.rkt"
          "parameters.rkt"
          "text.rkt"
-         "mark.rkt")
+         "mark.rkt"
+         "point.rkt")
 
 ;;;
 ;;; REGIONS
@@ -11,7 +12,6 @@
 
 ; region = text between point and the first mark is known as the region.
 ; set-mark-command sets a mark, and then a region exists
-
 
 (define (region-beginning [b (current-buffer)])
   (define marks (buffer-marks b))
@@ -57,4 +57,5 @@
   (define marks (buffer-marks b))
   (and (not (empty? marks))
        (first marks)))
+
 

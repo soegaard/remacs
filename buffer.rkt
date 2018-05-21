@@ -465,3 +465,22 @@
 #;(define (buffer-point-marker! b)
     (define p (buffer-point b))
     ...)
+
+
+;;;
+;;; POINT AND MARK
+;;;
+
+(define (get-mark [b (current-buffer)])
+  (define marks (buffer-marks b))
+  (if (empty? marks) #f (first marks)))
+
+
+(define (push-mark [pos-or-mark 0] [b (current-buffer)] #:name [name "*mark*"])
+  (define m  (or (and (mark? pos-or-mark) pos-or-mark)
+                 (new-mark b name pos-or-mark)))
+  (define ms (buffer-marks b))
+  (set-buffer-marks! b (cons m ms))
+  m)
+
+

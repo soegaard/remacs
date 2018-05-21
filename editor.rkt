@@ -55,7 +55,6 @@
 ;;; TODO documentation
 ;;; TODO left and right needs to toggle transient-mode rather than deactivate the mark
 ;;; TODO Properties and faces
-;;; TODO Modes
 ;;; TODO Introduce global that controls which key to use for meta
 ;;; TODO Implement open-input-buffer
 ;;; TODO Completions ala http://sublimetext.info/docs/en/extensibility/completions.html
@@ -70,6 +69,7 @@
          "buffer.rkt"
          "line.rkt"
          "mark.rkt"
+         "point.rkt"
          "region.rkt"
          "string-utils.rkt"
          "text.rkt")
@@ -143,37 +143,6 @@
 ;;; REGION
 ;;;
 
-(define (get-mark [b (current-buffer)])
-  (define marks (buffer-marks b))
-  (if (empty? marks) #f (first marks)))
-
-(define (get-point [b (current-buffer)])
-  (buffer-point b))
-
-(define (push-mark [pos-or-mark 0] [b (current-buffer)] #:name [name "*mark*"])
-  (define m  (or (and (mark? pos-or-mark) pos-or-mark)
-                 (new-mark b name pos-or-mark)))
-  (define ms (buffer-marks b))
-  (set-buffer-marks! b (cons m ms))
-  m)
-
-(define (set-point! m [b (current-buffer)])
-  (set-buffer-points! b (cons m (rest (buffer-points b)))))
-
-(define-syntax (with-saved-point stx)
-  (syntax-parse stx
-    [(_with-saved-point body ...)
-     (syntax/loc stx
-       (let* ([b         (current-buffer)]
-              [points    (buffer-points b)]
-              [old-point (first points)]
-              [new-point (copy-mark old-point)])
-         (set-point! new-point b)
-         body ...
-         (set-point! old-point b)))]))
-
-; Note: Emacs has delete-active-region, delete-and-extract-region, and, delete-region
-
 ; region-delete-between! : [buffer] -> void
 ;   Delete all characters in region.
 (define (region-delete-between! beg end [b (current-buffer)])
@@ -204,6 +173,10 @@
     (buffer-dirty! b)
     (region-delete-between! mark point)
     (mark-deactivate! mark)))
+
+; Note: Emacs has delete-active-region, delete-and-extract-region, and, delete-region
+
+
 
 ;;;
 ;;; KILLING
@@ -789,8 +762,10 @@
 
 (define-interactive (racket-mode [b (current-buffer)])
   (fundamental-mode)       ; add all commands from fundamental mode
+  ; name
   (set-major-mode! 'racket)
   (set-mode-name!  "Racket")
+  ; keymap
   (set-buffer-local!
    b 'local-keymap
    (λ (prefix key)
@@ -800,6 +775,7 @@
           ["return" (λ() (message "foo"))]
           [_        #f])]
        [_ #f]))))
+
 ;;;
 ;;; KEYMAP
 ;;;
