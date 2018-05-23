@@ -28,7 +28,7 @@
 ; Defined in "representation.rkt"
 ; (struct line (strings length) #:transparent #:mutable)
 ;   A line is a list of elements of the types:
-;     string        represents actual text
+;     strings       represents actual text: list of strings, properties and overlays
 ;     property      represents a text property e.g. bold
 ;     overlay       represents ...
 
@@ -63,7 +63,7 @@
 (module+ test (check-equal? (line->string (new-line "abc\n")) "abc\n"))
 
 
-
+; produces characters, properties and overlays - one at a time
 (define (in-line l)
   (struct pos (rest i)) ; pos = comprehension position (not a text position)
   (define (pos->elm p)
@@ -176,7 +176,7 @@
   (define n (string-length s))
   (unless (<= i n) (error 'string-insert-char "index too large, got ~a ~a" s i))
   (cond 
-    [(= i n) (string-append s (string s))]
+    [(= i n) (string-append s (string c))]
     [(= i 0) (string-append (string c) s)]
     [else    (string-append (substring s 0 i) (string c) (substring s i n))]))
 
