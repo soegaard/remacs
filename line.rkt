@@ -180,6 +180,14 @@
     [(= i 0) (string-append (string c) s)]
     [else    (string-append (substring s 0 i) (string c) (substring s i n))]))
 
+(define (string-insert-string s i t) ; t is a string
+  (define n (string-length s))
+  (unless (<= i n) (error 'string-insert-string "index too large, got ~a ~a" s i))
+  (cond 
+    [(= i n) (string-append s t)]
+    [(= i 0) (string-append t s)]
+    [else    (string-append (substring s 0 i) t (substring s i n))]))
+
 ; skip-strings : list-of-strings index -> index strings strings
 ;   If (j, us, vs) is returned,
 ;   then ss = (append us vs)
