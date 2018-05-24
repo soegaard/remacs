@@ -1,10 +1,11 @@
 #lang racket
-(provide new-text
-         text-append!
-         text-break-line!
+(provide new-text                    ; -> text                 create an empty text
+         text-append!                ; text text -> text       append the texts
+         text-break-line!            ; text nat nat -> void    break at (row, col)
          text-delete-backward-char!
          text-insert-char-at-mark!
-         text-line
+         text-insert-string-at-mark!
+         text-line                   ; text integer -> line    the i'th line
          text-num-lines
          text-stats         
          text->string
@@ -91,6 +92,15 @@
   (define l (dlist-ref (text-lines t) row))
   (line-insert-char! l c col)
   (set-text-length! t (+ (text-length t) 1)))
+
+(define (text-insert-string-at-mark! t m b s)
+  (when (string-contains? s "\n")
+    (error 'text-insert-string-at-mark! "got string containing newline, ~a" s))
+  ; note: we assume there is no newlines in s
+  (define-values (row col) (mark-row+column m))
+  (define l (dlist-ref (text-lines t) row))
+  (line-insert-char! l s col)
+  (set-text-length! t (+ (text-length t) (string-length s))))
 
 
 ; text-break-line! : text natural natural -> void
