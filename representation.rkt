@@ -31,7 +31,7 @@
 
 (struct line (strings length) #:transparent #:mutable)
 ; A line is a list of elements of the types:
-;   string        represents actual text
+;   strings       represents actual text
 ;   property      represents a text property e.g. bold
 ;   overlay       represents ...
 

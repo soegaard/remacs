@@ -5,6 +5,7 @@
          line-blank?
          line-delete-backward-char!
          line-insert-char!
+         line-insert-string!
          line-insert-property!
          line-ref
          line-split

@@ -99,7 +99,7 @@
   ; note: we assume there is no newlines in s
   (define-values (row col) (mark-row+column m))
   (define l (dlist-ref (text-lines t) row))
-  (line-insert-char! l s col)
+  (line-insert-string! l s col)
   (set-text-length! t (+ (text-length t) (string-length s))))
 
 

@@ -76,6 +76,8 @@
   (register-buffer b)
   b)
 
+; buffer-exchange-point-and-mark! : buffer -> void
+;   exchange first point with first mark
 (define (buffer-exchange-point-and-mark! b)
   (define ps (buffer-points b))
   (define p  (first ps))
@@ -153,6 +155,7 @@
   (define b buffer-or-name)
   (if (buffer? b) b (generate-new-buffer b)))
 
+; buffer-open-file-or-create : string-or-file-path -> buffer
 (define (buffer-open-file-or-create file-path)
   (define path (if (string? file-path) (string->path file-path) file-path))
   (unless (file-exists? path)
@@ -316,6 +319,24 @@
   (text-insert-char-at-mark! t m b c)
   (buffer-dirty! b))
 
+; buffer-insert-string! : buffer string -> void
+;   insert string after point (does not move point)
+(define (buffer-insert-string! b s)
+  (define m (buffer-point b))
+  (define t (buffer-text b))
+  ; the function text-insert-string-at-mark! works for strings
+  ; containing no newlines - so we will need to split the string s
+  ; into segments.  
+  (let loop ([segs (reverse (string-split s "\n" #:trim? #f))])
+    (match segs
+      [(list)   (void 'done)]
+      [(list s) (text-insert-string-at-mark! t m b s)]
+      [_        (text-insert-string-at-mark! t m b (first segs))
+                (buffer-break-line! b)
+                (buffer-move-point! b -1)                                
+                (loop (rest segs))])))
+
+
 ; buffer-insert-char-after-point! : buffer char -> void
 ;   insert character and move point
 (define (buffer-insert-char-after-point! b k)
@@ -332,9 +353,17 @@
   (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) 1)
   (buffer-move-point! b 1))
 
+(define (buffer-insert-string-before-point! b s)
+  (define m (buffer-point b))
+  (define n (string-length s))
+  (buffer-insert-string! b s)
+  (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) n)
+  (buffer-move-point! b n))
+
+
 ; buffer-insert-string-before-point! : buffer string -> void
 ;   insert string before point (and move point)
-(define (buffer-insert-string-before-point! b s)
+#;(define (buffer-insert-string-before-point! b s)
   ; todo: rewrite to insert entire string in one go
   (for ([c s])
     (if (char=? c #\newline)
@@ -368,6 +397,7 @@
   (define m (buffer-point b))
   (define-values (row col) (mark-row+column m))
   (text-break-line! (buffer-text b) row col)
+  
   ; (displayln b)
   (mark-move! m 1)
   (buffer-dirty! b))
