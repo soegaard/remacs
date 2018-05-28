@@ -1436,8 +1436,54 @@
     (set! end-row   new-end-row))
   (values start-row end-row))
 
+(define (sort-numbers xs) (sort xs <))
+
+(define screen-line-length 10)
 
 (define (render-buffer w)
+  (define (marks-between marks from to)
+    (for/list ([m marks] #:when (<= from (mark-position m) to))
+      (mark-position m)))
+  (define (line->screen-lines b l p) ; l = line, p = position of line start    
+    ; a text line can be longer that a screen, so we need to break the line into shorter pieces.
+    (define len screen-line-length)
+    (define strings (line-strings l))
+    (define n       (length strings))
+    ; first break the line into smaller pieces
+    (define pieces
+      (append*       
+       (for/list ([s (in-list strings)])
+         (cond
+           [(string? s)
+            (define sn (string-length s))         
+            (define positions-in-string ; find positions of points, marks and wrap posns in the string
+              (sort-numbers (append (marks-between (buffer-marks b)  p (+ p sn))
+                                    (marks-between (buffer-points b) p (+ p sn))
+                                    (range (+ p len) (+ p sn) len))))
+            ; split the string at the mark positions (there might be a color change)
+            (define start-positions (cons p positions-in-string))
+            (define end-positions   (append positions-in-string (list (+ p sn))))
+            (define substrings      (map (λ (start end) (substring s (- start p) (- end p)))
+                                         start-positions end-positions))
+            substrings]
+           [else (list s)]))))
+    ; second, group strings in screen lines
+    (let loop ([ps pieces] [c 0] [l '()] [ls '()]) ; c = column, l= current line, ls = lines
+      (cond [(>= c screen-line-length)    (loop ps 0 '() (cons (reverse l) ls))]
+            [else
+             (match ps
+               [(list)                   (reverse (if (empty? l) ls (cons (reverse l) ls)))]
+               [(cons (? string? s) ps)  (define n (string-length s))
+                                         (loop ps (+ c n) (cons s l) ls)]
+               [(cons x ps)              (loop ps    c    (cons x l) ls)])])))
+
+  (define (remove-trailing-newline s)
+    (or (and (not (equal? s ""))
+             (char=? (string-ref s (- (string-length s) 1)) #\newline)
+             (substring s 0 (max 0 (- (string-length s) 1))))
+        s))
+
+  
   (unless (current-rendering-suspended?)
     (define b  (window-buffer w))
     (define c  (window-canvas w))
@@ -1470,75 +1516,39 @@
           (define-values (w h _ __) (send dc get-text-extent t))
           (send dc draw-text t x y)
           (+ x w))
+        (define (render-screen-lines dc xmin y sls)
+          (let loop ([y y] [sls sls])
+            (match sls
+              [(list)        y]
+              [(list sl)           (render-screen-line dc xmin y sl #f)]
+              [(cons sl sls) (loop (render-screen-line dc xmin y sl #t) sls)])))
+        (define (render-screen-line dc xmin y sl wrapped-line-indicator?)
+          ; sl = screen line = list of strings and properties
+          (define xmax
+            (for/fold ([x xmin]) ([s sl])
+              (match s
+                [(? string?)           (draw-string (remove-trailing-newline s) x y)]
+                [(property 'bold)      (toggle-bold)    (send dc set-font (get-font))   x]
+                [(property 'italics)   (toggle-italics) (send dc set-font (get-font))   x]
+                [(property (? color? c))                (send dc set-text-foreground c) x]
+                [_ (displayln (~a "Warning: Got " s))                                   x])))
+          (when wrapped-line-indicator?
+            (draw-string "↵" xmax (- y 2)))
+          (+ y (line-size)))
         ; draw text:
         ;   loop over text lines
         ;   c screen column, ; p the position of start of line
-        (for/fold ([y ymin] [c 0] [p 0]) 
+        (for/fold ([y ymin] [p 0]) 
                   ([l (text-lines (buffer-text b))] [i (in-range (+ start-row num-lines-on-screen))])
           (cond
             [(< i num-lines-to-skip)
              (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t))
              (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f))
-             (values y c (+ p (line-length l)))]
+             (values y (+ p (line-length l)))]
             [else
-             (define strings (line-strings l))
-             (define n (length strings))
-             (define (sort-numbers xs) (sort xs <))
-             ; handle line: loop over strings and properties in line
-             (define-values (next-y next-x next-c next-p)
-             (for/fold ([y y] [x xmin] [c c] [p p])  ([s strings] [i (in-range n)])
-               ; p is the start position of the string s
-               (match s
-                 [(? string?)
-                  (define sn (string-length s))
-                  ; find positions of points, marks and wrap positions in the string
-                  (define wrap-positions (range (+ p 60) (+ p sn) 60))
-                  ; 60 = max chars on screen line                             
-                  (define positions-in-string
-                    (sort-numbers
-                     (append (for/list ([m (buffer-marks b)]
-                                        #:when (<= p (mark-position m) (+ p sn)))
-                               (mark-position m))
-                             (for/list ([m (buffer-points b)]
-                                        #:when (<= p (mark-position m) (+ p sn)))
-                               (mark-position m))
-                             wrap-positions)))
-                  ; split the string at the mark positions (there might be a color change)
-                  (define start-positions (cons p positions-in-string))
-                  (define end-positions   (append positions-in-string (list (+ p sn))))
-                  (define substrings      (map (λ (start end) (substring s (- start p) (- end p)))
-                                               start-positions end-positions))
-                  ; draw the strings one at a time
-                  (define-values (next-y next-x next-c next-p)
-                    (for/fold ([y y] [x x] [c c] [p p])
-                              ([t substrings])
-                      ; turn region colors on/off
-                      (when (and reg-begin (<= reg-begin p) (< p reg-end)) 
-                        (set-text-background-color #t))
-                      (when (and reg-end   (<= reg-end   p))               
-                        (set-text-background-color #f))
-                      (define u ; remove final newline if present
-                        (or (and (not (equal? t ""))
-                                 (char=? (string-ref t (- (string-length t) 1)) #\newline)
-                                 (substring t 0 (max 0 (- (string-length t) 1))))
-                            t))
-                      (define tn    (string-length t))
-                      (define new-x (draw-string u x y))
-                      (define new-c (+ c tn))
-                      (cond
-                        [(< new-c 60) (values    y              new-x new-c (+ p tn))]
-                        [else         (draw-string "↵" new-x (- y 2))
-                                      (values (+ y (line-size)) xmin     0  (+ p tn))])))
-                    ; return the next x position
-                  (values next-y next-x next-c next-p)]
-                 [(property 'bold)   (toggle-bold)    (send dc set-font (get-font)) (values y x c p)]
-                 [(property 'italics)(toggle-italics) (send dc set-font (get-font)) (values y x c p)]
-                 [(property (? color? c))            (send dc set-text-foreground c)(values y x c p)]
-                 [_ (displayln (~a "Warning: Got " s))                             (values y x c p)])))
-             ; Next line:
-             (values (+ next-y (line-size))  ; y coordinate                 of next line
-                     next-c                  ; c screen column of beginning of next line
-                     next-p)]))              ; p position where next line begins
+             (define sls   (line->screen-lines b l p))
+             (define new-y (render-screen-lines dc xmin y sls))
+             (values new-y (+ p (line-length l)))]))
         ; get point and mark height
         ;(define font-width  (send dc get-char-width))
         ;(define font-height (send dc get-char-height))
