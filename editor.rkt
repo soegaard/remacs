@@ -1438,7 +1438,10 @@
 
 (define (sort-numbers xs) (sort xs <))
 
-(define screen-line-length 10)
+(define screen-line-length 40)
+
+
+(define cached-screen-lines-ht (make-hasheq))
 
 (define (render-buffer w)
   (define (marks-between marks from to)
@@ -1485,7 +1488,6 @@
              (char=? (string-ref s (- (string-length s) 1)) #\newline)
              (substring s 0 (max 0 (- (string-length s) 1))))
         s))
-
   
   (unless (current-rendering-suspended?)
     (define b  (window-buffer w))
@@ -1526,11 +1528,10 @@
               [(list sl)           (render-screen-line dc xmin y sl #f)]
               [(cons sl sls) (loop (render-screen-line dc xmin y sl #t) sls)])))
         (define (render-screen-line dc xmin y sl wrapped-line-indicator?)
-          ; sl = screen line = list of strings and properties          
+          ; sl = screen line = list of (list position string/properties)
           (define xmax
             (for/fold ([x xmin]) ([p+s sl])
-              (define p (first p+s))
-              (define s (second p+s))
+              (match-define (list p s) p+s)
               (when (and reg-begin (<= reg-begin p) (< p reg-end))  (set-text-background-color #t))
               (when (and reg-end   (<= reg-end   p))                (set-text-background-color #f))
               (match (second p+s)
@@ -1545,20 +1546,41 @@
         ; draw text:
         ;   loop over text lines
         ;   c screen column, ; p the position of start of line
-        (for/fold ([y ymin] [p 0]) 
-                  ([l (text-lines (buffer-text b))] [i (in-range (+ start-row num-lines-on-screen))])
-          (cond
-            [(< i num-lines-to-skip)
-             (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t))
-             (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f))
-             (values y (+ p (line-length l)))]
-            [else
-             (define region-positions
-               (append (if reg-begin (list reg-begin) '())
-                       (if reg-end   (list reg-end)   '())))
-             (define sls   (line->screen-lines b l p region-positions))
-             (define new-y (render-screen-lines dc xmin y sls))
-             (values new-y (+ p (line-length l)))]))
+        (define (screen-lines->screen-line-positions xs)
+          (define (screen-line->start-position x)
+            (match x [(list* (cons p _) more) p] [(list) #f]))
+          (map screen-line->start-position xs))        
+        (define-values (_ __ all-screen-line-positions)
+          (for/fold ([y ymin] [p 0] [screen-line-positions '()]) 
+                    ([l (text-lines (buffer-text b))]
+                     [i (in-range (+ start-row num-lines-on-screen))])
+            (cond
+              [(< i num-lines-to-skip)
+               (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t))
+               (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f))
+               (values y (+ p (line-length l)) '())]
+              [else
+               (define region-positions
+                 (append (if reg-begin (list reg-begin) '())
+                         (if reg-end   (list reg-end)   '())))
+               (define sls   (line->screen-lines b l p region-positions))
+               (define new-y (render-screen-lines dc xmin y sls))
+               (values new-y (+ p (line-length l))
+                       (cons (list p (screen-lines->screen-line-positions sls))
+                             screen-line-positions))])))
+        (define (screen-lines->screen-line-positions-ranges xs)
+          (let loop ([rs '()] [xs xs])
+            (match xs
+              [(list* (list (cons p1 _) ...)
+                      (list (cons p2 _) ...)
+                      _)                          (loop (cons (list p1 p2) rs) (rest xs))]
+              [(list* (list (cons p1 _) ...)
+                      _)                          (reverse (cons (list p1 +inf.0) rs))])))
+
+        ; cache the positions of the visible screen lines,
+        ; this is used to render the points
+        (hash-set! cached-screen-lines-ht b (reverse all-screen-line-positions))
+        
         ; get point and mark height
         ;(define font-width  (send dc get-char-width))
         ;(define font-height (send dc get-char-height))
@@ -1573,6 +1595,12 @@
 
 
 (define (render-points w start-row end-row)
+  (define (find-index positions p [index 0])
+    (match positions
+      [(list* from to _)
+       (if (and (<= from p) (< p to)) index (find-index (rest positions) p (+ index 1)))]
+      [(list from) (if (>= p from) index #f)]
+      [(list) #f]))      
   (unless (current-rendering-suspended?)
     (define b  (window-buffer w))
     (define c  (window-canvas w))
@@ -1586,10 +1614,15 @@
     (for ([i (quotient now 100)])
       (current-point-color (cdr colors)))
     ;(color-fuel (remainder now 100))
-    (define points-off-pen (new pen% [color background-color]))
-  
+    (define points-off-pen (new pen% [color background-color]))  
     ; get point and mark height
     (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
+    #;(define (mark->screen-xy xmin ymin m screen-lines)
+        (define p (mark-position m))
+        (define i (find-screen-row screen-lines p)) ; screen row
+        (define-values (r c) (mark-row+column m))   ; text row and column
+        (values (+ xmin (* c font-width))
+                (+ ymin (* i (line-size)))))
     (when b
       (define active? (send (window-canvas w) has-focus?))
       (when active?
@@ -1597,8 +1630,22 @@
         (for ([p (buffer-points b)])
           (define-values (r c) (mark-row+column p))
           (when #t #;(<= start-row r end-row)
-            (define x (+ xmin (* c    font-width)))
-            (define y (+ ymin (* (- r start-row) (line-size))))
+            (define n (mark-position p))
+            (define positions             (hash-ref cached-screen-lines-ht b))
+            (define text-line-positions   (map first positions))
+            (define i                     (find-index text-line-positions n))
+            (define screen-line-positions (second (list-ref positions i)))
+            ;(displayln (list i screen-line-positions))
+            (define j                     (find-index screen-line-positions n))
+            ; we now need to calculate the number of screen lines of the first i lines
+            (define k (for/sum ([_ i] [l positions]) (length (second l))))
+            (define r (+ k j))
+            (define c (- n (list-ref screen-line-positions j)))
+            (define x (+ xmin (* c  font-width)))
+            (define y (+ ymin (* r (line-size))))
+            ; (define-values (x y) (mark->screen-xy xmin ymin p screen-lines))
+            ; (define x (+ xmin (* c    font-width)))
+            ; (define y (+ ymin (* (- r start-row) (line-size))))
             (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
               (define old-pen (send dc get-pen))
               (send dc set-pen (if #t ;on? 
