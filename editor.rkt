@@ -276,7 +276,6 @@
   (define rest-of-line (subtext->string (buffer-text b) p1 p2))
   (define eol? (and (string-whitespace? rest-of-line)
                     (not (= (+ (mark-position m) 1) (position-of-end b)))))
-  (displayln eol?)
   ; delete to end of line
   (buffer-set-mark-to-point b)  
   (buffer-move-point-to-end-of-line! b)
@@ -403,10 +402,18 @@
 (define-interactive (previous-line)       
   (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point-up!   (current-buffer)))
-(define-interactive (next-line)
+(define-interactive (forward-line)
+  ; this moves an entire text-line (see next-line for moving a screen line)
   (cond [(region-mark) => mark-deactivate!])
   (define b (current-buffer))
   (if (mark-on-last-line? (buffer-point b))
+      (buffer-move-point-to-end-of-line! b)
+      (buffer-move-point-down! b)))
+(define-interactive (next-line)
+  ; this moves a screen line 
+  (cond [(region-mark) => mark-deactivate!])
+  (define b (current-buffer))
+  (if (mark-on-last-line? (buffer-point b))      
       (buffer-move-point-to-end-of-line! b)
       (buffer-move-point-down! b)))
 (define-interactive (backward-word)
@@ -1447,8 +1454,14 @@
   (define (marks-between marks from to)
     (for/list ([m marks] #:when (<= from (mark-position m) to))
       (mark-position m)))
-  (define (line->screen-lines b l p other) ; l = line, p = position of line start    
+  (define (line->screen-lines b l r k p other) ; l = line, r = row, p = position of line start
+    ; k screen line number
     ; a text line can be longer that a screen, so we need to break the line into shorter pieces.
+    (define line      l)
+    (define start-pos p)
+    (define end-pos   (+ p (line-length l)))
+    (define row       r)
+    
     (define len screen-line-length)
     (define strings (line-strings l))
     (define n       (length strings))
@@ -1474,15 +1487,24 @@
             substrings]
            [else (list p s)]))))
     ; second, group strings in screen lines
-    (let loop ([ps pieces] [c 0] [l '()] [ls '()]) ; c = column, l= current line, ls = lines
-      (cond [(>= c screen-line-length)    (loop ps 0 '() (cons (reverse l) ls))]
-            [else
-             (match ps
-               [(list)                            (reverse (if (empty? l) ls (cons (reverse l) ls)))]
-               [(cons (list p (? string? s)) ps)  (define n (string-length s))
-                                                  (loop ps (+ c n) (cons (list p s) l) ls)]
-               [(cons (list p x) ps)              (loop ps    c    (cons (list p x) l) ls)])])))
-
+     (let loop ([ps pieces] [start start-pos] [end start-pos]
+                            [c 0] [i k] [l '()] [ls '()])
+       ; c = column, d=index in text line, l= current line, ls = lines
+      (cond
+        [(>= c screen-line-length) ; make new line
+         (define sl (screen-line line row i start end (reverse l)))
+         (loop ps end end 0 (+ i 1) '() (cons sl ls))]
+        [else                      ; on same line, accumulate strings and properties
+         (match ps
+           [(list)                 ; last line
+            (cond [(empty? l) (values (reverse ls) i)]
+                  [else       (define sl (screen-line line row i start end (reverse l)))
+                              (values (reverse (cons sl ls)) (+ i 1))])]
+           [(cons (list p (? string? s)) ps)
+            (define n (string-length s))
+            (loop ps start (+ end n) (+ c n) i (cons (list p s) l) ls)]
+           [(cons (list p x) ps)
+            (loop ps start    end       c    i (cons (list p x) l) ls)])])))
   (define (remove-trailing-newline s)
     (or (and (not (equal? s ""))
              (char=? (string-ref s (- (string-length s) 1)) #\newline)
@@ -1522,15 +1544,15 @@
           (send dc draw-text t x y)
           (+ x w))
         (define (render-screen-lines dc xmin y sls)
-          (let loop ([y y] [sls sls])
-            (match sls
-              [(list)        y]
-              [(list sl)           (render-screen-line dc xmin y sl #f)]
-              [(cons sl sls) (loop (render-screen-line dc xmin y sl #t) sls)])))
-        (define (render-screen-line dc xmin y sl wrapped-line-indicator?)
-          ; sl = screen line = list of (list position string/properties)
+          (let loop ([y y] [cs (map screen-line-contents sls)])
+            (match cs
+              [(list)       y]
+              [(list c)           (render-screen-line dc xmin y c #f)]
+              [(cons c cs)  (loop (render-screen-line dc xmin y c #t) cs)])))
+        (define (render-screen-line dc xmin y contents wrapped-line-indicator?)
+          ; contents = screen line = list of (list position string/properties)
           (define xmax
-            (for/fold ([x xmin]) ([p+s sl])
+            (for/fold ([x xmin]) ([p+s contents])
               (match-define (list p s) p+s)
               (when (and reg-begin (<= reg-begin p) (< p reg-end))  (set-text-background-color #t))
               (when (and reg-end   (<= reg-end   p))                (set-text-background-color #f))
@@ -1549,9 +1571,11 @@
         (define (screen-lines->screen-line-positions xs)
           (define (screen-line->start-position x)
             (match x [(list* (cons p _) more) p] [(list) #f]))
-          (map screen-line->start-position xs))        
-        (define-values (_ __ all-screen-line-positions)
-          (for/fold ([y ymin] [p 0] [screen-line-positions '()]) 
+          (map screen-line->start-position xs))
+        
+        (define-values (_ __ ___ all-screen-lines)
+          ; render lines on screen
+          (for/fold ([y ymin] [p 0] [n 0] [screen-line-positions '()]) ; n = screen line number
                     ([l (text-lines (buffer-text b))]
                      [i (in-range (+ start-row num-lines-on-screen))])
             (cond
@@ -1563,10 +1587,10 @@
                (define region-positions
                  (append (if reg-begin (list reg-begin) '())
                          (if reg-end   (list reg-end)   '())))
-               (define sls   (line->screen-lines b l p region-positions))
+               (define-values (sls new-n) (line->screen-lines b l i n p region-positions))
                (define new-y (render-screen-lines dc xmin y sls))
-               (values new-y (+ p (line-length l))
-                       (cons (list p (screen-lines->screen-line-positions sls))
+               (values new-y (+ p (line-length l)) new-n
+                       (cons (list p sls)
                              screen-line-positions))])))
         (define (screen-lines->screen-line-positions-ranges xs)
           (let loop ([rs '()] [xs xs])
@@ -1576,10 +1600,9 @@
                       _)                          (loop (cons (list p1 p2) rs) (rest xs))]
               [(list* (list (cons p1 _) ...)
                       _)                          (reverse (cons (list p1 +inf.0) rs))])))
-
         ; cache the positions of the visible screen lines,
         ; this is used to render the points
-        (hash-set! cached-screen-lines-ht b (reverse all-screen-line-positions))
+        (hash-set! cached-screen-lines-ht b (reverse all-screen-lines))
         
         ; get point and mark height
         ;(define font-width  (send dc get-char-width))
@@ -1593,7 +1616,8 @@
     ; draw points
     (render-points w start-row end-row)))
 
-
+(define debug-buffer #f)
+(define debug-info #f)
 (define (render-points w start-row end-row)
   (define (find-index positions p [index 0])
     (match positions
@@ -1617,35 +1641,27 @@
     (define points-off-pen (new pen% [color background-color]))  
     ; get point and mark height
     (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
-    #;(define (mark->screen-xy xmin ymin m screen-lines)
-        (define p (mark-position m))
-        (define i (find-screen-row screen-lines p)) ; screen row
-        (define-values (r c) (mark-row+column m))   ; text row and column
-        (values (+ xmin (* c font-width))
-                (+ ymin (* i (line-size)))))
     (when b
       (define active? (send (window-canvas w) has-focus?))
       (when active?
         (define on? (current-show-points?))
         (for ([p (buffer-points b)])
-          (define-values (r c) (mark-row+column p))
+          ; (define-values (r c) (mark-row+column p))
           (when #t #;(<= start-row r end-row)
             (define n (mark-position p))
-            (define positions             (hash-ref cached-screen-lines-ht b))
-            (define text-line-positions   (map first positions))
-            (define i                     (find-index text-line-positions n))
-            (define screen-line-positions (second (list-ref positions i)))
-            ;(displayln (list i screen-line-positions))
-            (define j                     (find-index screen-line-positions n))
-            ; we now need to calculate the number of screen lines of the first i lines
-            (define k (for/sum ([_ i] [l positions]) (length (second l))))
-            (define r (+ k j))
-            (define c (- n (list-ref screen-line-positions j)))
+            (set! debug-buffer b)
+            (define positions+screen-lines (hash-ref cached-screen-lines-ht b))
+            (define screen-lines (append* (map second positions+screen-lines)))
+            (define sl  (for/first ([sl (in-list screen-lines)]
+                                    #:when (and (<=   (screen-line-start-position sl) n)
+                                                (<  n (screen-line-end-position sl))))
+                          sl))
+            (unless sl (error))
+            (define s (screen-line-start-position sl))
+            (define c (- n s))
+            (define r (screen-line-screen-row sl))
             (define x (+ xmin (* c  font-width)))
             (define y (+ ymin (* r (line-size))))
-            ; (define-values (x y) (mark->screen-xy xmin ymin p screen-lines))
-            ; (define x (+ xmin (* c    font-width)))
-            ; (define y (+ ymin (* (- r start-row) (line-size))))
             (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
               (define old-pen (send dc get-pen))
               (send dc set-pen (if #t ;on? 

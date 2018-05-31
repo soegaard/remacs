@@ -8,6 +8,7 @@
          row+column->position
          (struct-out stats)
          (struct-out buffer)
+         (struct-out screen-line)
          buffer-dirty!
          buffer-length
          buffer-modified?
@@ -70,9 +71,17 @@
 ; If modified? is true, then the buffer has been modified since the last
 ; read or save of the file.
 ; The list modes contains the active modes (see below).
-; marks = list of marks
 ; A buffer can have multiple marks:
-; 
+; marks = list of marks
+
+(struct screen-line
+  (line            ; part of this line
+   row             ; row number in text (not screen row)
+   screen-row      ;
+   start-position  ; position in text
+   end-position
+   contents)
+  #:transparent)
 
 (struct mark (buffer link position name fixed? active?) #:transparent #:mutable)
 ; A mark rembers a position in the text of a buffer.
