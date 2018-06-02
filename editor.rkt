@@ -68,55 +68,16 @@
 (require racket/gui/base syntax/to-string)
 (require (only-in srfi/1 circular-list))
 
-(require "parameters.rkt"
-         "representation.rkt"
-         "buffer.rkt"
+(require "buffer.rkt"
+         "deletion.rkt"
          "line.rkt"
          "mark.rkt"
+         "parameters.rkt"
          "point.rkt"
          "region.rkt"
+         "representation.rkt"
          "string-utils.rkt"
          "text.rkt")
-
-
-;;;
-;;; REGION
-;;;
-
-; region-delete-between! : [buffer] -> void
-;   Delete all characters in region.
-(define (region-delete-between! beg end [b (current-buffer)])
-  (cond    
-    [(mark< beg end) (buffer-dirty! b)
-                     (define n (- (mark-position end) (mark-position beg)))
-                     (define end-is-a-mark? (member end (buffer-marks b) eq?))
-                     ; buffer-delete-backward-char! will update the positions
-                     ; of all marks in buffer-marks, so if end is a mark (not the point)
-                     ; we need to temporarily remove it.
-                     (when end-is-a-mark?
-                       (set-buffer-marks! b (remove end (buffer-marks b) eq?)))
-                     (with-saved-point
-                         (begin                           
-                           (set-point! end)
-                           (buffer-delete-backward-char! b n)))
-                     (when end-is-a-mark?
-                       (set-buffer-marks! b (cons end (buffer-marks b))))]
-    [(mark< end beg) (region-delete-between! end beg b)]
-    [else            (void)]))
-
-; region-delete! : [buffer] -> void
-;   Delete all characters in region.
-(define (region-delete [b (current-buffer)])
-  (define mark  (get-mark b))
-  (define point (get-point b))
-  (when (use-region? b)
-    (buffer-dirty! b)
-    (region-delete-between! mark point)
-    (mark-deactivate! mark)))
-
-; Note: Emacs has delete-active-region, delete-and-extract-region, and, delete-region
-
-
 
 ;;;
 ;;; KILLING
@@ -1962,29 +1923,7 @@
   (send f show #t))
                  
 
-(module+ test
-  (define ib illead-buffer)
-  ;(current-buffer ib)
-  (current-buffer scratch-buffer)
-  (define f  (frame #f #f #f #f #f))
-  (frame-install-frame%! f) ; installs frame% and panel
-  
-  (define p (frame-panel f))
-  (define w (new-window f p scratch-buffer 'root))
-  
-  ;(define sp (vertical-split-window f #f #f #f #f #f #f))  
-  ; (define w  (window f #f c sp ib))
-  ; (define c2 #f)
-  ; (define w2 (window f #f c2 sp (get-buffer "*scratch*")))
-  ; (set-vertical-split-window-above! sp w)
-  ; (set-vertical-split-window-below! sp w2)
-  ; (set-frame-windows! f sp)
-  
-  (set-frame-windows! f w)
-  (current-window w)
-  (current-frame f)
-  
-  (send (window-canvas w) focus))
+
 
 (define (display-file path)
   (with-input-from-file path

@@ -28,7 +28,7 @@
   (cond 
     [(dempty? lines) (text (linked-line (new-line "\n") dempty dempty "no-version-yet" '()) 1)]
     [else            (text lines (for/sum ([l lines])
-                                   (line-length l)))]))
+                                          (line-length l)))]))
 
 ; text-line : text integer -> line
 ;   the the ith line
@@ -44,8 +44,8 @@
 ;   convert the text to a string
 (define (text->string t)
   (apply string-append
-    (for/list ([l (text-lines t)])
-      (line->string l))))
+         (for/list ([l (text-lines t)])
+           (line->string l))))
 
 ; subtext->string : text integer integer -> string
 (define (subtext->string t p1 p2)
@@ -79,7 +79,7 @@
 
 (define (text-num-chars t)
   (for/sum ([line (text-lines t)])
-    (line-length line)))
+           (line-length line)))
 
 (define (text-stats t)
   (define-values (nlines nchars)
@@ -133,4 +133,5 @@
      (set-text-length! t (- n 1))]
     [else      ; 
      (error 'todo)]))
+
 

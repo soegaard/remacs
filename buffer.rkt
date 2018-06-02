@@ -8,8 +8,9 @@
          "dlist.rkt"
          "mark.rkt"
          "line.rkt"
-         "region.rkt"
-         "mode.rkt")
+         "mode.rkt"
+         "region.rkt")
+
 ;;;
 ;;; BUFFER
 ;;;

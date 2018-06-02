@@ -10,7 +10,9 @@
 ;;; REGIONS
 ;;;
 
-; region = text between point and the first mark is known as the region.
+; The region is the text between point and the first mark.
+; The representation of the region is therefore implicitly given by the point and the first mark.
+
 ; set-mark-command sets a mark, and then a region exists
 
 (define (region-beginning [b (current-buffer)])
@@ -57,5 +59,4 @@
   (define marks (buffer-marks b))
   (and (not (empty? marks))
        (first marks)))
-
 

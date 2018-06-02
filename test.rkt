@@ -2,6 +2,7 @@
 (require "buffer.rkt"
          "text.rkt"
          "line.rkt"
+         "parameters.rkt"
          "representation.rkt"
          "dlist.rkt")
 
@@ -70,3 +71,27 @@
   (append-to-buffer-from-file append-buffer "illead.txt")
   (save-buffer! b) ; make sure the buffer is unmodified before comparison
   #;(check-equal? (buffer-text append-buffer) (text-append! illead-text illead-text)))
+
+#;(module+ test
+  (define ib illead-buffer)
+  ;(current-buffer ib)
+  (current-buffer scratch-buffer)
+  (define f  (frame #f #f #f #f #f))
+  (frame-install-frame%! f) ; installs frame% and panel
+  
+  (define p (frame-panel f))
+  (define w (new-window f p scratch-buffer 'root))
+  
+  ;(define sp (vertical-split-window f #f #f #f #f #f #f))  
+  ; (define w  (window f #f c sp ib))
+  ; (define c2 #f)
+  ; (define w2 (window f #f c2 sp (get-buffer "*scratch*")))
+  ; (set-vertical-split-window-above! sp w)
+  ; (set-vertical-split-window-below! sp w2)
+  ; (set-frame-windows! f sp)
+  
+  (set-frame-windows! f w)
+  (current-window w)
+  (current-frame f)
+  
+  (send (window-canvas w) focus))
