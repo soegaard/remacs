@@ -77,214 +77,17 @@
 (require racket/gui/base)
 
 (require "buffer.rkt"
-         "buffer-locals.rkt"
          "canvas.rkt"
          "colors.rkt"
-         "commands.rkt"
-         "completion.rkt"
-         "deletion.rkt"
-         "frame.rkt"
-         "key-event.rkt"
+         "keymap.rkt"
          "killing.rkt"
-         "line.rkt"
-         "mark.rkt"
-         "message.rkt"
          "parameters.rkt"
-         "point.rkt"
          "render.rkt"
          "region.rkt"
          "representation.rkt"
          "simple.rkt"
-         "status-line.rkt"
-         "string-utils.rkt"
-         "text.rkt"
          "window.rkt")
 
-
-;;;
-;;; KEYMAP
-;;;
-
-;;; Keys aka key sequences are (to a first approximation) represented as strings.
-;;    a     "a"
-;;    2     "2"
-;;    X     "X"
-;; ctrl-a   "\C-a"
-;; meta-a   "\M-a"
-
-(struct keymap (bindings) #:transparent)
-
-(define (remove-last xs)
-  (if (null? xs) xs
-      (reverse (rest (reverse xs)))))
-
-
-(define global-keymap
-  (λ (prefix key)
-    ;(write (list prefix key)) (newline)    
-    ; if prefix + key event is bound, return thunk
-    ; if prefix + key is a prefix return 'prefix
-    ; if unbound and not prefix, return #f
-    (define (digits->number ds) (string->number (list->string ds)))
-    (define (digit-char? x) (and (char? x) (char<=? #\0 x #\9)))
-    ; todo: allow negative numeric prefix
-    (match prefix
-      [(list "M-x" more ...)
-       (match key
-         ["ESC"       (message "")
-                      #f]
-         ["backspace" (define new (remove-last more))
-                      (message (string-append* `("M-x " ,@(map ~a new))))
-                      `(replace ,(cons "M-x" new))]
-         [#\tab       (define so-far (string-append* (map ~a more)))
-                      (define cs     (completions-lookup so-far))
-                      (cond 
-                        [(empty? cs) (message (~a "M-x " so-far key))
-                                     'ignore]
-                        [else
-                         (define b (current-completion-buffer))
-                         (unless b 
-                           ;; no prev completions buffer => make a new
-                           (define bn "*completions*")
-                           (define nb (new-buffer (new-text) #f bn))
-                           (current-completion-buffer nb)
-                           (set! b nb) 
-                           ;; show it new window
-                           (split-window-right)   ; both windows show same buffer
-                           (define ws (frame-window-tree (current-frame)))
-                           (define w  (list-next ws (current-window) eq?))
-                           (define ob (window-buffer w))
-                           (set-window-buffer! w nb)
-                           (current-completion-window ob))
-                         ;; text in *completion* buffer
-                         (define t (completions->text so-far cs))
-                         ;; replace text in completions buffer
-                         (mark-whole-buffer b)
-                         (delete-region b)
-                         (buffer-insert-string-before-point! b (text->string t))
-                         ;; replace prefix with the longest unique completion
-                         (define pre (longest-common-prefix cs))
-                         (message (~a "M-x " pre))
-                         (list 'replace (cons "M-x" (string->list pre)))])]
-         ["return"    (define cmd-name (string-append* (map ~a more)))
-                      (define cmd      (lookup-interactive-command cmd-name))
-                      (message "")
-                      cmd]
-         [_           (message (string-append* `("M-x " ,@(map ~a more) ,(~a key))))
-                      'prefix])]
-      [(list "C-u" (? digit-char? ds) ... x ...)
-       (match key
-         [(? digit-char?) 'prefix]
-         [#\c             (displayln (digits->number ds)) (λ () (move-to-column (digits->number ds)))]
-         [else            (current-prefix-argument (digits->number ds))
-                          (global-keymap x key)])]
-      [(list "ESC") 
-       (match key
-         [#\b         backward-word]
-         [#\f         forward-word]
-         [_           #f])]
-      [(list "C-x")
-       (match key
-         [#\t         test]
-         [#\0         delete-window]
-         [#\1         delete-other-windows]
-         [#\2         split-window-below]
-         [#\3         split-window-right]
-         [#\h         mark-whole-buffer]
-         [#\s         save-some-buffers]
-         [#\o         other-window]         
-         ["C-s"       save-buffer]
-         ["C-x"       exchange-point-and-mark]
-         ['right      next-buffer]
-         ['left       previous-buffer]
-         ; ["C-b"     list-buffers]     TODO        
-         [_           #f])]
-      [(list)
-       ; (write (list 'empty-prefix 'key key)) (newline)
-       (match key
-         ["ESC"          'prefix]
-         ["C-x"          'prefix]
-         ["C-u"          'prefix]
-         ["M-x"          (message "M-x ") 'prefix]
-         ; movement
-         ['left           backward-char]
-         ['right          forward-char]
-         ['up             previous-line]
-         ['down           next-line]
-         ['wheel-down     next-line]
-         ['wheel-up       previous-line]
-         ["S-left"        backward-char/extend-region]
-         ["S-right"       forward-char/extend-region]
-         ["S-up"          previous-line/extend-region]
-         ["S-down"        next-line/extend-region]         
-         ; Ctrl + something
-         ["C-a"           beginning-of-line]
-         ["C-b"           backward-char]
-         ["C-e"           end-of-line]
-         ["C-f"           forward-char]
-         ["C-k"           kill-line]
-         ["D-backspace"   kill-line-to-beginning]
-         ["C-l"           recenter-top-bottom]
-         ["C-S-backspace" kill-whole-line]
-         ["C-p"           previous-line]
-         ["C-n"           next-line]
-         ["C-w"           kill-region]
-         ; Cmd + something
-         ["D-a"           mark-whole-buffer]   ; select all 
-         ["D-c"           copy-region]         ; copy  (Edit Menu)
-         ["D-x"           kill-region]         ; cut   (Edit Menu)
-         ["D-v"           insert-latest-kill]  ; paste (Edit Menu)
-         ["D-left"        beginning-of-line]
-         ["D-right"       end-of-line]
-         ["D-down"        end-of-buffer]
-         ["D-up"          beginning-of-buffer]
-         ["D-S-left"      beginning-of-line/extend-region]   ; todo: should move word wise? 
-         ["D-S-right"     end-of-line/extend-region]         ; todo: should move word wise?
-         ["D-S-up"        beginning-of-buffer/extend-region] 
-         ["D-S-down"      end-of-buffer/extend-region]       
-         ["D-o"           open-file-or-create]
-         ["D-w"           'exit] ; Cmd-w (mac only)
-         ["D-return"      insert-line-after]
-         ["D-S-return"    insert-line-before]
-         ["D-="           (λ () (text-scale-adjust  1))]
-         ["D--"           (λ () (text-scale-adjust -1))]
-         ; Meta + something
-         ["M-S-@"         mark-word]
-         ["M-left"        backward-word]
-         ["M-right"       forward-word]
-         ["M-S-left"      backward-word/extend-region]
-         ["M-S-right"     forward-word/extend-region]
-         ["M-b"           (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]
-         ["M-i"           (λ () (buffer-insert-property! (current-buffer) (property 'italics)))]
-         ["M-f1"          (λ () (buffer-insert-property! 
-                                 (current-buffer) (property yellow) (property text-color)))]
-         ["M-f2"          (λ () (buffer-insert-property! 
-                                 (current-buffer) (property orange) (property text-color)))]
-         ["M-f3"          (λ () (buffer-insert-property! 
-                                 (current-buffer) (property blue)   (property text-color)))]
-         ["f1"            test-buffer-output]
-         ; ["M-d"           (λ () (buffer-display (current-buffer)))]
-         ["M-d"           kill-word]
-         ["M-backspace"   backward-kill-word]
-         ["M-s"           save-buffer]
-         ["M-S"           save-buffer-as]
-         ["M-e"           eval-buffer]
-         ["M-w"           'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
-         [#\return        break-line]
-         [#\backspace     backward-delete-char]                                            ; backspace
-         [#\rubout        (λ () (error 'todo))]                                            ; delete
-         ; make tab insert 4 spaces
-         [#\tab           (λ() (define insert (self-insert-command #\space)) (for ([i 4]) (insert)))]
-         ['home           (λ () (buffer-move-point-to-beginning-of-line! (current-buffer)))] ; fn+left
-         ['end            (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
-         ['next           page-down] 
-         ['prior          page-up]
-         ["C-space"       command-set-mark]
-         ; place self inserting characters after #\return and friends
-         ["space"         (self-insert-command #\space)]
-         [(? char? k)     (self-insert-command k)]
-         [_               #f])]
-      [_ #f])))
 (current-global-keymap global-keymap)
 
 ;;;
@@ -293,8 +96,6 @@
 
 
 (current-point-color point-colors)
-
-
 
 (define (sort-numbers xs) (sort xs <))
 
