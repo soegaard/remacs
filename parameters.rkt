@@ -9,7 +9,13 @@
          current-show-points?
          current-point-color
          current-rendering-suspended?
-         current-rendering-needed?)
+         current-rendering-needed?
+         ; 
+         current-message
+         ; completion
+         current-completion-buffer
+         current-completion-window
+         )
 
 ;;;
 ;;; PARAMETERS
@@ -33,3 +39,12 @@
 (define current-point-color          (make-parameter #f)) ; circular list of colors
 (define current-rendering-suspended? (make-parameter #f))
 (define current-rendering-needed?    (make-parameter #f))
+
+(define current-message              (make-parameter #f))
+
+;;;
+;;; COMPLETIONS
+;;;
+
+(define current-completion-buffer (make-parameter #f))
+(define current-completion-window (make-parameter #f))

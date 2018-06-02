@@ -3,9 +3,11 @@
 ;;;      DONE render-buffer now handles lines longer than screen
 ;;;      DONE change render-points
 ;;;      DONE fix render-points
+;;;      TODO fix mouse clicks (needs to handle wrapped lines)
 ;;;      TODO make the max screen line size (now 60) a parameter
 ;;;      TODO make the line wrapping character a buffer-local
 
+;;; BUG  fix completion:  M-x fo <tab> c   leads to error
 ;;; TODO run fundamental-mode in upstart
 ;;; TODO cursor blinking stops when menu bar is active ?!
 ;;; TODO .remacs
@@ -69,6 +71,7 @@
 (require (only-in srfi/1 circular-list))
 
 (require "buffer.rkt"
+         "completion.rkt"
          "deletion.rkt"
          "killing.rkt"
          "line.rkt"
@@ -115,7 +118,7 @@
 ;;; MESSAGES
 ;;;
 
-(define current-message (make-parameter #f))
+; Messages currently appear on the top line in the gui.
 
 (define (message str [msg (current-message)])
   (send msg set-label str))
@@ -123,30 +126,6 @@
 ;;;
 ;;; COMPLETIONS
 ;;;
-
-(define current-completion-buffer (make-parameter #f))
-(define current-completion-window (make-parameter #f))
-
-; (require "trie.rkt")
-(require (only-in srfi/13 string-prefix-length))
-(define completions '())
-(define (add-name-to-completions name)
-  (set! completions (sort (cons (~a name) completions) string<?)))
-(define (completions-lookup partial-name)
-  (define r (regexp (~a "^" partial-name)))
-  (filter (λ (name) (regexp-match r name))
-          completions))
-(define (longest-common-prefix xs)
-  (match xs
-    ['()                ""]
-    [(list x)            x]
-    [(list "" y zs ...) ""]
-    [(list x  y zs ...) (longest-common-prefix 
-                         (cons (substring x 0 (string-prefix-length x y)) zs))]))
-
-(define (completions->text so-far cs)
-  (define explanation (list (~a "Completions for: " so-far)))
-  (new-text (list->lines (for/list ([c (append explanation cs)]) (~a c "\n")))))
 
 
 ;;;
@@ -1243,7 +1222,7 @@
 
 (define (sort-numbers xs) (sort xs <))
 
-(define screen-line-length 40)
+(define screen-line-length 80)
 
 
 (define cached-screen-lines-ht (make-hasheq))
@@ -1454,20 +1433,22 @@
                                     #:when (and (<=   (screen-line-start-position sl) n)
                                                 (<  n (screen-line-end-position sl))))
                           sl))
-            (unless sl (error))
-            (define s (screen-line-start-position sl))
-            (define c (- n s))
-            (define r (screen-line-screen-row sl))
-            (define x (+ xmin (* c  font-width)))
-            (define y (+ ymin (* r (line-size))))
-            (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
-              (define old-pen (send dc get-pen))
-              (send dc set-pen (if #t ;on? 
-                                   points-pen
-                                   points-off-pen))
-              (send dc draw-line x y x (min ymax (+ y font-height -1)))
-              (send dc set-pen old-pen))))))))
-
+            (when sl
+              ; (error)
+              
+              (define s (screen-line-start-position sl))
+              (define c (- n s))
+              (define r (screen-line-screen-row sl))
+              (define x (+ xmin (* c  font-width)))
+              (define y (+ ymin (* r (line-size))))
+              (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
+                (define old-pen (send dc get-pen))
+                (send dc set-pen (if #t ;on? 
+                                     points-pen
+                                     points-off-pen))
+                (send dc draw-line x y x (min ymax (+ y font-height -1)))
+                (send dc set-pen old-pen)))))))))
+  
 (define (render-window w)
   (define c  (window-canvas w))
   (define dc (send c get-dc))
@@ -1830,7 +1811,6 @@
         (displayln l)))))
 
 (module+ main
-  ;(current-buffer ib)
   (current-buffer scratch-buffer)
   (define f  (frame #f #f #f #f #f))
   (frame-install-frame%! f) ; installs frame% and panel
