@@ -8,18 +8,34 @@
 ; This file contains various general editing commands that
 ; don't belong in a specific major mode.
 
+;; The names of the commands were chosen to match the command names used in Emacs.
+;; The index of Emacs commands are here:
+;;   https://www.gnu.org/software/emacs/manual/html_node/emacs/Command-Index.html#Command-Index
+;; However it is often better to look at:
+;;   https://www.gnu.org/software/emacs/manual/html_node/elisp/index.html
+
+;; The interactive commands in this file are all user commands.
+;; The user can invoke them either via key bindings or via M-x.
+;; See more on interactive commands in "commands.rkt".
+
 (require racket/class racket/list
+         syntax/to-string
          racket/gui/base
          framework
          "buffer.rkt"
          "commands.rkt"
+         "deletion.rkt"
          "frame.rkt"
+         "killing.rkt"
          "mark.rkt"
          "parameters.rkt"
          "point.rkt"
          "region.rkt"
          "representation.rkt"
+         "region.rkt"
          "render.rkt"
+         "string-utils.rkt"
+         "text.rkt"
          "window.rkt")
 
 
@@ -220,3 +236,197 @@
 (define-interactive (text-scale-adjust m)
   (displayln `(text-scale-adjust ,m))
   (font-size (min 40 (max 1 (+ (font-size) m)))))
+
+
+; create-new-buffer :  -> void
+;   create new buffer and switch to it
+(define-interactive (create-new-buffer)
+  (define b (new-buffer (new-text) #f (generate-new-buffer-name "Untitled")))
+  (set-window-buffer! (current-window) b)
+  (current-buffer b)
+  (refresh-frame (current-frame)))
+
+; eval-buffer : -> void
+;   read the s-expression in the current buffer one at a time,
+;   evaluate each s-expression
+;   TODO: Note done: Introduce namespace for each buffer
+(define-interactive (eval-buffer)
+  (define b (current-buffer))
+  (define t (buffer-text b))
+  (define s (text->string t))
+  (define in (open-input-string s))
+  (define ns (buffer-locals b))
+  (parameterize ([current-namespace ns]
+                 [current-buffer    b])
+    (define (read1 in)
+      (define stx (read-syntax 'read-from-buffer in))
+      (if (syntax? stx)
+          (namespace-syntax-introduce stx)
+          stx)) ; probably eof    
+    (for ([stx (in-port read1 in)])
+      (with-handlers
+          ([exn:fail? (λ (e)
+                        ; position
+                        (define pos (syntax-position stx))
+                        (set! pos (and pos (- pos 1))) ; syntax positions count from 1
+                        ; expression
+                        (define str   (syntax->string stx))
+                        (define datum (syntax->datum  stx))
+                        (when (list? datum) (set! str (string-append "\"" str "\"")))
+                        ; display it
+                        (displayln "Error: Exception triggered during evaluation.")
+                        (display   "Exn:   ") (displayln e)
+                        (display   "Pos:   ") (displayln pos)
+                        (display   "Stx:   ") (displayln stx)
+                        (display   "Expr:  ") (displayln str))])
+        (displayln (eval-syntax stx ns))))))
+
+(define-interactive (test-buffer-output)
+  (define b (new-buffer (new-text) #f (generate-new-buffer-name "*output*")))
+  (define p (make-output-buffer b))
+  (set-window-buffer! (current-window) b)
+  (parameterize ([current-buffer      b]
+                 [current-output-port p])                  
+    (thread
+     (λ ()
+       (let loop ([n 0])
+         (displayln n)
+         (sleep 1.)
+         (loop (+ n 1)))))))
+
+
+; (self-insert-command k) : -> void
+;   insert character k and move point
+(define ((self-insert-command k))
+  ; (display "Inserting: ") (write k) (newline)
+  (define b (current-buffer))
+  (when (use-region? b) (delete-region b))
+  (define pa (current-prefix-argument))
+  (define i (or (and (integer? pa) (positive? pa) pa) 1))
+  (for ([_ (in-range i)])
+    (buffer-insert-char-before-point! b k)))
+
+(define-interactive (break-line [b (current-buffer)])
+  (buffer-break-line! b))
+
+(define-interactive (insert-line-after)
+  ; insert new line after the current line,
+  ; place point at beginning of new line
+  ; [Sublime: cmd+enter]
+  (end-of-line)
+  (break-line))
+
+(define-interactive (insert-line-before)
+  ; insert new line before the current line,
+  ; place point at beginning of new line
+  ; [Sublime: cmd+enter]
+  (beginning-of-line)
+  (break-line)
+  (backward-char))
+
+(define-interactive (delete-region [b (current-buffer)])
+  (region-delete b))
+
+(define (buffer-backward-delete-char! [b (current-buffer)] [n 1])
+  (if (and (= n 1) (use-region? b))
+      (begin
+        (delete-region)
+        (delete-mark! (region-mark)))
+      (buffer-delete-backward-char! b 1)))
+
+; backward-delete-char
+;   Delete n characters backwards.
+;   If n=1 and region is active, delete region.
+(define-interactive (backward-delete-char [n 1])
+  (buffer-backward-delete-char! (current-buffer) n))
+
+; select all
+(define-interactive (mark-whole-buffer [b (current-buffer)])
+  (parameterize ([current-buffer b])
+    (end-of-buffer)
+    (command-set-mark)
+    (beginning-of-buffer)
+    (refresh-frame)))
+
+(define-interactive (kill-line)
+  (buffer-kill-line)
+  (update-current-clipboard-at-latest-kill)
+  (refresh-frame))
+
+;;;
+;;; KILLING LINES
+;;;
+
+; buffer-kill-whole-line : [buffer] -> void
+;   kill whole line including its newline
+(define (buffer-kill-whole-line [b (current-buffer)])
+  (buffer-move-point-to-beginning-of-line! b)
+  (buffer-kill-line b #t)  
+  (forward-char b)
+  (buffer-backward-delete-char! b))
+
+; buffer-kill-line-to-beginning : buffer -> void
+;   Kill text from point to beginning of line.
+;   If point is at the beginning of line, the newline is deleted.
+;   Point is at the beginning of line, if text from point to newline is all whitespace.
+(define (buffer-kill-line-to-beginning [b (current-buffer)])
+  ; TODO : store deleted text in kill ring
+  (define m (buffer-point b))
+  (define p1 (mark-position m))
+  (define p2 (position-of-beginning-of-line m))
+  (define rest-of-line (subtext->string (buffer-text b) p2 p1))
+  ; delete to beginning of line
+  (buffer-set-mark-to-point b)
+  (buffer-move-point-to-beginning-of-line! b)
+  (region-delete b)
+  ; maybe delete newline
+  (when (and (string-whitespace? rest-of-line)
+             (not (= (mark-position m) 0)))
+    (buffer-backward-delete-char! b)))
+
+
+(define-interactive (kill-whole-line)
+  (buffer-kill-whole-line)
+  (update-current-clipboard-at-latest-kill)
+  (refresh-frame))
+
+(define-interactive (kill-line-to-beginning)
+  (buffer-kill-line-to-beginning)
+  (update-current-clipboard-at-latest-kill)
+  (refresh-frame))
+
+(define-interactive (recenter-top-bottom)
+  (maybe-recenter-top-bottom #t)) ; todo: changed this from #t
+
+(define-interactive (insert-latest-kill)
+  ; If another application has put any text onto the system clipboard
+  ; later than the latest kill, that text is inserted.
+  ; Note: The timestamp is ignored in OS X.
+  (define s (send the-clipboard get-clipboard-string 0))
+  (cond
+    [(or (equal? s "") 
+         (equal? s (current-clipboard-at-latest-kill)))
+     ; no changes to the system clipboard, so latest kill is used
+     (buffer-insert-latest-kill)]
+    [else
+     ; system clipboard is newer
+     (buffer-insert-string-before-point! (current-buffer) s)
+     (refresh-frame)]))
+
+(define-interactive (copy-region)
+  (update-current-clipboard-at-latest-kill)
+  (kill-ring-push-region))
+
+(define-interactive (kill-word)
+  ; kill to end of word
+  (cond [(get-mark) => mark-deactivate!])  
+  (forward-word/extend-region)
+  (kill-region))
+
+(define-interactive (backward-kill-word)
+  ; Kill to beginning of word
+  (cond [(get-mark) => mark-deactivate!])  
+  (backward-word/extend-region)
+  (kill-region))
+
+(define-interactive (test) (set-mark 4) (goto-char 10))
