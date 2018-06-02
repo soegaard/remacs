@@ -1,7 +1,8 @@
-#lang racket
+#lang racket/base
 (provide (all-defined-out))
 
-(require "representation.rkt"
+(require racket/set racket/match racket/format
+         "representation.rkt"
          "parameters.rkt"
          "dlist.rkt"
          "line.rkt"

@@ -1,4 +1,4 @@
-#lang racket
+#lang racket/base
 (provide (struct-out line)
          (struct-out overlay)
          (struct-out property)
@@ -24,7 +24,8 @@
          (struct-out horizontal-split-window)
          (struct-out vertical-split-window))
 
-(require "dlist.rkt" "parameters.rkt")
+(require racket/list
+         "dlist.rkt" "parameters.rkt")
 
 ;;;
 ;;; REPRESENTATION

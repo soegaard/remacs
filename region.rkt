@@ -1,6 +1,7 @@
-#lang racket
+#lang racket/base
 (provide (all-defined-out))
-(require "representation.rkt"
+(require racket/list
+         "representation.rkt"
          "parameters.rkt"
          "text.rkt"
          "mark.rkt"

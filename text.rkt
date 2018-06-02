@@ -1,4 +1,4 @@
-#lang racket
+#lang racket/base
 (provide new-text                    ; -> text                 create an empty text
          text-append!                ; text text -> text       append the texts
          text-break-line!            ; text nat nat -> void    break at (row, col)
@@ -12,7 +12,8 @@
          subtext->string
          path->text)
 
-(require "representation.rkt"
+(require racket/string racket/set
+         "representation.rkt"
          "line.rkt"
          "dlist.rkt")
 

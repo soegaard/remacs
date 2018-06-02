@@ -1,10 +1,11 @@
-#lang racket
+#lang racket/base
 (provide set-buffer-local!
          ref-buffer-local
          lookup-default)
 
-(require "representation.rkt"
-         (for-syntax syntax/parse))
+(require (for-syntax racket/base syntax/parse)
+         racket/format
+         "representation.rkt")
 
 ;;;
 ;;; BUFFER LOCALS

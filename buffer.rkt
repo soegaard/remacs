@@ -1,7 +1,9 @@
-#lang racket
+#lang racket/base
 (provide (all-defined-out))
 
-(require (for-syntax syntax/parse)
+(require (for-syntax racket/base syntax/parse)
+         racket/format racket/list racket/match racket/string
+         racket/set
          "parameters.rkt"
          "representation.rkt"
          "text.rkt"

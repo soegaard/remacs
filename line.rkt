@@ -1,4 +1,4 @@
-#lang racket
+#lang racket/base
 (provide 
          line->string
          line-append
@@ -19,8 +19,9 @@
 ;;; LINE
 ;;;
 
-(require "representation.rkt"
+(require racket/list racket/match racket/set
          "dlist.rkt"
+         "representation.rkt"         
          "string-utils.rkt")
 
 (module+ test (require rackunit))

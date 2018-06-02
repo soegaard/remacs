@@ -1,4 +1,4 @@
-#lang racket
+#lang racket/base
 (provide current-buffer
          current-refresh-frame
          current-refresh-buffer
