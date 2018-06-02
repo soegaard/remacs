@@ -15,7 +15,12 @@
          ; completion
          current-completion-buffer
          current-completion-window
+         ; rendering
+         current-frame
+         current-render-frame
          )
+
+(require (for-syntax racket/base syntax/parse))
 
 ;;;
 ;;; PARAMETERS
@@ -42,9 +47,21 @@
 
 (define current-message              (make-parameter #f))
 
+
 ;;;
 ;;; COMPLETIONS
 ;;;
 
-(define current-completion-buffer (make-parameter #f))
-(define current-completion-window (make-parameter #f))
+(define current-completion-buffer    (make-parameter #f))
+(define current-completion-window    (make-parameter #f))
+
+;;;
+;;; RENDERING
+;;; 
+
+(define current-frame                (make-parameter #f))
+
+; This is a temporary fix to avoid circular module dependencies.
+(define current-render-frame         (make-parameter #f))
+
+

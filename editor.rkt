@@ -1,4 +1,11 @@
 #lang racket
+;;;
+;;; INSTRUCTIONS
+;;;
+
+; In order to start remacs, open this file in DrRacket and run it.
+
+
 ;;; WIP: Extend render-buffer and render-points to handle text lines longer than screen lines.
 ;;;      DONE render-buffer now handles lines longer than screen
 ;;;      DONE change render-points
@@ -71,11 +78,13 @@
 (require (only-in srfi/1 circular-list))
 
 (require "buffer.rkt"
+         "commands.rkt"
          "completion.rkt"
          "deletion.rkt"
          "killing.rkt"
          "line.rkt"
          "mark.rkt"
+         "message.rkt"
          "parameters.rkt"
          "point.rkt"
          "region.rkt"
@@ -115,20 +124,6 @@
     (buffer-backward-delete-char! b)))
 
 ;;;
-;;; MESSAGES
-;;;
-
-; Messages currently appear on the top line in the gui.
-
-(define (message str [msg (current-message)])
-  (send msg set-label str))
-
-;;;
-;;; COMPLETIONS
-;;;
-
-
-;;;
 ;;; INTERACTIVE COMMANDS
 ;;;
 
@@ -137,30 +132,8 @@
 ;;; Names of interactive commands are registered in order to 
 ;;; provide completions for the user.
 
-
-(define all-interactive-commands-ht (make-hash))
-(define (add-interactive-command name cmd)
-  (hash-set! all-interactive-commands-ht (~a name) cmd))
-(define (lookup-interactive-command cmd-name)
-  (hash-ref all-interactive-commands-ht (~a cmd-name) #f))
-
-(define-syntax (define-interactive stx)
-  (syntax-parse stx
-    [(d-i name:id expr)
-     (syntax/loc stx
-       (begin
-         (add-name-to-completions 'name)
-         (define name expr)
-         (add-interactive-command 'name name)))]
-    [(d-i (name:id . args) expr ...)
-     (syntax/loc stx
-       (begin
-         (add-name-to-completions 'name)
-         (define (name . args)
-           (with-suspended-rendering               
-               expr ...))
-         (add-interactive-command 'name name)))]
-    [_ (raise-syntax-error 'define-interactive "bad syntax" stx)]))
+; (defined-interactive name:id expr)
+; (defined-interactive (name:id arg ...) expr)
 
 (define-interactive (test) (set-mark 4) (goto-char 10))
 
@@ -1056,7 +1029,6 @@
 ;;; FRAMES
 ;;;
 
-(define current-frame (make-parameter #f))
 
 (define (refresh-frame [f (current-frame)])
   (unless (current-rendering-suspended?)
@@ -1188,14 +1160,6 @@
 
 (current-point-color point-colors)
 
-(define-syntax (with-suspended-rendering stx)
-  (syntax-parse stx
-    [(_with-suspended-rendering body ...)
-     (syntax/loc stx
-       (let ()
-         (parameterize ([current-rendering-suspended? #t])
-           body ...)
-         (render-frame (current-frame))))]))
 
 
 (define (maybe-recenter-top-bottom [force? #f] [w (current-window)])
@@ -1518,6 +1482,8 @@
   ;; render windows
   (render-windows (frame-windows f)))
 
+(current-render-frame render-frame) ; TODO
+
 ;;; Mini Canvas
 ; The bottom line of each frame is a small canvas.
 ; The mini canvas can be used to display either the Echo Area 
@@ -1810,6 +1776,8 @@
       (for ([l (in-lines)])
         (displayln l)))))
 
+; This starts the editor.
+
 (module+ main
   (current-buffer scratch-buffer)
   (define f  (frame #f #f #f #f #f))
@@ -1817,14 +1785,6 @@
   
   (define p (frame-panel f))
   (define w (new-window f p scratch-buffer 'root))
-  
-  ;(define sp (vertical-split-window f #f #f #f #f #f #f))  
-  ; (define w  (window f #f c sp ib))
-  ; (define c2 #f)
-  ; (define w2 (window f #f c2 sp (get-buffer "*scratch*")))
-  ; (set-vertical-split-window-above! sp w)
-  ; (set-vertical-split-window-below! sp w2)
-  ; (set-frame-windows! f sp)
   
   (set-frame-windows! f w)
   (current-window w)
