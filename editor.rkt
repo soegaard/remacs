@@ -100,43 +100,6 @@
          "text.rkt"
          "window.rkt")
 
-;;;
-;;; MODES
-;;;
-
-; The buffer-local variable  major-mode  holds a symbol representing the major mode.
-; Example: the symbol 'fundamental-mode represents the fundamental mode.
-
-(require "mode.rkt")
-
-(define-interactive (fundamental-mode)
-  (set-major-mode! 'fundamental)
-  (set-mode-name!  "Fundamental")
-  ; add all interactive commands defined here to fundamental mode
-  (for ([(name cmd) (in-hash all-interactive-commands-ht)])
-    (define sym (string->symbol name))
-    (set-buffer-local! (current-buffer) sym cmd)))
-
-(define-interactive (text-mode)
-  (fundamental-mode)       ; add all commands from fundamental mode
-  (set-major-mode! 'text)
-  (set-mode-name!  "Text"))
-
-(define-interactive (racket-mode [b (current-buffer)])
-  (fundamental-mode)       ; add all commands from fundamental mode
-  ; name
-  (set-major-mode! 'racket)
-  (set-mode-name!  "Racket")
-  ; keymap
-  (set-buffer-local!
-   b 'local-keymap
-   (λ (prefix key)
-     (match prefix
-       [(list)
-        (match key
-          ["return" (λ() (message "foo"))]
-          [_        #f])]
-       [_ #f]))))
 
 ;;;
 ;;; KEYMAP

@@ -18,16 +18,19 @@
 ;; The user can invoke them either via key bindings or via M-x.
 ;; See more on interactive commands in "commands.rkt".
 
-(require racket/class racket/list
+(require racket/class racket/list racket/match
          syntax/to-string
          racket/gui/base
          framework
          "buffer.rkt"
+         "buffer-locals.rkt"
          "commands.rkt"
          "deletion.rkt"
          "frame.rkt"
          "killing.rkt"
          "mark.rkt"
+         "message.rkt"
+         "mode.rkt"
          "parameters.rkt"
          "point.rkt"
          "region.rkt"
@@ -430,3 +433,40 @@
   (kill-region))
 
 (define-interactive (test) (set-mark 4) (goto-char 10))
+
+;;;
+;;; MODES
+;;;
+
+; The buffer-local variable  major-mode  holds a symbol representing the major mode.
+; Example: the symbol 'fundamental-mode represents the fundamental mode.
+
+
+(define-interactive (fundamental-mode)
+  (set-major-mode! 'fundamental)
+  (set-mode-name!  "Fundamental")
+  ; add all interactive commands defined here to fundamental mode
+  (for ([(name cmd) (in-hash all-interactive-commands-ht)])
+    (define sym (string->symbol name))
+    (set-buffer-local! (current-buffer) sym cmd)))
+
+(define-interactive (text-mode)
+  (fundamental-mode)       ; add all commands from fundamental mode
+  (set-major-mode! 'text)
+  (set-mode-name!  "Text"))
+
+(define-interactive (racket-mode [b (current-buffer)])
+  (fundamental-mode)       ; add all commands from fundamental mode
+  ; name
+  (set-major-mode! 'racket)
+  (set-mode-name!  "Racket")
+  ; keymap
+  (set-buffer-local!
+   b 'local-keymap
+   (λ (prefix key)
+     (match prefix
+       [(list)
+        (match key
+          ["return" (λ() (message "foo"))]
+          [_        #f])]
+       [_ #f]))))
