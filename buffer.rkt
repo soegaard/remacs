@@ -1,5 +1,5 @@
 #lang racket/base
-(provide (all-defined-out))
+(provide (except-out (all-defined-out) refresh-frame refresh-buffer))
 
 (require (for-syntax racket/base syntax/parse)
          racket/format racket/list racket/match racket/string

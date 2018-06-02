@@ -13,6 +13,7 @@
          racket/gui/base
          "buffer.rkt"
          "deletion.rkt"
+         "frame.rkt"
          "mark.rkt"
          "parameters.rkt"
          "point.rkt"
@@ -53,6 +54,7 @@
   (when s
     (kill-new s)
     (region-delete-between! beg end)))
+
 
 (define (kill-region [b (current-buffer)])
   (kill-region-between-marks (get-mark) (get-point) b)

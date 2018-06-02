@@ -1,5 +1,6 @@
 #lang racket/base
-(provide current-buffer
+(provide current-prefix-argument
+         current-buffer
          current-refresh-frame
          current-refresh-buffer
          current-default-major-mode
@@ -12,12 +13,17 @@
          current-rendering-needed?
          ; 
          current-message
+         current-global-keymap
          ; completion
          current-completion-buffer
          current-completion-window
          ; rendering
          current-frame
+         current-window
          current-render-frame
+         current-render-window
+         ;
+         current-next-screen-context-lines         
          )
 
 (require (for-syntax racket/base syntax/parse))
@@ -25,6 +31,8 @@
 ;;;
 ;;; PARAMETERS
 ;;;
+
+(define current-prefix-argument (make-parameter #f)) ; set by C-u
 
 (define current-buffer             (make-parameter #f))
 (define current-refresh-frame      (make-parameter void)) 
@@ -46,7 +54,7 @@
 (define current-rendering-needed?    (make-parameter #f))
 
 (define current-message              (make-parameter #f))
-
+(define current-global-keymap        (make-parameter #f))
 
 ;;;
 ;;; COMPLETIONS
@@ -60,8 +68,12 @@
 ;;; 
 
 (define current-frame                (make-parameter #f))
+(define current-window               (make-parameter #f))
 
 ; This is a temporary fix to avoid circular module dependencies.
 (define current-render-frame         (make-parameter #f))
+(define current-render-window        (make-parameter #f))
+
+(define current-next-screen-context-lines (make-parameter 2)) ; TODO use a buffer local?
 
 

@@ -75,22 +75,29 @@
 (module+ test (require rackunit))
 (require "dlist.rkt" (for-syntax syntax/parse) framework)
 (require racket/gui/base syntax/to-string)
-(require (only-in srfi/1 circular-list))
 
 (require "buffer.rkt"
+         "buffer-locals.rkt"
+         "canvas.rkt"
+         "colors.rkt"
          "commands.rkt"
          "completion.rkt"
          "deletion.rkt"
+         "frame.rkt"
+         "key-event.rkt"
          "killing.rkt"
          "line.rkt"
          "mark.rkt"
          "message.rkt"
          "parameters.rkt"
          "point.rkt"
+         "render.rkt"
          "region.rkt"
          "representation.rkt"
+         "status-line.rkt"
          "string-utils.rkt"
-         "text.rkt")
+         "text.rkt"
+         "window.rkt")
 
 ;;;
 ;;; KILLING LINES
@@ -138,193 +145,7 @@
 (define-interactive (test) (set-mark 4) (goto-char 10))
 
 ;; Names from emacs
-(define-interactive (beginning-of-line)   (buffer-move-point-to-beginning-of-line! (current-buffer)))
-(define-interactive (end-of-line)         (buffer-move-point-to-end-of-line!       (current-buffer)))
-
-(define-interactive (move-to-column n)    (buffer-move-to-column!  (current-buffer) n)) ; n=numprefix 
-
-(define-interactive (backward-char)
-  (cond [(region-mark) => mark-deactivate!])
-  (buffer-move-point! (current-buffer) -1))
-(define-interactive (forward-char [b (current-buffer)])
-  (cond [(region-mark) => mark-deactivate!])
-  (buffer-move-point! b +1))
-(define-interactive (previous-line)       
-  (cond [(region-mark) => mark-deactivate!])
-  (buffer-move-point-up!   (current-buffer)))
-(define-interactive (forward-line)
-  ; this moves an entire text-line (see next-line for moving a screen line)
-  (cond [(region-mark) => mark-deactivate!])
-  (define b (current-buffer))
-  (if (mark-on-last-line? (buffer-point b))
-      (buffer-move-point-to-end-of-line! b)
-      (buffer-move-point-down! b)))
-(define-interactive (next-line)
-  ; this moves a screen line 
-  (cond [(region-mark) => mark-deactivate!])
-  (define b (current-buffer))
-  (if (mark-on-last-line? (buffer-point b))      
-      (buffer-move-point-to-end-of-line! b)
-      (buffer-move-point-down! b)))
-(define-interactive (backward-word)
-  (cond [(region-mark) => mark-deactivate!])
-  (buffer-backward-word!   (current-buffer)))
-(define-interactive (forward-word)
-  (cond [(region-mark) => mark-deactivate!])
-  (buffer-forward-word!   (current-buffer)))
-(define-interactive (exchange-point-and-mark)
-  (unless (get-mark) (new-mark (current-buffer) "*mark*")) ; TODO
-  (buffer-exchange-point-and-mark! (current-buffer))
-  (mark-activate! (get-mark)))
-(define-interactive (mark-word) ; Set mark after next word (doesn't move point)
-  (define m (get-mark))
-  (define swap exchange-point-and-mark)
-  (cond [(and m (mark-active? m))
-         (with-saved-point
-             (cond
-               [(mark<= (get-point) m) (swap) (forward-word)  (swap)]
-               [else                   (swap) (backward-word) (swap)]))]
-        [else              (command-set-mark) (mark-word)]))
-(define current-next-screen-context-lines (make-parameter 2)) ; TODO use a buffer local?
-(define-interactive (page-down [w (current-window)])
-  (define point                (buffer-point (window-buffer w)))
-  (define start-mark           (window-start-mark w))
-  (define end-mark             (window-end-mark w))
-  (define-values (start-row _) (mark-row+column start-mark))
-  (define-values (end-row  __) (mark-row+column end-mark))  
-  (define delta                (max 0 (- (number-of-lines-on-screen w)
-                                         (current-next-screen-context-lines))))
-  (mark-move-down! point      delta)
-  (mark-move-down! start-mark delta)
-  (mark-move-down! end-mark   delta)
-  (refresh-frame))
-(define-interactive (page-up [w (current-window)])
-  (define point                (buffer-point (window-buffer w)))
-  (define start-mark           (window-start-mark w))
-  (define end-mark             (window-end-mark w))
-  (define-values (start-row _) (mark-row+column start-mark))
-  (define-values (end-row  __) (mark-row+column end-mark))  
-  (define delta                (max 0 (- (number-of-lines-on-screen w)
-                                         (current-next-screen-context-lines))))
-  (mark-move-up! point      delta)
-  (mark-move-up! start-mark delta)  
-  (mark-move-up! end-mark   delta)
-  (refresh-frame))
-
-
-(define (prepare-extend-region)
-  (define marks (buffer-marks (current-buffer)))
-  (cond [(and (not (empty? marks)) (not (mark-active? (first marks))))
-         (delete-mark! (first marks))
-         (command-set-mark)]
-        [(empty? marks)
-         (command-set-mark)])
-  (mark-activate! (region-mark)))
-
-(define-interactive (backward-char/extend-region)
-  (prepare-extend-region)
-  (buffer-move-point! (current-buffer) -1))
-(define-interactive (forward-char/extend-region)
-  (prepare-extend-region)
-  (buffer-move-point! (current-buffer) +1))
-(define-interactive (previous-line/extend-region) 
-  (prepare-extend-region)
-  (buffer-move-point-up! (current-buffer)))
-(define-interactive (next-line/extend-region)
-  (prepare-extend-region)
-  (define b (current-buffer))
-  (if (mark-on-last-line? (buffer-point b))
-      (buffer-move-point-to-end-of-line! b)
-      (buffer-move-point-down! b)))
-(define-interactive (forward-word/extend-region) 
-  (prepare-extend-region)
-  (buffer-forward-word! (current-buffer)))
-(define-interactive (backward-word/extend-region)
-  (prepare-extend-region)
-  (buffer-backward-word! (current-buffer)))
-(define-interactive (beginning-of-line/extend-region)
-  (prepare-extend-region)
-  (buffer-move-point-to-beginning-of-line! (current-buffer)))
-(define-interactive (end-of-line/extend-region)
-  (prepare-extend-region)
-  (buffer-move-point-to-end-of-line! (current-buffer)))
-
-(define-interactive (save-buffer)         (save-buffer!    (current-buffer)) (refresh-frame))
-(define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
-(define-interactive (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
-(define-interactive (beginning-of-buffer [b (current-buffer)]) (buffer-move-point-to-position! b 0))
-(define-interactive (end-of-buffer       [b (current-buffer)])
-  (buffer-move-point-to-position! b (- (buffer-length b) 1)))
-(define-interactive (end-of-buffer/extend-region)
-  (prepare-extend-region)
-  (end-of-buffer (current-buffer)))
-(define-interactive (beginning-of-buffer/extend-region)
-  (prepare-extend-region)
-  (beginning-of-buffer (current-buffer)))
-
-(define-interactive (open-file-or-create [path (finder:get-file)])
-  (when path ; #f = none selected
-    (define b (buffer-open-file-or-create path))
-    (set-window-buffer! (current-window) b)
-    (current-buffer b)
-    (refresh-frame (current-frame))))
-
-(define-interactive (next-buffer) ; show next buffer in current window
-  (define w (current-window))
-  (define b (get-next-buffer))
-  (set-window-buffer! w b)
-  (current-buffer b))
-
-(define-interactive (previous-buffer) ; show next buffer in current window
-  (define w (current-window))
-  (define b (get-previous-buffer))
-  (set-window-buffer! w b)
-  (current-buffer b))
-
-(define-interactive (other-window) ; switch current window and buffer
-  (define ws (frame-window-tree (current-frame)))
-  (define w (list-next ws (current-window) eq?))
-  (current-window w)
-  (current-buffer (window-buffer w))
-  (send (window-canvas w) focus))
-
-(define-interactive (delete-window [w (current-window)])
-  (window-delete! w))
-
-(define-interactive (delete-other-windows [w (current-window)])
-  (define ws (frame-window-tree (window-frame w)))
-  (for ([win (in-list ws)])
-    (unless (eq? w win)
-      (delete-window win)))
-  (refresh-frame))
-
-(define-interactive (maximize-frame [f (current-frame)]) ; maximize / demaximize frame
-  (when (frame? f)
-    (define f% (frame-frame% f))
-    (when (is-a? f% frame%)
-      (send f% maximize (not (send f% is-maximized?))))))
-
-(define-interactive (command-set-mark)
-  (buffer-set-mark-to-point (current-buffer)))
-
-(define (position->index pos)
-  (if (mark? pos) (mark-position pos) pos))
-
-(define (check-position who what)
-  (unless (or (number? what) (mark? what))
-    (error who "expected a position (index or mark), got ~a" what)))
-
-(define-interactive (goto-char pos)
-  (check-position 'goto-char pos)
-  ; todo: add narrowing
-  (buffer-move-point-to-position! (current-buffer) (position->index pos)))
-
-(define-interactive (set-mark pos)
-  (check-position 'set-mark pos)
-  (with-saved-point
-      (goto-char pos)
-      (mark-activate!
-       (buffer-set-mark-to-point))))
+(require "simple.rkt")
 
 
 ; create-new-buffer :  -> void
@@ -485,20 +306,6 @@
   (backward-word/extend-region)
   (kill-region))
 
-
-;;;
-;;; BUFFER LOCALS
-;;;
-
-(require "buffer-locals.rkt")
-
-(define (buffer-local-keymap [b (current-buffer)])
-  (ref-buffer-local b 'local-keymap #f))
-
-
-;;; TODO : What should the default namespace be?
-
-
 ;;;
 ;;; MODES
 ;;;
@@ -550,75 +357,10 @@
 
 (struct keymap (bindings) #:transparent)
 
-(define (key-event->key event)
-  #;(newline)
-  #;(begin
-      (write (list 'key-event->key
-                   'key                (send event get-key-code)
-                   'other-shift        (send event get-other-shift-key-code)
-                   'other-altgr        (send event get-other-altgr-key-code)
-                   'other-shift-altgr  (send event get-other-shift-altgr-key-code)
-                   'other-caps         (send event get-other-caps-key-code)))
-      (newline))
-  (define shift? (send event get-shift-down))
-  (define alt?   (send event get-alt-down))
-  (define ctrl?  (send event get-control-down))
-  (define caps?  (send event get-caps-down))
-  (define cmd?   (case (system-type 'os)
-                   ; racket reports cmd down as meta down
-                   [(macosx) (send event get-meta-down)]
-                   ; other systems do not have cmd
-                   [else     #f]))  
-  (define meta?  (case (system-type 'os)
-                   ; use the alt key as meta
-                   [(macosx) (send event get-alt-down)]
-                   [else     (send event get-meta-down)]))    ; mac: cmd, pc: alt, unix: meta
-  #;(displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta? 'cmd cmd? 'caps caps?))
-  
-  (define c      (send event get-key-code))
-  ; k = key without modifier
-  (define k      (cond
-                   [(and ctrl? alt?)  c]
-                   [cmd?              c]
-                   [alt?              (or (and (symbol? c) c)
-                                          (send event get-other-altgr-key-code))] ; OS X: 
-                   [else              c]))
-  
-  (define alt-is-meta? #t)
-  (define cmd-is-meta? #f)
-  (define (alt   k) 
-    (cond
-      [alt-is-meta? k]
-      [alt?         (~a "A-" k)]
-      [else         k]))
-  (define (ctrl  k) (if ctrl?  (~a "C-" k) k))
-  (define (cmd   k) 
-    (cond
-      [cmd-is-meta? k]
-      [cmd?         (~a "D-" k)]
-      [else         k]))
-  (define (meta  k) (if meta?  (~a "M-" k) k))
-  (define (shift k) (if shift? (~a "S-" k) k))
-  
-  (let ([k (match k 
-             ['escape     "ESC"] 
-             [#\backspace "backspace"]
-             [#\return    "return"]
-             [#\space     "space"]
-             [_ k])])
-    (cond 
-      [(eq? k 'control)      'control] ; ignore control + nothing
-      [(and (symbol? c) meta? shift?) (~a "M-S-" k)]
-      [(or ctrl? alt? meta? cmd?)     (alt (ctrl (cmd (meta (shift k)))))]
-      [(and shift? (eq? k 'shift))    'shift]
-      [(and shift? (symbol? k))       (~a "S-" k)]
-      [else                           k])))
-
 (define (remove-last xs)
   (if (null? xs) xs
       (reverse (rest (reverse xs)))))
 
-(define current-prefix-argument (make-parameter #f)) ; set by C-u
 
 (define global-keymap
   (λ (prefix key)
@@ -786,372 +528,7 @@
          [(? char? k)     (self-insert-command k)]
          [_               #f])]
       [_ #f])))
-
-;;;
-;;; STATUS LINE
-;;;
-
-; The status line is shown at the bottom of a buffer window.
-(define (status-line-hook)
-  (define b (current-buffer))
-  (define-values (row col) (mark-row+column (buffer-point b)))
-  (define save-status (if (buffer-modified? b) "***" "---"))
-  (~a save-status  
-      "   " "Buffer: "          (buffer-name) "    " "(" row "," col ")"
-      "   " "Position: " (mark-position (buffer-point (current-buffer)))
-      "   " "Length: "   (buffer-length (current-buffer))
-      "   " "Mode: "     "(" (get-mode-name) ")"))
-
-;;;
-;;; WINDOWS
-;;;
-
-; A window is an area of the screen used to display a buffer.
-; Windows are grouped into frames.
-; Each frame contains at least one window.
-
-(define all-windows '())
-(define current-window (make-parameter #f))
-
-; new-window : frame panel buffer -> window
-(define (new-window f panel b [parent #f] #:borders [borders #f])
-  ; parent is the parent window, #f means no parent parent window
-  (define bs (or borders (seteq)))
-  (define start (new-mark b "*start*"))
-  (define end   (new-mark b "*end*"))
-  (mark-move! end (buffer-length b))
-  (define w (window f panel bs #f parent b start end))
-  (window-install-canvas! w panel)
-  (set! all-windows (cons w all-windows))
-  w)
-
-; get-buffer-window : [buffer-or-name] -> window
-;   return first window in which buffer is displayed
-(define (get-buffer-window [buffer-or-name (current-buffer)])
-  (define b (get-buffer buffer-or-name))
-  (for/first ([w all-windows]
-              #:when (eq? (get-buffer (buffer-name (window-buffer w))) b))
-    w))
-
-; get-buffer-window-list : [buffer-or-name] -> list-of-windows
-;   get list of all windows in which buffer is displayed
-(define (get-buffer-window-list [buffer-or-name (current-buffer)])
-  (define b (get-buffer buffer-or-name))
-  (for/list ([w all-windows]
-             #:when (eq? (get-buffer (window-buffer w)) b))
-    w))
-
-; get-buffer-frame-list : [buffer-or-name] -> list-of-frame
-;   get list of all frames in which buffer is displayed
-(define (get-buffer-frame-list [buffer-or-name (current-buffer)])
-  (define ws (get-buffer-window-list buffer-or-name))
-  (set->list (list->set (map window-frame ws))))
-
-(define (get-buffer-frame [buffer-or-name (current-buffer)])
-  (define fs (get-buffer-frame-list buffer-or-name))
-  (if (empty? fs) #f (first fs)))
-
-(define (refresh-buffer [buffer-or-name (current-buffer)])
-  (refresh-frame (get-buffer-frame buffer-or-name)))
-(current-refresh-buffer refresh-buffer)
-
-; REMINDER
-;    (struct window (frame canvas parent buffer) #:mutable)
-;    (struct horizontal-split-window window (left  right) #:mutable)
-
-; split-window-right : [window] -> void
-;   split the window in two, place the new window at the right
-;
-; Implementation note:
-;   The (frame-panel f) holds the panel that display the current windows
-;   Make this panel the left son of a new horisontal panel
-;   and add a new panel to the right for the new window.
-(define (split-window-right [w (current-window)])
-  (define f (window-frame w))
-  ; the parent p of a window w might be a horizontal- or vertical window
-  (define b  (window-buffer w))
-  (define bs (window-borders w))
-  (define c  (window-canvas w))
-  (define p  (window-parent w))
-  (define root? (not (window? p)))
-  ; the new split window get the parent of our old window
-  (define parent-panel (if root? (frame-panel f) (window-panel p)))
-  (define pan (new horizontal-panel% [parent parent-panel]))
-  (define sp  (horizontal-split-window f pan bs #f p #f #f #f w #f))
-  ; the old window get a new parent
-  (set-window-parent! w sp)
-  (send c reparent pan)
-  ;; A little space before the next window
-  ; (new horizontal-pane% [parent pan] [min-height 2] [stretchable-height #f])
-  ; now create the new window to the right
-  (define bs2 (set-add bs 'left))
-  (define w2 (new-window f pan b sp #:borders bs2))
-  (set-horizontal-split-window-right! sp w2)
-  ; replace the parent window with the new split window
-  (cond 
-    [root? ; root window?
-     (set-frame-windows! f sp)]
-    [(horizontal-split-window? p)
-     ; is w a left or a right window?
-     (if (eq? (horizontal-split-window-left p) w) 
-         (begin
-           (set-horizontal-split-window-left!  p sp)
-           (send (window-canvas (horizontal-split-window-right p)) reparent parent-panel))
-         (set-horizontal-split-window-right! p sp))]
-    [(vertical-split-window? p)
-     ; is w above or below?
-     (if (eq? (vertical-split-window-above p) w) 
-         (begin
-           (set-vertical-split-window-above! p sp)
-           (send (window-canvas (vertical-split-window-below p)) reparent parent-panel))
-         (set-vertical-split-window-below! p sp))])
-  (send c focus))
-
-(define (split-window-below [w (current-window)])
-  (define f (window-frame w))
-  ; the parent p of a window w might be a horizontal- or vertical window
-  (define b  (window-buffer w))
-  (define bs (window-borders w))
-  (define c  (window-canvas w))
-  (define p  (window-parent w))
-  
-  (define root? (not (window? p)))
-  ; the parent of the new split window (sp), is the parent the window (w) to be split
-  (define parent-panel (if root? (frame-panel f) (window-panel p)))
-  (define new-panel    (new vertical-panel% [parent parent-panel]))
-  (define sp (vertical-split-window f new-panel bs #f p #f #f #f w #f))
-  ; the split window becomes he parent of the old window
-  (set-window-parent! w sp)
-  ; this means that the canvas of w, now belongs the the new panel
-  (send c reparent new-panel)
-  ; The bottom of the split window contains a new window, showing the same buffer
-  ; The new window is required to draw the top border
-  (define bs2 (set-add bs 'top))
-  (define w2 (new-window f new-panel b sp #:borders bs2))
-  (set-vertical-split-window-below! sp w2)
-  ; The split window takes the place of w in the parent of w
-  (cond 
-    [root? 
-     (set-frame-windows! f sp)]
-    [(horizontal-split-window? p)
-     ; is w a left or a right window?
-     (if (eq? (horizontal-split-window-left p) w) 
-         (begin
-           (set-horizontal-split-window-left!  p sp)
-           (send (window-canvas (horizontal-split-window-right p)) reparent parent-panel))
-         (set-horizontal-split-window-right! p sp))]
-    [(vertical-split-window? p)
-     ; is w above or a?
-     (if (eq? (vertical-split-window-above p) w)
-         (begin 
-           (set-vertical-split-window-above! p sp)
-           (send (window-canvas (vertical-split-window-below p)) reparent parent-panel))
-         (set-vertical-split-window-below! p sp))]
-    [else (error "Internal Error")])
-  (send c focus))
-
-(define (left-window?  hw w) (eq? (horizontal-split-window-left  hw) w))
-(define (right-window? hw w) (eq? (horizontal-split-window-right hw) w))
-(define (above-window? hw w) (eq? (vertical-split-window-above   hw) w))
-(define (below-window? hw w) (eq? (vertical-split-window-below   hw) w))
-
-; replace : any any list -> list
-;   copy zs but replace occurences of x with y
-(define (replace x y zs)
-  (for/list ([z (in-list zs)])
-    (if (eq? z x) y z)))
-
-(define (window-delete! w)
-  (set! all-windows (remq w all-windows))
-  (define fp (window-panel (frame-windows (current-frame))))
-  (send fp begin-container-sequence)
-  (define (window-backend w)
-    ; split-windows are backed by a panel holding subwindows,
-    ; whereas a single window is backed by a canvas
-    (if (split-window? w) (window-panel  w) (window-canvas w)))
-  ; to delete the window w, it must be removed from its parent
-  (define p (window-parent w))
-  ; only split windows can hold subwindows
-  (unless (split-window? p)
-    (error 'window-delete "can't delete window"))
-  ;; since the parent is a split window, it must hold another window:
-  (define ow ; other window
-    (cond [(vertical-split-window? p) 
-           (if (above-window? p w)
-               (vertical-split-window-below p)
-               (vertical-split-window-above p))]
-          [(horizontal-split-window? p) 
-           (if (left-window? p w)
-               (horizontal-split-window-right p)
-               (horizontal-split-window-left p))]
-          [else (error 'window-delete! "internal error")]))
-  ;; The sole purpose of the parent is to hold w and ow, 
-  ;; since w is to be deleted, the parent p is no longer needed.
-  ;; To replace p with ow, we need to grab the grand parent and replace parent with other window
-  (define gp (window-parent p))
-  (set-window-parent! ow gp)
-  (cond [(horizontal-split-window? gp)
-         (if (left-window? gp p)
-             (set-horizontal-split-window-left!  gp ow)
-             (set-horizontal-split-window-right! gp ow))]
-        [(vertical-split-window? gp)
-         (if (above-window? gp p)
-             (set-vertical-split-window-above! gp ow)
-             (set-vertical-split-window-below! gp ow))]
-        [else (void)])    
-  ;; if the current window is deleted, we need to make a new window the current one.
-  (when (eq? (current-window) w) (current-window ow))
-  (current-buffer (window-buffer (current-window)))
-  ;; The window structures are now updated, but the gui panels need to be updated too.
-  (cond
-    [(eq? gp 'root)
-     (set-window-borders! ow '()) ; root has no borders
-     (define f (window-frame w))
-     (set-frame-windows! f ow)
-     (define panel (frame-panel f))
-     (send panel change-children  (λ (cs) '()))
-     (send (window-backend ow) reparent panel)]
-    [else ; gp is a split window
-     (set-window-borders! ow (window-borders p))
-     (define panel (window-panel gp))
-     ; make ow a child of the grand parent
-     (send (window-backend ow) reparent panel)
-     ; now the ow is last child, so we need to move to the where p is
-     (send panel change-children 
-           (λ (cs) (replace (window-backend p) (window-backend ow)
-                            (filter (λ(c) (not (eq? c (window-backend ow))))
-                                    cs))))])
-  (send fp end-container-sequence)
-  ;; send keyboard focus to other window
-  (send (window-backend ow) focus))
-
-;;;
-;;; FRAMES
-;;;
-
-
-(define (refresh-frame [f (current-frame)])
-  (unless (current-rendering-suspended?)
-    (when (and f (frame? f))
-      (render-frame f))))
-
-(current-refresh-frame refresh-frame)
-
-(define (frame-window-tree [f (current-frame)])
-  (define (loop w)
-    (match w
-      [(horizontal-split-window f _ _ c p b s e l r)               (append (loop l) (loop r))]
-      [(vertical-split-window   f _ _ c p b s e u l)               (append (loop u) (loop l))]
-      [(window frame panel borders canvas parent buffer start end) (list w)]))
-  (flatten (loop (frame-windows f))))
-
-;;;
-;;; COLORS
-;;;
-
-(define (color? x)
-  (is-a? x color%))
-
-(define (hex->color x)
-  (define blue  (remainder           x        256))
-  (define green (remainder (quotient x   256) 256))
-  (define red   (remainder (quotient x 65536) 256))
-  (make-object color% red green blue))
-
-(define base03  (hex->color #x002b36)) ; brblack    background   (darkest)
-(define base02  (hex->color #x073642)) ; black      background 
-(define base01  (hex->color #x586e75)) ; brgreen    content tone (darkest)
-(define base00  (hex->color #x657b83)) ; bryellow   content tone
-
-(define base0   (hex->color #x839496)) ; brblue     content tone
-(define base1   (hex->color #x93a1a1)) ; brcyan     content tone (brigtest)
-(define base2   (hex->color #xeee8d5)) ; white      background
-(define base3   (hex->color #xfdf6e3)) ; brwhite    background   (brightest)
-
-(define yellow  (hex->color #xb58900)) ; yellow     accent color
-(define orange  (hex->color #xcb4b16)) ; brred      accent color
-(define red     (hex->color #xdc322f)) ; red        accent color
-(define magenta (hex->color #xd33682)) ; magenta    accent color
-(define violet  (hex->color #x6c71c4)) ; brmagenta  accent color
-(define blue    (hex->color #x268bd2)) ; blue       accent color
-(define cyan    (hex->color #x2aa198)) ; cyan       accent color
-(define green   (hex->color #x859900)) ; green      accent color
-
-(define background-color         base03)
-(define region-highlighted-color base00)
-(define text-color               base1)
-(define border-color             base00)
-
-(define border-pen    
-  (new pen% [color base00] [width 1] [style 'solid] [cap 'butt] [join 'miter]))
-
-; Note: point-colors starts with the brightest colors.
-(define point-colors (circular-list base3  base3  base2  base1 
-                                    base0  base00 base01 base02 base03 base03
-                                    base03 base03 base02 base01 base00
-                                    base0  base1  base2))
-
-;;;
-;;; FONT
-;;;
-(define default-font-size 16)
-
-(define font-style  (make-parameter 'normal))  ; style  in '(normal italic)
-(define font-weight (make-parameter 'normal))  ; weight in '(normal bold)
-(define the-font-size default-font-size)
-(define (font-size [n #f]) (when n (set! the-font-size n)) the-font-size)
-(define font-family (make-parameter 'modern))  ; fixed width
-(define (use-default-font-settings)
-  (font-style  'normal)
-  (font-weight 'normal)
-  ;(font-size   16)
-  (font-family 'modern))
-(define font-ht (make-hash))                   ; (list size family style weight) -> font  
-(define (get-font)
-  (define key (list (font-size) (font-family) (font-style) (font-weight)))
-  (define font (hash-ref font-ht key #f))
-  (unless font
-    (set! font (make-object font% (font-size) (font-family) (font-style) (font-weight)))
-    (hash-set! font-ht key font))
-  font)
-(define (toggle-bold)    (font-weight (if (eq? (font-weight) 'normal) 'bold   'normal)))
-(define (toggle-italics) (font-style  (if (eq? (font-style)  'normal) 'italic 'normal)))
-(define (default-fixed-font)  (get-font))
-
-(define-interactive (text-scale-adjust m)
-  (displayln `(text-scale-adjust ,m))
-  (font-size (min 40 (max 1 (+ (font-size) m)))))
-
-;;;
-;;; CANVAS
-;;;
-
-(define (canvas-dimensions c)
-  (define dc (send c get-dc))
-  (define xmin 0)
-  (define xmax (send c get-width))
-  (define ymin 0)
-  (define ymax (send c get-height))
-  (values xmin xmax ymin ymax))
-
-;;; 
-;;; LINES
-;;;
-
-; The size of a line is the same as the font size plus one.
-(define (line-size) (+ (font-size) 1))
-
-(define (number-of-lines-on-screen w)
-  (define b (window-buffer w))
-  (define c (window-canvas w))
-  (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
-  (define width  (- xmax xmin))
-  (define height (- ymax ymin))
-  (define fs (font-size))
-  (define ls (line-size)) ; BUG todo this looks wrong: the font-size might not match the pixel size
-  ;; Placement of point relative to lines on screen
-  (define n (max 0 (quotient height ls)))
-  n)
+(current-global-keymap global-keymap)
 
 ;;;
 ;;; GUI
@@ -1162,32 +539,9 @@
 
 
 
-(define (maybe-recenter-top-bottom [force? #f] [w (current-window)])
-  ; move current buffer line to center of window
-  (define b                    (window-buffer w))
-  (define n                    (number-of-lines-on-screen w))
-  (define-values (row col)     (mark-row+column (buffer-point b)))
-  (define start-mark           (window-start-mark w))
-  (define end-mark             (window-end-mark w))
-  (define-values (start-row _) (mark-row+column start-mark))
-  (define-values (end-row  __) (mark-row+column end-mark))  
-  ;(displayln (list 'before: 'row row 'start-row start-row 'end-row end-row 'n num-lines-on-screen))
-  (when (or force?
-            (not (and (<= start-row row) (< row (+ start-row n)))))
-    ;(define n num-lines-on-screen)
-    (define n/2 (quotient n 2))
-    (define new-start-row (max (- row n/2) 0))
-    (define new-end-row   (+ new-start-row n))
-    (mark-move-up! start-mark (- start-row new-start-row))
-    (mark-move-up! end-mark   (-   end-row  new-end-row))
-    (set! start-row new-start-row)
-    (set! end-row   new-end-row))
-  (values start-row end-row))
-
 (define (sort-numbers xs) (sort xs <))
 
 (define screen-line-length 80)
-
 
 (define cached-screen-lines-ht (make-hasheq))
 
@@ -1446,6 +800,8 @@
 
   (send dc resume-flush))
 
+(current-render-window render-window)
+
 (define (render-windows win)
   (match win
     [(horizontal-split-window _ _ _ _ _ _ _ _ left  right) 
@@ -1510,157 +866,7 @@
     1)
 
 
-; create-window-canvas : window panel% -> canvas
-; this-window : the non-gui structure representing the window used to display a buffer.
-; f           : the non-gui structure representing the frame of the window
-; panel       : the panel which the canvas has as parent
-(define (window-install-canvas! this-window panel)
-  (define f (window-frame this-window))
-  ;;; PREFIX 
-  ; keeps track of key pressed so far
-  (define prefix '())
-  (define (add-prefix! key) (set! prefix (append prefix (list key))))
-  (define (clear-prefix!)   (set! prefix '()))
 
-  (define handle-mouse
-    (let ([left-down? #f]
-          [last-left-click-row #f] [last-left-click-col #f])          
-      (λ (e type)
-      (unless (member type '(left-down left-up motion))
-        (error "expected 'left-down, 'left-up or 'motion got: ~a" type))
-      ; a left click will move the point to the location clicked
-      (define (exact r) (exact-floor r))
-      (define-values (x y) (values (exact (send e get-x)) (exact (send e get-y))))
-      (define c  (window-canvas this-window))
-      (define dc (send c get-dc))
-      ; Canvas Dimensions
-      (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
-      ;; Dimensions
-      (define width  (- xmax xmin))
-      (define height (- ymax ymin))
-      (define fs (exact (font-size)))
-      (define ls (exact (line-size)))
-      (define num-lines-on-screen   (max 0 (quotient height ls)))
-      (define n num-lines-on-screen)    
-      (define-values (w h _ __) (send dc get-text-extent "x")) ; font width and height
-      (set! h (exact h)) (set! w (exact w))
-      ; compute screen row and column
-      (define screen-row (quotient y ls))
-      (define screen-col (quotient x w))      
-      ; find first row displayed on screen
-      (define start-mark              (window-start-mark this-window))
-      (define-values (start-row ___)  (mark-row+column start-mark))
-      ; Add start-row and row to get the buffer start row
-      (define row (+ start-row screen-row))
-      (define col screen-col)  ; TODO: change this when wrapping of long lines gets support
-      (cond        
-        [(eq? type 'left-down)
-         ; register where left mouse clicked happened
-         ; wait for left-up or motion to do anythin         
-         (set! left-down? #t)
-         (set! last-left-click-row row)
-         (set! last-left-click-col col)]
-        [(or (eq? type 'left-up)
-             (and (eq? type 'motion) left-down?))
-         ; register mouse up
-         (when (eq? type 'left-up) (set! left-down? #f))
-         ; for both up and motion, create region
-         (define m (get-mark))
-         (define b (window-buffer this-window))
-         (define p (buffer-point b))
-         (when (and m (mark-active? m)) (mark-deactivate! m))
-         (cond   ; no drag
-           [(and (equal? last-left-click-row row) (equal? last-left-click-col col)) 
-            (mark-move-to-row+column! p row col)]
-           [else ; mouse dragged
-            (mark-move-to-row+column! p row col)
-            (unless m (buffer-set-mark-to-point b) (set! m (get-mark)))
-            (when (and last-left-click-row last-left-click-col)
-              (mark-move-to-row+column! m last-left-click-row last-left-click-col))
-            (mark-activate! m)])
-         (maybe-recenter-top-bottom #t this-window)
-         (refresh-frame)]))))
-  
-  (define window-canvas%
-    (class canvas%
-      (inherit has-focus?)
-      ;; Buffer
-      (define the-buffer #f)
-      (define (set-buffer b) (set! the-buffer b))
-      (define (get-buffer b) the-buffer)
-      ;;; Focus Events
-      (define/override (on-event e) ; mouse events
-        (define type (send e get-event-type))
-        ;(displayln type)
-        (case type
-          [(left-down) (handle-mouse e 'left-down)]
-          [(left-up)   (handle-mouse e 'left-up)]
-          [(motion)    (handle-mouse e 'motion)]))
-      (define/override (on-focus event)
-        (define w this-window)
-        (define b (window-buffer w))
-        ; (displayln (list 'on-focus (buffer-name b)))
-        (current-buffer b)
-        (current-window w))
-      ;; Key Events
-      (define/override (on-char event)
-        (current-point-color point-colors) ; make points visible when keyboard is active
-        ; TODO syntax  (with-temp-buffer body ...)
-        (define key-code (send event get-key-code))
-        (unless (equal? key-code 'release)
-          (define key (key-event->key event))
-          ; (send msg set-label (~a "key: " key))
-          (define local-keymap (buffer-local-keymap (current-buffer)))
-          (define binding (or (and local-keymap (local-keymap prefix key))
-                              (global-keymap prefix key)
-                              ; If A-<key> is unbound, then use the character as-is.
-                              ; This makes A-a insert å.
-                              (and (char? key-code)
-                                   (global-keymap prefix key-code))))
-          (match binding
-            [(? procedure? thunk)  (clear-prefix!) (thunk) (current-prefix-argument #f)]
-            [(list 'replace pre)   (set! prefix pre)]
-            ['prefix               (add-prefix! key)]
-            ['ignore               (void)]
-            ['exit                ; (save-buffer! (current-buffer))
-             ; TODO : Ask how to handle unsaved buffers
-             (send (frame-frame% f) on-exit)]
-            ['release             (void)]
-            [_                    (unless (equal? (send event get-key-code) 'release)
-                                    (when (and (empty? prefix) key)
-                                      (message (~a "<" key "> undefined")))
-                                    (clear-prefix!))]))
-        ; todo: don't trigger repaint on every key stroke ...
-        (send canvas on-paint))
-      ;; Rendering
-      (public on-paint-points)
-      (define (display-status-line s)
-        (when (eq? (window-buffer this-window) (current-buffer))
-          (send (frame-status-line f) set-label s)))
-      (define (on-paint-points on?) ; render points only
-        (unless (current-rendering-suspended?)
-          (parameterize ([current-render-points-only? #t]
-                         [current-show-points?        on?])
-            (display-status-line (status-line-hook))
-            (render-window this-window))))
-      (define/override (on-paint) ; render everything
-        (unless (current-rendering-suspended?)
-          (parameterize ([current-show-points? #t])
-            (display-status-line (status-line-hook))
-            (render-frame f))))
-      (super-new)))
-  (define canvas (new window-canvas% [parent panel]))
-  (set-window-canvas! this-window canvas)
-  (send canvas min-client-width  20)
-  (send canvas min-client-height 20)
-  ;;; blinking cursor / point
-  ; start update-points thread
-  (thread (λ () (let loop ([on? #t])
-                  (sleep/yield 0.1)
-                  (unless (current-rendering-suspended?)
-                    (send canvas on-paint-points on?))
-                  (loop (not on?)))))
-  canvas)
 
 (define make-frame frame)
 (define (frame-install-frame%! this-frame)
