@@ -10,7 +10,6 @@
          "dlist.rkt"
          "mark.rkt"
          "line.rkt"
-         "mode.rkt"
          "region.rkt")
 
 ;;;

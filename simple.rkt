@@ -40,7 +40,9 @@
          "string-utils.rkt"
          "text.rkt"
          "window.rkt")
-
+;;;
+;;; MOVEMENT
+;;;
 
 (define-interactive (beginning-of-line)   (buffer-move-point-to-beginning-of-line! (current-buffer)))
 (define-interactive (end-of-line)         (buffer-move-point-to-end-of-line!       (current-buffer)))
@@ -78,23 +80,6 @@
   (cond [(region-mark) => mark-deactivate!])
   (buffer-forward-word!   (current-buffer)))
 
-(define-interactive (command-set-mark)
-  (buffer-set-mark-to-point (current-buffer)))
-
-(define-interactive (exchange-point-and-mark)
-  (unless (get-mark) (new-mark (current-buffer) "*mark*")) ; TODO
-  (buffer-exchange-point-and-mark! (current-buffer))
-  (mark-activate! (get-mark)))
-(define-interactive (mark-word) ; Set mark after next word (doesn't move point)
-  (define m (get-mark))
-  (define swap exchange-point-and-mark)
-  (cond [(and m (mark-active? m))
-         (with-saved-point
-             (cond
-               [(mark<= (get-point) m) (swap) (forward-word)  (swap)]
-               [else                   (swap) (backward-word) (swap)]))]
-        [else              (command-set-mark) (mark-word)]))
-
 
 (define-interactive (page-down [w (current-window)])
   (define point                (buffer-point (window-buffer w)))
@@ -120,6 +105,27 @@
   (mark-move-up! start-mark delta)  
   (mark-move-up! end-mark   delta)
   (refresh-frame))
+
+;;;
+;;; MARK AND POINT - REGION
+;;;
+
+(define-interactive (command-set-mark)
+  (buffer-set-mark-to-point (current-buffer)))
+
+(define-interactive (exchange-point-and-mark)
+  (unless (get-mark) (new-mark (current-buffer) "*mark*")) ; TODO
+  (buffer-exchange-point-and-mark! (current-buffer))
+  (mark-activate! (get-mark)))
+(define-interactive (mark-word) ; Set mark after next word (doesn't move point)
+  (define m (get-mark))
+  (define swap exchange-point-and-mark)
+  (cond [(and m (mark-active? m))
+         (with-saved-point
+             (cond
+               [(mark<= (get-point) m) (swap) (forward-word)  (swap)]
+               [else                   (swap) (backward-word) (swap)]))]
+        [else              (command-set-mark) (mark-word)]))
 
 
 (define (prepare-extend-region)

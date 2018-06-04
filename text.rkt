@@ -119,7 +119,7 @@
 (define (text-delete-backward-char! t row col)
   (define d (dlist-move (text-lines t) row))
   (define l (dfirst d))
-  (define n (text-length t))
+  (define n (text-length t))  
   (cond
     [(> col 0) (line-delete-backward-char! l col)
                (set-text-length! t (- n 1))]

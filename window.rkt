@@ -256,7 +256,7 @@
 
   (define handle-mouse
     (let ([left-down? #f]
-          [last-left-click-row #f] [last-left-click-col #f])          
+          [last-left-click-row #f] [last-left-click-col #f])
       (λ (e type)
       (unless (member type '(left-down left-up motion))
         (error "expected 'left-down, 'left-up or 'motion got: ~a" type))
@@ -283,8 +283,11 @@
       (define start-mark              (window-start-mark this-window))
       (define-values (start-row ___)  (mark-row+column start-mark))
       ; Add start-row and row to get the buffer start row
-      (define row (+ start-row screen-row))
-      (define col screen-col)  ; TODO: change this when wrapping of long lines gets support
+      (define b (window-buffer this-window))
+      (define-values (row col)
+        (screen-coordinates->text-coordinates start-row screen-row screen-col b))
+        ; (define row (+ start-row screen-row))
+        ; (define col screen-col)  ; TODO: change this when wrapping of long lines gets support
       (cond        
         [(eq? type 'left-down)
          ; register where left mouse clicked happened
@@ -415,3 +418,51 @@
     (set! start-row new-start-row)
     (set! end-row   new-end-row))
   (values start-row end-row))
+
+
+;;;
+;;; CACHED SCREEN LINE INFORMATION
+;;;
+
+; [See comment in "editor.rkt" on cached-screen-lines-ht]
+
+; The cached information is a list.
+; Each element of the list corresponds to a text line.
+; Since a text line can be longer than a screen line, we need to know
+; how the text line is split into screen lines.
+;   (list start-pos-of-text-line
+;         (list screen-line ...))
+; A screen-line is represented like this:
+;   (struct screen-line (line row screen-row start-position end-position contents)
+; here line is the text line the screen line is part of.
+; The row is the row of the text line in the text.
+; The screen row is the screen row number.
+; The contents field holds the actual strings and properties to be displayed.
+
+(define (linearize-cached-screen-info info)
+  (define (linearize1 line-info)
+    (match line-info
+      [(list pos (list sl* ...))
+       (for/list ([s (in-list sl*)]
+                  [i (in-naturals)])
+         (list pos i s))]))
+  (append* (map linearize1 info)))
+
+(define (screen-coordinates->text-coordinates start-row screen-row screen-column [b (current-buffer)])
+  ; start-row = row of first text line on screen
+  (define info (hash-ref cached-screen-lines-ht b #f))
+  (cond
+    [(not info) (values #f #f)]
+    [else       (define info* (linearize-cached-screen-info info))
+                (match (list-ref info* screen-row)
+                  [(list pos i sl)  ; sl is the i'th screen line of the text line
+                   (define row (screen-line-row sl))
+                   ; the width of this this screen line is:
+                   (define n   (- (screen-line-end-position sl) (screen-line-start-position sl)))
+                   (define col (+ (* i (screen-line-length))
+                                  (min n screen-column)))
+                   (values row col)])]))
+
+
+
+

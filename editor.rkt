@@ -5,7 +5,6 @@
 
 ; In order to start remacs, open this file in DrRacket and run it.
 
-
 ;;; WIP: Extend render-buffer and render-points to handle text lines longer than screen lines.
 ;;;      DONE render-buffer now handles lines longer than screen
 ;;;      DONE change render-points
@@ -43,16 +42,10 @@
 ;;; TODO Let screen follow cursor rather than disappear to the right (for long lines)
 ;;; TODO The column position of the cursor when using down should stay the same
 ;;;      even if one goes across short line.
-;;; TODO The height of the highlight coloring is slightly too big.
-;;;      This means that render un-highligthed characters on the next line
-;;;      removes the bottom of the highligthing.
-;;;      Two possible solutions:  1) reduce height
-;;;                               2) erase from end of line to right edge of window
-;;;      Both solutions needs to go into render-buffer.
 ;;; TODO test with large file (words.txt)
 ;;;        ok  - open large file
 ;;;        ok  - end-of-buffer
-;;;        fix - cursor movements at end of file are *slow*
+;;;        fix - cursor movements at the end of a long file are *slow*
 ;;; TODO [Sublime] If a selection is found elsewhere, they are boxed
 ;;; TODO Hydra: https://github.com/abo-abo/hydra
 ;;; TODO Implement undo
@@ -73,12 +66,14 @@
 ;;; TODO Completions ala http://sublimetext.info/docs/en/extensibility/completions.html
 
 (module+ test (require rackunit))
-(require "dlist.rkt" (for-syntax syntax/parse) framework)
-(require racket/gui/base)
 
-(require "buffer.rkt"
+(require (for-syntax syntax/parse)
+         racket/gui/base
+         framework
+         "buffer.rkt"
          "canvas.rkt"
          "colors.rkt"
+         "dlist.rkt"
          "keymap.rkt"
          "killing.rkt"
          "parameters.rkt"
@@ -99,9 +94,22 @@
 
 (define (sort-numbers xs) (sort xs <))
 
-(define screen-line-length 80)
+; (define cached-screen-lines-ht (make-hasheq)) ; buffer -> info
+;   the definition moved to parameters.rkt
 
-(define cached-screen-lines-ht (make-hasheq))
+; The cached information is a list.
+; Each element of the list corresponds to a text line.
+; Since a text line can be longer than a screen line, we need to know
+; how the text line is split into screen lines.
+;   (list start-pos-of-text-line
+;         (list screen-line ...))
+; A screen-line is represented like this:
+;   (struct screen-line (line row screen-row start-position end-position contents)
+; here line is the text line the screen line is part of.
+; The row is the row of the text line in the text.
+; The screen row is the screen row number.
+; The contents field holds the actual strings and properties to be displayed.
+
 
 (define (render-buffer w)
   (define (marks-between marks from to)
@@ -115,7 +123,7 @@
     (define end-pos   (+ p (line-length l)))
     (define row       r)
     
-    (define len screen-line-length)
+    (define len (screen-line-length))
     (define strings (line-strings l))
     (define n       (length strings))
     ; first break the line into smaller pieces
@@ -144,7 +152,7 @@
                             [c 0] [i k] [l '()] [ls '()])
        ; c = column, d=index in text line, l= current line, ls = lines
       (cond
-        [(>= c screen-line-length) ; make new line
+        [(>= c (screen-line-length)) ; make new line
          (define sl (screen-line line row i start end (reverse l)))
          (loop ps end end 0 (+ i 1) '() (cons sl ls))]
         [else                      ; on same line, accumulate strings and properties
@@ -422,9 +430,6 @@
     (define msg (apply format format-string arguments))
     #;(send (frame-echo-area f) set-message s)
     1)
-
-
-
 
 (define make-frame frame)
 (define (frame-install-frame%! this-frame)

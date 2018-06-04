@@ -1,4 +1,10 @@
 #lang racket/base
+;;;
+;;; REPRESENTATION
+;;;
+
+; This file contains all structure definitions. 
+
 (provide (struct-out line)
          (struct-out overlay)
          (struct-out property)
@@ -24,12 +30,7 @@
          (struct-out horizontal-split-window)
          (struct-out vertical-split-window))
 
-(require racket/list
-         "dlist.rkt" "parameters.rkt")
-
-;;;
-;;; REPRESENTATION
-;;;
+(require racket/list "dlist.rkt" "parameters.rkt")
 
 (struct line (strings length) #:transparent #:mutable)
 ; A line is a list of elements of the types:
