@@ -9,7 +9,7 @@
 ;;;      DONE render-buffer now handles lines longer than screen
 ;;;      DONE change render-points
 ;;;      DONE fix render-points
-;;;      TODO fix mouse clicks (needs to handle wrapped lines)
+;;;      DONE fix mouse clicks (needs to handle wrapped lines)
 ;;;      TODO make the max screen line size (now 60) a parameter
 ;;;      TODO make the line wrapping character a buffer-local
 

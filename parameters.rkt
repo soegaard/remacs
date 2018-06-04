@@ -78,11 +78,11 @@
 (define current-render-window        (make-parameter #f))
 
 (define current-next-screen-context-lines (make-parameter 2)) ; TODO use a buffer local?
+(define screen-line-length          (make-parameter 80))
 
 ;;;
 ;;;
 ;;;
 
-(define (screen-line-length) 80)
 
 (define cached-screen-lines-ht (make-hasheq)) ; buffer -> info

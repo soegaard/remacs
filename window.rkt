@@ -285,7 +285,7 @@
       ; Add start-row and row to get the buffer start row
       (define b (window-buffer this-window))
       (define-values (row col)
-        (screen-coordinates->text-coordinates start-row screen-row screen-col b))
+        (screen-coordinates->text-coordinates start-row screen-row screen-col this-window b))
         ; (define row (+ start-row screen-row))
         ; (define col screen-col)  ; TODO: change this when wrapping of long lines gets support
       (cond        
@@ -448,21 +448,26 @@
          (list pos i s))]))
   (append* (map linearize1 info)))
 
-(define (screen-coordinates->text-coordinates start-row screen-row screen-column [b (current-buffer)])
+(define (screen-coordinates->text-coordinates
+         start-row screen-row screen-column window [b (current-buffer)])
   ; start-row = row of first text line on screen
   (define info (hash-ref cached-screen-lines-ht b #f))
   (cond
     [(not info) (values #f #f)]
     [else       (define info* (linearize-cached-screen-info info))
-                (match (list-ref info* screen-row)
-                  [(list pos i sl)  ; sl is the i'th screen line of the text line
-                   (define row (screen-line-row sl))
-                   ; the width of this this screen line is:
-                   (define n   (- (screen-line-end-position sl) (screen-line-start-position sl)))
-                   (define col (+ (* i (screen-line-length))
-                                  (min n screen-column)))
-                   (values row col)])]))
-
-
-
-
+                (define m (length info*))
+                (cond
+                  [(< screen-row m)                
+                   (match (list-ref info* screen-row)
+                     [(list pos i sl)  ; sl is the i'th screen line of the text line
+                      (define row (screen-line-row sl))
+                      ; the width of this this screen line is:
+                      (define n   (- (screen-line-end-position sl) (screen-line-start-position sl)))
+                      (define col (+ (* i (screen-line-length))
+                                     (min n screen-column)))
+                      (values row col)])]
+                  [else
+                   ; Turns out we have screen coordinates after anything cached.
+                   ; This is typically due to a very short text being displayed.
+                   ; Let's return the row and column of the end of the buffer.
+                   (mark-row+column (window-end-mark window))])]))
