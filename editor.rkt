@@ -10,7 +10,7 @@
 ;;;      DONE change render-points
 ;;;      DONE fix render-points
 ;;;      DONE fix mouse clicks (needs to handle wrapped lines)
-;;;      TODO make the max screen line size (now 60) a parameter
+;;;      DONE make the max screen line size (now 60) a parameter
 ;;;      TODO make the line wrapping character a buffer-local
 
 ;;; BUG  fix completion:  M-x fo <tab> c   leads to error
@@ -71,6 +71,7 @@
          racket/gui/base
          framework
          "buffer.rkt"
+         "buffer-locals.rkt"
          "canvas.rkt"
          "colors.rkt"
          "dlist.rkt"
@@ -148,9 +149,9 @@
             substrings]
            [else (list p s)]))))
     ; second, group strings in screen lines
-     (let loop ([ps pieces] [start start-pos] [end start-pos]
-                            [c 0] [i k] [l '()] [ls '()])
-       ; c = column, d=index in text line, l= current line, ls = lines
+    (let loop ([ps pieces] [start start-pos] [end start-pos]
+                           [c 0] [i k] [l '()] [ls '()])
+      ; c = column, d=index in text line, l= current line, ls = lines
       (cond
         [(>= c (screen-line-length)) ; make new line
          (define sl (screen-line line row i start end (reverse l)))
@@ -204,6 +205,9 @@
           (define-values (w h _ __) (send dc get-text-extent t))
           (send dc draw-text t x y)
           (+ x w))
+        (define wrapped-line-indicator?          (ref-buffer-local 'wrapped-line-indicator? b #f))
+        (define wrapped-line-indicator  (let ([s (ref-buffer-local 'wrapped-line-indicator  b "↵")])
+                                          (or s (and (string? s) s) "↵")))
         (define (render-screen-lines dc xmin y sls)
           (let loop ([y y] [cs (map screen-line-contents sls)])
             (match cs
@@ -224,7 +228,7 @@
                 [(property (? color? c))                (send dc set-text-foreground c) x]
                 [_ (displayln (~a "Warning: Got " s))                                   x])))
           (when wrapped-line-indicator?
-            (draw-string "↵" xmax (- y 2)))
+            (draw-string wrapped-line-indicator xmax (- y 2)))
           (+ y (line-size)))
         ; draw text:
         ;   loop over text lines

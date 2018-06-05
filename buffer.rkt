@@ -1,22 +1,28 @@
 #lang racket/base
 (provide (except-out (all-defined-out) refresh-frame refresh-buffer))
 
-(require (for-syntax racket/base syntax/parse)
-         racket/format racket/list racket/match racket/string
-         racket/set
-         "parameters.rkt"
-         "representation.rkt"
-         "text.rkt"
-         "dlist.rkt"
-         "mark.rkt"
-         "line.rkt"
-         "region.rkt")
-
 ;;;
 ;;; BUFFER
 ;;;
 
+(require (for-syntax racket/base syntax/parse)
+         racket/format racket/list racket/match racket/string
+         racket/set
+         "buffer-locals.rkt"
+         "buffer-namespace.rkt"
+         "dlist.rkt"
+         "default.rkt"
+         "line.rkt"
+         "mark.rkt"
+         "parameters.rkt"
+         "region.rkt"
+         "representation.rkt"
+         "text.rkt")
+
 (module+ test (require rackunit))
+
+
+;;; Buffer Registry
 
 ; all buffers are registered in buffers-ht
 (define buffers-ht (make-hash))  ; string -> buffer
@@ -49,15 +55,13 @@
               #:unless (get-buffer (name i)))
     (name i)))
 
+
+;;; Buffer Creation
+
 ; new-buffer : -> buffer
 ;   create fresh buffer without an associated file
 (define (new-buffer [text (new-text)] [path #f] [name (generate-new-buffer-name "buffer")])
-  (define locals (make-base-empty-namespace))
-  (parameterize ([current-namespace locals])
-    (namespace-require 'racket/base)
-    (namespace-require '(submod "buffer-locals.rkt" buffer-top))
-    (namespace-set-variable-value! 'major-mode (current-default-major-mode))
-    (namespace-set-variable-value! 'mode-name  "Fundamental")) ; TODO: fix
+  (define locals (new-buffer-namespace)) ; see "buffer-namespace.rkt"
   (define b (buffer text name path 
                     '()   ; points
                     '()   ; marks
@@ -78,6 +82,13 @@
   (register-buffer b)
   b)
 
+; generate-new-buffer : string -> buffer
+(define (generate-new-buffer name)
+  (unless (string? name) (error 'generate-new-buffer "string expected, got ~a" name))
+  (new-buffer (new-text) #f (generate-new-buffer-name name)))
+
+;;; Point and Marks
+
 ; buffer-exchange-point-and-mark! : buffer -> void
 ;   exchange first point with first mark
 (define (buffer-exchange-point-and-mark! b)
@@ -88,10 +99,8 @@
   (set-buffer-marks!  b (cons p (rest ms)))
   (set-buffer-points! b (cons m (rest ps))))
 
-; generate-new-buffer : string -> buffer
-(define (generate-new-buffer name)
-  (unless (string? name) (error 'generate-new-buffer "string expected, got ~a" name))
-  (new-buffer (new-text) #f (generate-new-buffer-name name)))
+
+;;; Scratch Buffer
 
 (define scratch-text
   '("Welcome to remacs, an Emacs style editor implemented in Racket.\n"
@@ -119,6 +128,7 @@
 (define scratch-buffer (new-buffer (new-text (list->lines scratch-text)) #f "*scratch*"))
 (current-buffer scratch-buffer)
 ; (define current-buffer (make-parameter scratch-buffer))
+
 
 ; syntax: (save-current-buffer body ...)
 ;   store current-buffer while evaluating body ...

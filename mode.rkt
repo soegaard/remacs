@@ -14,10 +14,10 @@
 
 
 (define (get-major-mode [b (current-buffer)])
-  (ref-buffer-local b 'major-mode))
+  (ref-buffer-local 'major-mode b))
 
 (define (set-major-mode! mode-sym [b (current-buffer)])
-  (set-buffer-local! b 'major-mode mode-sym))
+  (set-buffer-local! 'major-mode mode-sym b))
 
 ;;;
 ;;; mode-name
@@ -25,10 +25,10 @@
 ; the "pretty" name shown in the mode line
 
 (define (get-mode-name [b (current-buffer)])
-  (ref-buffer-local b 'mode-name "-mode has no name-"))
+  (ref-buffer-local 'mode-name b "-mode has no name-"))
 
 (define (set-mode-name! name [b (current-buffer)])
-  (set-buffer-local! b 'mode-name name))
+  (set-buffer-local! 'mode-name name b))
 
 ; Standard variable names in a mode
 

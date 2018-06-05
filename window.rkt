@@ -17,7 +17,7 @@
          "status-line.rkt")
 
 (define (buffer-local-keymap [b (current-buffer)])
-  (ref-buffer-local b 'local-keymap #f))
+  (ref-buffer-local 'local-keymap b #f))
 
 ;;;
 ;;; WINDOWS

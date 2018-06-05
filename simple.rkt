@@ -255,26 +255,41 @@
   (current-buffer b)
   (refresh-frame (current-frame)))
 
+
+
 ; eval-buffer : -> void
-;   read the s-expression in the current buffer one at a time,
-;   evaluate each s-expression
-;   TODO: Note done: Introduce namespace for each buffer
+;   Read and evaluate each s-expression in the current buffer one at a time.
 (define-interactive (eval-buffer)
-  (define b (current-buffer))
-  (define t (buffer-text b))
-  (define s (text->string t))
+  (define b  (current-buffer)) ; we get the buffer here
+  (displayln (list 'eval-buffer 'before: (current-buffer)))
+  (define t  (buffer-text b))
+  (define s  (text->string t))
   (define in (open-input-string s))
   (define ns (buffer-locals b))
+  (define (read1 in)
+    (define stx (read-syntax 'read-from-buffer in))
+    (if (syntax? stx)
+        (namespace-syntax-introduce stx)
+        stx))
+  #;(; a few experiments that show current-buffer is not set, when ns is used.
+     (parameterize ([current-namespace ns])
+       (displayln (list 'eval-buffer 'later (current-buffer))))
+     (parameterize ([current-namespace ns])
+       (displayln (list 'eval-buffer 'later2 (eval-syntax #'(current-buffer) ns))))
+     (parameterize ([current-namespace ns] [current-buffer    b])    
+       (displayln (list 'eval-buffer 'later3 (eval-syntax #'(current-buffer) ns))))
+     (parameterize ([current-namespace ns] [current-buffer    b])
+       (eval `(current-buffer ,b) ns)
+       (displayln (list 'eval-buffer 'later3 (eval-syntax #'(current-buffer) ns))))
+     (for ([stx (in-port read1 in)])
+       (displayln (eval-syntax stx ns))))
+  
   (parameterize ([current-namespace ns]
                  [current-buffer    b])
-    (define (read1 in)
-      (define stx (read-syntax 'read-from-buffer in))
-      (if (syntax? stx)
-          (namespace-syntax-introduce stx)
-          stx)) ; probably eof    
+     ; probably eof    
     (for ([stx (in-port read1 in)])
       (with-handlers
-          ([exn:fail? (λ (e)
+          (#;[exn:fail? (λ (e)
                         ; position
                         (define pos (syntax-position stx))
                         (set! pos (and pos (- pos 1))) ; syntax positions count from 1
@@ -288,6 +303,7 @@
                         (display   "Pos:   ") (displayln pos)
                         (display   "Stx:   ") (displayln stx)
                         (display   "Expr:  ") (displayln str))])
+        (eval `(current-buffer ,b) ns)  ; sigh - the parameterize doesn't set current-buffer
         (displayln (eval-syntax stx ns))))))
 
 (define-interactive (test-buffer-output)

@@ -8,7 +8,7 @@
 ; There is only one default namespace, so setting a default variable
 ; will change the default for all buffers.
 
-(require (for-syntax racket/base syntax/parse) racket/format)
+;;; Provided Functions
 
 (provide default-namespace  ; the default namespace
          default-value      ; symbol -> value
@@ -16,11 +16,17 @@
          set-default!       ; SYNTAX (set-default! id expr)
          set-defaults!      ; SYNTAX (set-defaults! [id expr] ...)
          set-default        ; symbol value -> void
+         )
+
+;;; 
+
+(require (for-syntax racket/base syntax/parse)
+         racket/format
+         "buffer-namespace.rkt")
          
 ;;; The Default Namespace 
 
-(define-namespace-anchor default-namespace-anchor)
-(define default-namespace (namespace-anchor->namespace default-namespace-anchor))
+(define default-namespace (new-default-namespace)) ; see "buffer-namespace.rkt"
 
 ;;; References
 
