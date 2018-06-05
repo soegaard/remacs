@@ -129,8 +129,9 @@
          ; movement
          ['left           backward-char]
          ['right          forward-char]
-         ['up             previous-line]
-         ['down           next-line]
+         ; ['up             previous-line]
+         ['up             previous-line]  ; screen line up
+         ['down           next-line]      ; screen line down
          ['wheel-down     next-line]
          ['wheel-up       previous-line]
          ["S-left"        backward-char/extend-region]
@@ -200,7 +201,6 @@
          ['next           page-down] 
          ['prior          page-up]
          ["C-space"       command-set-mark]
-         [#\l             (λ () (buffer-move-to-column! (current-buffer) 3))]
          ; place self inserting characters after #\return and friends
          ["space"         (self-insert-command #\space)]
          [(? char? k)     (self-insert-command k)]

@@ -134,7 +134,6 @@
 ; mark-move-to-column! : mark integer -> void
 ;   move mark to column n (stay at text line)
 (define (mark-move-to-column! m n)
-  (displayln (list 'mark-move-to-column! n))
   (define-values (r c) (mark-row+column m))
   (define len (line-length (mark-line m)))
   (unless (= n c)
@@ -143,10 +142,13 @@
 
 ; mark-on-last-line? : mark -> boolean
 ;    is m on the last line of its buffer?
-(define (mark-on-last-line? m)
-  (define-values (row col) (mark-row+column m))
-  (define t (buffer-text (mark-buffer m)))
-  (= (+ row 1) (text-num-lines t)))
+(define (mark-on-last-line? m) ; todo (see mark-on-first-line?)
+  (last-dcons? (mark-link m)))
+
+; mark-on-first-line? : mark -> boolean
+;    is m on the first line of its buffer?
+(define (mark-on-first-line? m)
+  (first-dcons? (mark-link m)))
 
 ; mark-move-beginning-of-line! : mark -> void
 ;   move the mark to the beginning of its line

@@ -58,43 +58,67 @@
   (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point! b +1))
 
-(define-interactive (previous-line)
-  (display-point-line)
-  (cond [(region-mark) => mark-deactivate!])  
-  (buffer-move-point-up!   (current-buffer)))
 
 (define-interactive (forward-line)
-  ; this moves an entire text-line (see next-line for moving a screen line)
+  ; Move point an entire text-line (see next-line for moving a screen line).
   (cond [(region-mark) => mark-deactivate!])
   (define b (current-buffer))
   (if (mark-on-last-line? (buffer-point b))
       (buffer-move-point-to-end-of-line! b)
       (buffer-move-point-down! b)))
 
+(define-interactive (backward-line)
+  ; Moves point one text line up.
+  (cond [(region-mark) => mark-deactivate!])  
+  (buffer-move-point-up!   (current-buffer)))
+
+
 (define (display-point-line) ; for debug
   (define point (buffer-point (current-buffer)))
   (writeln (line->string (mark-line point))))
 
 (define-interactive (next-line)
-  ; this moves point down a screen line 
+  ; Moves point one screen line down. Attempts to keep the column.
   (cond [(region-mark) => mark-deactivate!])  
   (define point  (get-point))
+  (define n        (local 'screen-line-length))
+  (define len      (line-length (mark-line point)))
+  (define-values   (_ col) (mark-row+column point))
+  (define screen-col (remainder col n))
+  (define whole    (quotient  len n))   ; number of full screen lines
+  (cond       
+    [(and (not (mark-on-last-line? point))
+          (>= col (* whole n)))             ; we need to move to the next text line
+     (beginning-of-line)
+     (forward-line)        
+     (move-to-column (min screen-col (line-length (mark-line point))))]
+    [(<= (+ col n) len)   ; there is room to move an entire screen line (same text line)
+     (move-to-column (+ col n))]
+    [else          ; there is not room to move an entire line, so go to end of this text line
+     (move-to-column (line-length (mark-line point)))]))
+
+(define-interactive (previous-line)
+  ; Moves point one screen line up.
+  (cond [(region-mark) => mark-deactivate!])
+  (define point  (get-point))
   (cond
-    [(mark-on-last-line? point)  (end-of-line)]
-    [else (define n        (local 'screen-line-length))
-          (define len      (line-length (mark-line point)))
-          (define-values   (row col) (mark-row+column point))
-          
-          (define whole    (quotient  len n))   ; number of full screen lines
-          (cond       
-            [(>= col (* whole n)) ; we need to move to the next text line
+    [(mark-on-first-line? point)  (void)]
+    [else (define n              (local 'screen-line-length))
+          (define len            (line-length (mark-line point)))
+          (define-values (_ col) (mark-row+column point))
+          (define screen-col     (remainder col n))
+          (define whole          (quotient  len n))   ; number of full screen lines
+          (cond
+            [(>= col n)   ; room to move entire screen line (same text line)
+             (move-to-column (- col n))]
+            [else               
              (beginning-of-line)
-             (forward-line)        
-             (move-to-column (min (remainder col n) (line-length (mark-line point))))]
-            [(<= (+ col n) len)   ; there is room to move an entire screen line (same text line)
-             (move-to-column (+ col n))]
-            [else          ; there is not room to move an entire line, so go to end of this text line
-             (move-to-column (line-length (mark-line point)))])]))
+             (backward-line)
+             (define prev-len (line-length (mark-line point)))
+             (move-to-column (+ (- prev-len (remainder prev-len n))
+                                (min screen-col (remainder prev-len n))))])]))
+
+
 
 (define-interactive (backward-word)
   (cond [(region-mark) => mark-deactivate!])
