@@ -5,20 +5,11 @@
 
 ; In order to start remacs, open this file in DrRacket and run it.
 
-;;; WIP: Extend render-buffer and render-points to handle text lines longer than screen lines.
-;;;      DONE render-buffer now handles lines longer than screen
-;;;      DONE change render-points
-;;;      DONE fix render-points
-;;;      DONE fix mouse clicks (needs to handle wrapped lines)
-;;;      DONE make the max screen line size (now 60) a parameter
-;;;      TODO make the line wrapping character a buffer-local
-
 ;;; BUG  fix completion:  M-x fo <tab> c   leads to error
 ;;; TODO run fundamental-mode in upstart
 ;;; TODO cursor blinking stops when menu bar is active ?!
 ;;; TODO .remacs
 ;;; TODO buffer narrowing
-;;; TODO timestamp for blinking cursor needs to be on a per window base
 ;;; TODO Introduce double buffering to avoid any flicker.
 ;;;      https://www.facebook.com/notes/daniel-colascione/buttery-smooth-emacs/10155313440066102/
 ;;; TODO C-u <digit> ... now sets current-prefix-argument.
@@ -27,14 +18,14 @@
 ;;; TODO Allow negative numeric prefix
 ;;; TODO Holding M and typing a number should create a numeric prefix.
 
-;;; TODO Finish eval-buffer
+;;; TODO eval-buffer
 ;;;        ok use buffer-local namespace for evaluation
-;;;        ok fix new-buffer (buffer-top needs to be required)
-;;;        ok catch errors
+;;;        ok use defaults when variable is unbound
+;;;        ok convenient initial namespace (now racket/base)
+;;;        ok catch exceptions from user code
 ;;;        - on error: send point to offending expression
 ;;;        - on error: stop at first expression with error?
-;;;        - convenient initial namespace (now racket/base)
-;;;        - output where?
+;;;        - output where? A new buffer?
 
 ;;; TODO Wordwrap
 ;;; TODO #\tab now inserts 4 space

@@ -11,7 +11,8 @@
 (provide new-buffer-namespace    ; -> namespace
          new-default-namespace)  ; -> namespace
 
-(require "parameters.rkt")
+(require "config.rkt"
+         "parameters.rkt")
 
 ;;; Namespace Creation
 
@@ -54,7 +55,8 @@
     (namespace-attach-module this-ns "parameters.rkt"    ns)
     (namespace-require '"parameters.rkt")
 
-    ;;; Set the default mode to "Fundamental"
-    (namespace-set-variable-value! 'major-mode (current-default-major-mode))
-    (namespace-set-variable-value! 'mode-name  "Fundamental"))
+    ; All configuration of defaults are in "config.rkt"
+    (namespace-attach-module this-ns "config.rkt"    ns)
+    (namespace-require '"config.rkt")    
+    )
   ns)

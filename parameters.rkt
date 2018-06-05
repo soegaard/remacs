@@ -3,7 +3,6 @@
          current-buffer
          current-refresh-frame
          current-refresh-buffer
-         current-default-major-mode
          current-append-next-kill
          ; gui
          current-render-points-only?
@@ -40,8 +39,6 @@
 (define current-buffer             (make-parameter #f))
 (define current-refresh-frame      (make-parameter void)) 
 (define current-refresh-buffer     (make-parameter void)) ; used in "buffer.rkt"
-
-(define current-default-major-mode (make-parameter 'fundamental-mode))
 
 (define current-append-next-kill   (make-parameter #f))
 

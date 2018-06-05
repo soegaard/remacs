@@ -464,31 +464,30 @@
 ; Example: the symbol 'fundamental-mode represents the fundamental mode.
 
 
-(define-interactive (fundamental-mode)
+(define-interactive (fundamental-mode [b (current-buffer)])
   (set-major-mode! 'fundamental)
   (set-mode-name!  "Fundamental")
   ; add all interactive commands defined here to fundamental mode
   (for ([(name cmd) (in-hash all-interactive-commands-ht)])
     (define sym (string->symbol name))
-    (set-buffer-local! (current-buffer) sym cmd)))
+    (set-buffer-local! sym cmd b)))
 
-(define-interactive (text-mode)
-  (fundamental-mode)       ; add all commands from fundamental mode
+(define-interactive (text-mode [b (current-buffer)])
+  (fundamental-mode b)       ; add all commands from fundamental mode
   (set-major-mode! 'text)
   (set-mode-name!  "Text"))
 
 (define-interactive (racket-mode [b (current-buffer)])
-  (fundamental-mode)       ; add all commands from fundamental mode
+  (fundamental-mode b)       ; add all commands from fundamental mode
   ; name
   (set-major-mode! 'racket)
   (set-mode-name!  "Racket")
   ; keymap
-  (set-buffer-local!
-   b 'local-keymap
-   (λ (prefix key)
-     (match prefix
-       [(list)
-        (match key
-          ["return" (λ() (message "foo"))]
-          [_        #f])]
-       [_ #f]))))
+  (set-buffer-local! 'local-keymap (λ (prefix key)
+                                     (match prefix
+                                       [(list)
+                                        (match key
+                                          ["return" (λ() (message "foo"))]
+                                          [_        #f])]
+                                       [_ #f]))
+                     b))
