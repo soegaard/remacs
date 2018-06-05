@@ -3,6 +3,7 @@
 
 (require racket/format racket/list racket/match racket/string
          "buffer.rkt"
+         "buffer-locals.rkt"
          "colors.rkt"
          "completion.rkt"
          "commands.rkt"
@@ -33,6 +34,7 @@
   (if (null? xs) xs
       (reverse (rest (reverse xs)))))
 
+(define (local sym) (ref-buffer-local sym))
 
 (define global-keymap
   (λ (prefix key)
@@ -177,11 +179,11 @@
          ["M-b"           (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]
          ["M-i"           (λ () (buffer-insert-property! (current-buffer) (property 'italics)))]
          ["M-f1"          (λ () (buffer-insert-property! 
-                                 (current-buffer) (property yellow) (property text-color)))]
+                                 (current-buffer) (property yellow) (property (local 'text-color))))]
          ["M-f2"          (λ () (buffer-insert-property! 
-                                 (current-buffer) (property orange) (property text-color)))]
+                                 (current-buffer) (property orange) (property (local 'text-color))))]
          ["M-f3"          (λ () (buffer-insert-property! 
-                                 (current-buffer) (property blue)   (property text-color)))]
+                                 (current-buffer) (property blue)   (property (local 'text-color))))]
          ["f1"            test-buffer-output]
          ; ["M-d"           (λ () (buffer-display (current-buffer)))]
          ["M-d"           kill-word]

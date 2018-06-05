@@ -300,14 +300,15 @@
     (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
     (when b
       (define active? (send (window-canvas w) has-focus?))
-      (when active?
+      (define cached-info (hash-ref cached-screen-lines-ht b #f))
+      (when (and active? cached-info)
         (define on? (current-show-points?))
         (for ([p (buffer-points b)])
           ; (define-values (r c) (mark-row+column p))
           (when #t #;(<= start-row r end-row)
             (define n (mark-position p))
             (set! debug-buffer b)
-            (define positions+screen-lines (hash-ref cached-screen-lines-ht b))
+            (define positions+screen-lines cached-info)
             (define screen-lines (append* (map second positions+screen-lines)))
             (define sl  (for/first ([sl (in-list screen-lines)]
                                     #:when (and (<=   (screen-line-start-position sl) n)
@@ -488,6 +489,11 @@
     ;; Evaluation Menu
     (define        evm (new menu% (label "Evaluation") (parent mb)))
     (new-menu-item evm "Evaluate Buffer" #f #f (λ (_ e) (eval-buffer)))
+    ;; Mode Menu
+    (define        mm (new menu% (label "Modes") (parent mb)))
+    (new-menu-item mm "Fundamental" #f #f (λ (_ e) (fundamental-mode)))
+    (new-menu-item mm "Racket"      #f #f (λ (_ e) (racket-mode)))
+    (new-menu-item mm "Text"        #f #f (λ (_ e) (text-mode)))
     ;; Help Menu
     (new menu% (label "Help") (parent mb))) 
   (create-menubar)
