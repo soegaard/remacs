@@ -49,7 +49,7 @@
 (define-interactive (beginning-of-line)   (buffer-move-point-to-beginning-of-line! (current-buffer)))
 (define-interactive (end-of-line)         (buffer-move-point-to-end-of-line!       (current-buffer)))
 
-(define-interactive (move-to-column n)    (buffer-move-to-column!  (current-buffer) n)) ; n=numprefix 
+(define-interactive (move-to-column n)    (buffer-move-to-column! (current-buffer) n)) ; n=numprefix 
 
 (define-interactive (backward-char)
   (cond [(region-mark) => mark-deactivate!])
@@ -57,10 +57,6 @@
 (define-interactive (forward-char [b (current-buffer)])
   (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point! b +1))
-
-(define (display-point-line) ; for debug
-  (define point (buffer-point (current-buffer)))
-  (writeln (line->string (mark-line point))))
 
 (define-interactive (previous-line)
   (display-point-line)
@@ -74,23 +70,32 @@
   (if (mark-on-last-line? (buffer-point b))
       (buffer-move-point-to-end-of-line! b)
       (buffer-move-point-down! b)))
+
+(define (display-point-line) ; for debug
+  (define point (buffer-point (current-buffer)))
+  (writeln (line->string (mark-line point))))
+
 (define-interactive (next-line)
   ; this moves point down a screen line 
-  (cond [(region-mark) => mark-deactivate!])
-  (display-point-line)
-  (define n      (local 'screen-line-length))
-  (define b      (current-buffer))
-  (define point  (buffer-point b))  
-  ; (define-values (row col) (mark-row+column point))
-  (define l      (mark-line point))
-  ;(displayln point)
-  ; (define start-screen-row (text-line->screen-row ...)
-  ;(define-values (r c) (screen-coordinates->text-coordinates
-  ;                      start-row screen-row screen-column window b)
-  
-  (if (mark-on-last-line? (buffer-point b))
-      (buffer-move-point-to-end-of-line! b)
-      (buffer-move-point-down! b)))
+  (cond [(region-mark) => mark-deactivate!])  
+  (define point  (get-point))
+  (cond
+    [(mark-on-last-line? point)  (end-of-line)]
+    [else (define n        (local 'screen-line-length))
+          (define len      (line-length (mark-line point)))
+          (define-values   (row col) (mark-row+column point))
+          
+          (define whole    (quotient  len n))   ; number of full screen lines
+          (cond       
+            [(>= col (* whole n)) ; we need to move to the next text line
+             (beginning-of-line)
+             (forward-line)        
+             (move-to-column (min (remainder col n) (line-length (mark-line point))))]
+            [(<= (+ col n) len)   ; there is room to move an entire screen line (same text line)
+             (move-to-column (+ col n))]
+            [else          ; there is not room to move an entire line, so go to end of this text line
+             (move-to-column (line-length (mark-line point)))])]))
+
 (define-interactive (backward-word)
   (cond [(region-mark) => mark-deactivate!])
   (buffer-backward-word!   (current-buffer)))

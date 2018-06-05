@@ -200,6 +200,7 @@
          ['next           page-down] 
          ['prior          page-up]
          ["C-space"       command-set-mark]
+         [#\l             (λ () (buffer-move-to-column! (current-buffer) 3))]
          ; place self inserting characters after #\return and friends
          ["space"         (self-insert-command #\space)]
          [(? char? k)     (self-insert-command k)]

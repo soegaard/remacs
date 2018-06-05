@@ -132,13 +132,14 @@
   (max minimum (min x maximum)))
 
 ; mark-move-to-column! : mark integer -> void
-;   move mark to column n (stay at line)
+;   move mark to column n (stay at text line)
 (define (mark-move-to-column! m n)
+  (displayln (list 'mark-move-to-column! n))
   (define-values (r c) (mark-row+column m))
+  (define len (line-length (mark-line m)))
   (unless (= n c)
-    (let ([n (clamp 0 n c)]) ; stay on same line
-      (mark-move! m (- n c)))))
-
+    (let ([n (clamp 0 n (- len 1))]) ; stay on same line
+      (set-mark-position! m (+ (mark-position m) (- n c))))))
 
 ; mark-on-last-line? : mark -> boolean
 ;    is m on the last line of its buffer?
@@ -236,7 +237,7 @@
                (move-one!))]))
 
 ; mark-move-down! : mark -> void
-;  move mark down one text line
+;  move mark down one text line, stay at same column
 (define (mark-move-down! m [n 1])
   (define (move-one!)
     (define p (mark-position m))
