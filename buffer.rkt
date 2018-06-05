@@ -459,6 +459,9 @@
 (define (buffer-move-point-to-end-of-buffer b)
   (mark-move-end-of-buffer! (buffer-point b)))
 
+(define (buffer-move-point-to-beginning-of-buffer b)
+  (mark-move-beginning-of-buffer! (buffer-point b)))
+
 (define (buffer-set-mark-to-point [b (current-buffer)])
   ; make new mark at current point and return it
   (define p (buffer-point b))

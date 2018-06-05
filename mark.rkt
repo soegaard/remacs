@@ -79,10 +79,10 @@
     (set-linked-line-marks! link (set-remove (linked-line-marks link) m))
     ; insert mark in new line
     (define new-link (dlist-move (first-dcons link) r))
-    ; (displayln new-link)
-    (set-linked-line-marks! new-link (set-add (linked-line-marks new-link) m))
     ; the mark must point to the new line
-    (set-mark-link! m new-link)))
+    (set-mark-link! m new-link)
+    ; (displayln new-link)
+    (set-linked-line-marks! new-link (set-add (linked-line-marks new-link) m))))
 
 ; mark-adjust-insertion-after! : mark integer natural -> void
 ;   adjust the position of the mark - an amount of a characters were inserted at position p

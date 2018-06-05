@@ -186,10 +186,10 @@
 (define-interactive (save-buffer)         (save-buffer!    (current-buffer)) (refresh-frame))
 (define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
 (define-interactive (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
-(define-interactive (beginning-of-buffer [b (current-buffer)]) (buffer-move-point-to-position! b 0))
+(define-interactive (beginning-of-buffer [b (current-buffer)])
+  (buffer-move-point-to-beginning-of-buffer b))
 (define-interactive (end-of-buffer       [b (current-buffer)])
-  (buffer-move-point-to-end-of-buffer b)
-  #;(buffer-move-point-to-position! b (- (buffer-length b) 1)))
+  (buffer-move-point-to-end-of-buffer b))
 (define-interactive (end-of-buffer/extend-region)
   (prepare-extend-region)
   (end-of-buffer (current-buffer)))
