@@ -34,8 +34,6 @@
   (if (null? xs) xs
       (reverse (rest (reverse xs)))))
 
-(define (local sym) (ref-buffer-local sym))
-
 (define global-keymap
   (λ (prefix key)
     ;(write (list prefix key)) (newline)    

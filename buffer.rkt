@@ -393,14 +393,12 @@
 ; buffer-move-point-to-beginning-of-line! : buffer -> void
 ;   move the point to the beginning of the line
 (define (buffer-move-point-to-beginning-of-line! b)
-  (define m (buffer-point b))
-  (mark-move-beginning-of-line! m))
+  (mark-move-beginning-of-line! (buffer-point b)))
 
 ; buffer-move-point-to-end-of-line! : buffer -> void
 ;   move the point to the end of the line
 (define (buffer-move-point-to-end-of-line! b)
-  (define m (buffer-point b))
-  (mark-move-end-of-line! m))
+  (mark-move-end-of-line! (buffer-point b)))
 
 
 ; buffer-break-line! : buffer -> void
@@ -456,8 +454,10 @@
      (buffer-insert-property-at-point! b p)]))
 
 (define (buffer-move-point-to-position! b n)
-  (define m (buffer-point b))
-  (mark-move-to-position! m n))
+  (mark-move-to-position! (buffer-point b) n))
+
+(define (buffer-move-point-to-end-of-buffer b)
+  (mark-move-end-of-buffer! (buffer-point b)))
 
 (define (buffer-set-mark-to-point [b (current-buffer)])
   ; make new mark at current point and return it

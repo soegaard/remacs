@@ -473,3 +473,4 @@
                    ; This is typically due to a very short text being displayed.
                    ; Let's return the row and column of the end of the buffer.
                    (mark-row+column (window-end-mark window))])]))
+

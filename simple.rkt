@@ -28,6 +28,7 @@
          "deletion.rkt"
          "frame.rkt"
          "killing.rkt"
+         "line.rkt"
          "mark.rkt"
          "message.rkt"
          "mode.rkt"
@@ -40,6 +41,7 @@
          "string-utils.rkt"
          "text.rkt"
          "window.rkt")
+
 ;;;
 ;;; MOVEMENT
 ;;;
@@ -55,8 +57,14 @@
 (define-interactive (forward-char [b (current-buffer)])
   (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point! b +1))
-(define-interactive (previous-line)       
-  (cond [(region-mark) => mark-deactivate!])
+
+(define (display-point-line) ; for debug
+  (define point (buffer-point (current-buffer)))
+  (writeln (line->string (mark-line point))))
+
+(define-interactive (previous-line)
+  (display-point-line)
+  (cond [(region-mark) => mark-deactivate!])  
   (buffer-move-point-up!   (current-buffer)))
 
 (define-interactive (forward-line)
@@ -67,10 +75,20 @@
       (buffer-move-point-to-end-of-line! b)
       (buffer-move-point-down! b)))
 (define-interactive (next-line)
-  ; this moves a screen line 
+  ; this moves point down a screen line 
   (cond [(region-mark) => mark-deactivate!])
-  (define b (current-buffer))
-  (if (mark-on-last-line? (buffer-point b))      
+  (display-point-line)
+  (define n      (local 'screen-line-length))
+  (define b      (current-buffer))
+  (define point  (buffer-point b))  
+  ; (define-values (row col) (mark-row+column point))
+  (define l      (mark-line point))
+  ;(displayln point)
+  ; (define start-screen-row (text-line->screen-row ...)
+  ;(define-values (r c) (screen-coordinates->text-coordinates
+  ;                      start-row screen-row screen-column window b)
+  
+  (if (mark-on-last-line? (buffer-point b))
       (buffer-move-point-to-end-of-line! b)
       (buffer-move-point-down! b)))
 (define-interactive (backward-word)
@@ -170,7 +188,8 @@
 (define-interactive (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
 (define-interactive (beginning-of-buffer [b (current-buffer)]) (buffer-move-point-to-position! b 0))
 (define-interactive (end-of-buffer       [b (current-buffer)])
-  (buffer-move-point-to-position! b (- (buffer-length b) 1)))
+  (buffer-move-point-to-end-of-buffer b)
+  #;(buffer-move-point-to-position! b (- (buffer-length b) 1)))
 (define-interactive (end-of-buffer/extend-region)
   (prepare-extend-region)
   (end-of-buffer (current-buffer)))
@@ -311,7 +330,7 @@
   (define p (make-output-buffer b))
   (set-window-buffer! (current-window) b)
   (parameterize ([current-buffer      b]
-                 [current-output-port p])                  
+                 [current-output-port p])
     (thread
      (λ ()
        (let loop ([n 0])
@@ -483,6 +502,7 @@
   (set-major-mode! 'racket)
   (set-mode-name!  "Racket")
   ; keymap
+  ;   Demonstrates how to override a keymap
   (set-buffer-local! 'local-keymap (λ (prefix key)
                                      (match prefix
                                        [(list)
@@ -491,3 +511,5 @@
                                           [_        #f])]
                                        [_ #f]))
                      b))
+
+

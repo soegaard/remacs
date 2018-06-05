@@ -12,7 +12,8 @@
 ; Referencing an unbound variable will return the default value instead (see default.rkt).
 
 (provide set-buffer-local!
-         ref-buffer-local)
+         ref-buffer-local
+         local)
 
 (require (for-syntax racket/base syntax/parse)
          racket/format
@@ -48,6 +49,7 @@
   (define ns (buffer-locals b))
   (namespace-variable-value sym #t on-unbound ns))
 
+(define local ref-buffer-local)
 
 ;;; Variable Assigments
 

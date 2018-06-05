@@ -184,10 +184,26 @@
   (text-length (buffer-text b)))
 
 (define (mark-move-end-of-buffer! m)
+  ; remove mark from current line
+  (define d (mark-link m))
+  (remove-mark-from-linked-line! m d)
+  ; add mark to last line
+  (define d+ (last-dcons d))
+  (add-mark-to-linked-line! m d+)
+  (set-mark-link! m d+)
+  ; set the position of the end 
   (define b (mark-buffer m))
-  (set-mark-position! m (position-of-end b)))
+  (set-mark-position! m (- (position-of-end b) 1)))
 
 (define (mark-move-beginning-of-buffer! m)
+  ; remove mark from current line
+  (define d (mark-link m))
+  (remove-mark-from-linked-line! m d)
+  ; add mark to first line
+  (define d- (first-dcons d))
+  (add-mark-to-linked-line! m d-)
+  (set-mark-link! m d-)
+  ; set the position of the start
   (set-mark-position! m 0))
 
 
@@ -210,6 +226,7 @@
       (define new-pos (- p col (line-length l) (- new-col)))
       (set-mark-position! m new-pos)
       (set-linked-line-marks! link (set-add (linked-line-marks link) m))
+      (set-mark-link! m link)
       (define old-link (dlist-move link 1))
       (unless (dempty? old-link) ; xxx
         (set-linked-line-marks! old-link (set-remove (linked-line-marks link) m)))))
@@ -219,7 +236,7 @@
                (move-one!))]))
 
 ; mark-move-down! : mark -> void
-;  move mark down one line
+;  move mark down one text line
 (define (mark-move-down! m [n 1])
   (define (move-one!)
     (define p (mark-position m))
@@ -235,7 +252,8 @@
         (define new-pos (+ p (- (line-length l1) col) new-col))
         (set-mark-position! m new-pos)
         (define d+ (dlist-move d 1))
-        (set-linked-line-marks! d+ (set-add (linked-line-marks d+) m)))))
+        (set-linked-line-marks! d+ (set-add (linked-line-marks d+) m))
+        (set-mark-link! m d+))))
   (cond
     [(< n 0) (mark-move-up! m (- n))]
     [else    (for ([i (in-range n)])
@@ -292,15 +310,24 @@
      ; j is now the index of the first word separator
      (mark-move! m (if j (- j col) col))]))
 
+(define (remove-mark-from-linked-line! m link)
+  (define l link)
+  (set-linked-line-marks! l (set-remove (linked-line-marks l) m)))
+
+(define (add-mark-to-linked-line! m link)
+  (define d link)
+  (set-linked-line-marks! d (set-add (linked-line-marks d) m)))
+
 (define (mark-move-to-position! m n)
   ; remove mark from its current line
   (define l (mark-link m))
-  (set-linked-line-marks! l (set-remove (linked-line-marks l) m))
+  (remove-mark-from-linked-line! m l)  
   ; find the new line
   (define-values (row col) (mark-row+column m))
   (define d (dlist-move (text-lines (buffer-text (mark-buffer m))) row))
   ; add mark to the new line
-  (set-linked-line-marks! d (set-add (linked-line-marks d) m))
+  (add-mark-to-linked-line! m d)  
+  (set-mark-link! m d)
   ; store the new position
   (set-mark-position! m n))
 
@@ -311,20 +338,21 @@
   (define nt (text-num-lines t))
   ; remove mark from its current line
   (define l (mark-link m))
-  (set-linked-line-marks! l (set-remove (linked-line-marks l) m))
+  (remove-mark-from-linked-line! m l)
   ; find the new position
   (define n (row+column->position t r c))
   (define end? (>= r nt))
   (define row (if end? (- nt 1) r))
   (define d (dlist-move (text-lines (buffer-text (mark-buffer m))) row))
   ; add mark to the new line
-  (set-linked-line-marks! d (set-add (linked-line-marks d) m))
+  (add-mark-to-linked-line! m d)  
+  (set-mark-link! m d)
   ; store the new position
   (set-mark-position! m (if end? (- n 1) n)))
 
 
 (define (mark-move-to-beginning-of-paragraph! m)
-  ;; TODO : improve efficiency (i.e. avoid vall to mark-move-up!)
+  ;; TODO : improve efficiency (i.e. avoid call to mark-move-up!)
   ;; paragraphs are separated by one or more blank lines
   (mark-move-beginning-of-line! m)
   (let loop ([l (mark-link m)])
@@ -333,3 +361,7 @@
       [(line-blank? (dfirst l)) (mark-move-down! m)]
       [else                     (mark-move-up! m)
                                 (loop (mark-link m))]))) ; TODO does up and down update the link ?!!>?
+
+(define (mark-line m)
+  (define l (mark-link m))
+  (dfirst l))
