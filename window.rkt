@@ -448,6 +448,8 @@
          (list pos i s))]))
   (append* (map linearize1 info)))
 
+(define (screen-line-length) (ref-buffer-local 'screen-line-length))
+
 (define (screen-coordinates->text-coordinates
          start-row screen-row screen-column window [b (current-buffer)])
   ; start-row = row of first text line on screen

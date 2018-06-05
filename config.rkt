@@ -23,6 +23,8 @@
 ;;;
 
 ;;; Screen Line Length
+; Lines longer than  screen-line-length  are wrapped into multiple screen lines.
+(define screen-line-length  80)
 
 
 ;;; Wrapped Lines

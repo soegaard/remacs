@@ -25,7 +25,6 @@
          current-next-screen-context-lines
          ;;; Globals
          cached-screen-lines-ht
-         screen-line-length
          )
 
 (require (for-syntax racket/base syntax/parse))
@@ -75,7 +74,6 @@
 (define current-render-window        (make-parameter #f))
 
 (define current-next-screen-context-lines (make-parameter 2)) ; TODO use a buffer local?
-(define screen-line-length          (make-parameter 80))
 
 ;;;
 ;;;

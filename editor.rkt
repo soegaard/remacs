@@ -102,6 +102,7 @@
 ; The screen row is the screen row number.
 ; The contents field holds the actual strings and properties to be displayed.
 
+(define (screen-line-length) (ref-buffer-local 'screen-line-length))
 
 (define (render-buffer w)
   (define (marks-between marks from to)
@@ -113,8 +114,7 @@
     (define line      l)
     (define start-pos p)
     (define end-pos   (+ p (line-length l)))
-    (define row       r)
-    
+    (define row       r)    
     (define len (screen-line-length))
     (define strings (line-strings l))
     (define n       (length strings))
