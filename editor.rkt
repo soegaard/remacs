@@ -183,7 +183,8 @@
         ;; Highlighting for region between mark and point
         (define text-background-color (send dc get-text-background))
         (define (set-text-background-color highlight?)
-          (define background-color (if highlight? region-highlighted-color text-background-color))
+          (define background-color
+            (if highlight? (local 'region-highlighted-color) text-background-color))
           (send dc set-text-background background-color))
         ;; Placement of region
         (define-values (reg-begin reg-end)
@@ -294,7 +295,7 @@
     (for ([i (quotient now 100)])
       (current-point-color (cdr colors)))
     ;(color-fuel (remainder now 100))
-    (define points-off-pen (new pen% [color background-color]))  
+    (define points-off-pen (new pen% [color (local 'background-color)]))  
     ; get point and mark height
     (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
     (when b
@@ -337,12 +338,12 @@
   (use-default-font-settings)
   (send dc set-font (default-fixed-font))
   (send dc set-text-mode 'solid) ; solid -> use text background color
-  (send dc set-background background-color)
+  (send dc set-background (local 'background-color))
   (unless (current-render-points-only?)
     (send dc clear))
   
-  (send dc set-text-background background-color)
-  (send dc set-text-foreground text-color)
+  (send dc set-text-background (local 'background-color))
+  (send dc set-text-foreground (local 'text-color))
   
   ;; render buffer
   (define-values (xmin xmax ymin ymax) (canvas-dimensions c))

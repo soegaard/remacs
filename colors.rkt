@@ -36,10 +36,6 @@
 (define cyan    (hex->color #x2aa198)) ; cyan       accent color
 (define green   (hex->color #x859900)) ; green      accent color
 
-(define background-color         base03)
-(define region-highlighted-color base00)
-(define text-color               base1)
-(define border-color             base00)
 
 (define border-pen    
   (new pen% [color base00] [width 1] [style 'solid] [cap 'butt] [join 'miter]))

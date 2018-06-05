@@ -8,7 +8,8 @@
 
 (provide (all-defined-out))
 
-(require "parameters.rkt")
+(require "parameters.rkt"
+         "colors.rkt")
 
 ;;;
 ;;; MODES
@@ -25,6 +26,12 @@
 ;;; Screen Line Length
 ; Lines longer than  screen-line-length  are wrapped into multiple screen lines.
 (define screen-line-length  80)
+
+;;; Colors
+(define background-color         base03)
+(define region-highlighted-color base00)
+(define text-color               base1)
+(define border-color             base00)
 
 
 ;;; Wrapped Lines
