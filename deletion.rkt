@@ -6,10 +6,10 @@
 ;;; DELETION
 ;;;
 
-(require "parameters.rkt"
+(require "buffer.rkt"
          "mark.rkt"
+         "parameters.rkt"
          "point.rkt"
-         "buffer.rkt"
          "region.rkt"
          "representation.rkt")
 
@@ -41,7 +41,7 @@
   (define point (get-point b))
   (when (use-region? b)
     (buffer-dirty! b)
-    (region-delete-between! mark point)
+    (region-delete-between! mark point b)
     (mark-deactivate! mark)))
 
 ; Note: Emacs has delete-active-region, delete-and-extract-region, and, delete-region
