@@ -127,12 +127,10 @@
      (beep "Beginning of buffer")]
     [(= col 0) 
      ; we need to append this line to the previous
-     (define p (dcons-p d))
+     (define p  (dcons-p d))
      (define pl (dfirst p))
      (set-dcons-a! p (line-append pl l))
      (dcons-remove! d)
      (set-text-length! t (- n 1))]
     [else      ; 
      (error 'todo)]))
-
-

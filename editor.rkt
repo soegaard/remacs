@@ -495,7 +495,8 @@
     (new-menu-item mm "Racket"      #f #f (λ (_ e) (racket-mode)))
     (new-menu-item mm "Text"        #f #f (λ (_ e) (text-mode)))
     ;; Help Menu
-    (new menu% (label "Help") (parent mb))) 
+    (define hm (new menu% (label "Help") (parent mb)))
+    (new-menu-item hm "Test"        #f #f (λ (_ e) (test))))
   (create-menubar)
   ;; PANEL
   ; The holds contains the shown window 

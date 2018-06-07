@@ -297,12 +297,12 @@
   (mark-move-to-column! (buffer-point b) n))
 
 ; buffer-backward-word! : buffer -> void
-;   move point forward until a word separator is found
+;   move point backward until a word separator is found
 (define (buffer-backward-word! b)
   (mark-backward-word! (buffer-point b)))
 
 ; buffer-forward-word! : buffer -> void
-;   move point to until it a delimiter is found
+;   move point forward until a word delimiter is found
 (define (buffer-forward-word! b)
   (mark-forward-word! (buffer-point b)))
 
@@ -407,8 +407,6 @@
   (define m (buffer-point b))
   (define-values (row col) (mark-row+column m))
   (text-break-line! (buffer-text b) row col)
-  
-  ; (displayln b)
   (mark-move! m 1)
   (buffer-dirty! b))
 

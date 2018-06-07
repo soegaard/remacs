@@ -118,7 +118,6 @@
              (move-to-column (+ (- prev-len (remainder prev-len n))
                                 (min screen-col (remainder prev-len n))))])]))
 
-
 (define-interactive (forward-word [n 1])
   (define (forward-word1) (buffer-forward-word! (current-buffer)))
   (cond [(region-mark) => mark-deactivate!])
@@ -136,8 +135,6 @@
     [(= n 0) (void)]
     [(< n 0) (forward-word (- n))]
     [else    (for ([_ n]) (backward-word1))]))
-
-
 
 (define-interactive (page-down [w (current-window)])
   (define point                (buffer-point (window-buffer w)))
@@ -513,8 +510,6 @@
   (backward-word/extend-region)
   (kill-region))
 
-(define-interactive (test) (set-mark 4) (goto-char 10))
-
 ;;;
 ;;; MODES
 ;;;
@@ -552,4 +547,10 @@
                                        [_ #f]))
                      b))
 
-
+(define-interactive (test)
+  (define b (current-buffer))
+  (mark-whole-buffer b)
+  (delete-region b)
+  (displayln (text->string (buffer-text b)))
+  (buffer-insert-string-before-point! b "x")
+  (displayln (text->string (buffer-text b))))

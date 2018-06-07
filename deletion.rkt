@@ -27,7 +27,7 @@
                        (set-buffer-marks! b (remove end (buffer-marks b) eq?)))
                      (with-saved-point
                          (begin                           
-                           (set-point! end)
+                           (set-point! end b)
                            (buffer-delete-backward-char! b n)))
                      (when end-is-a-mark?
                        (set-buffer-marks! b (cons end (buffer-marks b))))]

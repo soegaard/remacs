@@ -15,7 +15,8 @@
          "representation.rkt"
          "simple.rkt"
          "text.rkt"
-         "window.rkt")
+         "window.rkt"
+         "mark.rkt")
 
 ;;;
 ;;; KEYMAP
@@ -36,7 +37,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    ;(write (list prefix key)) (newline)    
+    (writeln (list 'prefix prefix 'key key))
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
