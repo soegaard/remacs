@@ -4,8 +4,8 @@
 (require racket/class racket/format racket/match)
 
 (define (key-event->key event)
-  #;(newline)
-  #;(begin
+  (newline)
+  (begin
       (write (list 'key-event->key
                    'key                (send event get-key-code)
                    'other-shift        (send event get-other-shift-key-code)
@@ -26,9 +26,11 @@
                    ; use the alt key as meta
                    [(macosx) (send event get-alt-down)]
                    [else     (send event get-meta-down)]))    ; mac: cmd, pc: alt, unix: meta
-  #;(displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta? 'cmd cmd? 'caps caps?))
+  (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta? 'cmd cmd? 'caps caps?))
   
   (define c      (send event get-key-code))
+  ; mapping caps lock to control, results in rcontrol instead of control (sigh)
+  (set! c        (if (eq? c 'rcontrol) 'control c))
   ; k = key without modifier
   (define k      (cond
                    [(and ctrl? alt?)  c]
@@ -44,7 +46,9 @@
       [alt-is-meta? k]
       [alt?         (~a "A-" k)]
       [else         k]))
-  (define (ctrl  k) (if ctrl?  (~a "C-" k) k))
+  (define (ctrl  k)
+    ; (displayln (list "k:" k))
+    (if ctrl?  (~a "C-" k) k))
   (define (cmd   k) 
     (cond
       [cmd-is-meta? k]
@@ -60,7 +64,8 @@
              [#\space     "space"]
              [_ k])])
     (cond 
-      [(eq? k 'control)      'control] ; ignore control + nothing
+      [(eq? k 'control)       'control]  ; ignore  control + nothing
+      [(eq? k 'rcontrol)      'rcontrol] ; ignore rcontrol + nothing
       [(and (symbol? c) meta? shift?) (~a "M-S-" k)]
       [(or ctrl? alt? meta? cmd?)     (alt (ctrl (cmd (meta (shift k)))))]
       [(and shift? (eq? k 'shift))    'shift]

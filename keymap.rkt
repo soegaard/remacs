@@ -37,7 +37,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    (writeln (list 'prefix prefix 'key key))
+    (writeln (list 'global-keymap: 'prefix prefix 'key key))
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f
@@ -47,52 +47,51 @@
     (match prefix
       [(list "M-x" more ...)
        (match key
-         ["ESC"       (message "")
-                      #f]
-         ["backspace" (define new (remove-last more))
-                      (message (string-append* `("M-x " ,@(map ~a new))))
-                      `(replace ,(cons "M-x" new))]
-         [#\tab       (cond
-                        [(equal? (last more) "C-g")
-                         (void)]
-                        [else          
-                         (define so-far (string-append* (map ~a more)))
-                         (define cs     (completions-lookup so-far))
-                         (writeln cs)
-                         (cond 
-                           [(empty? cs) (message (~a "M-x " so-far key))
-                                        'ignore]
-                           [else
-                            (define b (current-completion-buffer))
-                            (unless b 
-                              ;; no prev completions buffer => make a new
-                              (define bn "*completions*")
-                              (define nb (new-buffer (new-text) #f bn))
-                              (current-completion-buffer nb)
-                              (set! b nb) 
-                              ;; show it new window
-                              (split-window-right)   ; both windows show same buffer
-                              (define ws (frame-window-tree (current-frame)))
-                              (define w  (list-next ws (current-window) eq?))
-                              (define ob (window-buffer w))
-                              (set-window-buffer! w nb)
-                              (current-completion-window ob))
-                            ;; text in *completion* buffer
-                            (define t (completions->text so-far cs))
-                            ;; replace text in completions buffer
-                            (mark-whole-buffer b)
-                            (delete-region b)
-                            (buffer-insert-string-before-point! b (text->string t))
-                            ;; replace prefix with the longest unique completion
-                            (define pre (longest-common-prefix cs))
-                            (message (~a "M-x " pre))
-                            (list 'replace (cons "M-x" (string->list pre)))])])]
-         ["return"    (define cmd-name (string-append* (map ~a more)))
-                      (define cmd      (lookup-interactive-command cmd-name))
-                      (message "")
-                      cmd]
-         [_           (message (string-append* `("M-x " ,@(map ~a more) ,(~a key))))
-                      'prefix])]
+         [(or "ESC" "C-g")  (message "") 'clear-prefix]
+         ["backspace"       (define new (remove-last more))
+                            (message (string-append* `("M-x " ,@(map ~a new))))
+                            `(replace ,(cons "M-x" new))]
+         [#\tab             (cond
+                              [(equal? (last more) "C-g")
+                               (void)]
+                              [else          
+                               (define so-far (string-append* (map ~a more)))
+                               (define cs     (completions-lookup so-far))
+                               (writeln cs)
+                               (cond 
+                                 [(empty? cs) (message (~a "M-x " so-far key))
+                                              'ignore]
+                                 [else
+                                  (define b (current-completion-buffer))
+                                  (unless b 
+                                    ;; no prev completions buffer => make a new
+                                    (define bn "*completions*")
+                                    (define nb (new-buffer (new-text) #f bn))
+                                    (current-completion-buffer nb)
+                                    (set! b nb) 
+                                    ;; show it new window
+                                    (split-window-right)   ; both windows show same buffer
+                                    (define ws (frame-window-tree (current-frame)))
+                                    (define w  (list-next ws (current-window) eq?))
+                                    (define ob (window-buffer w))
+                                    (set-window-buffer! w nb)
+                                    (current-completion-window ob))
+                                  ;; text in *completion* buffer
+                                  (define t (completions->text so-far cs))
+                                  ;; replace text in completions buffer
+                                  (mark-whole-buffer b)
+                                  (delete-region b)
+                                  (buffer-insert-string-before-point! b (text->string t))
+                                  ;; replace prefix with the longest unique completion
+                                  (define pre (longest-common-prefix cs))
+                                  (message (~a "M-x " pre))
+                                  (list 'replace (cons "M-x" (string->list pre)))])])]
+         ["return"          (define cmd-name (string-append* (map ~a more)))
+                            (define cmd      (lookup-interactive-command cmd-name))
+                            (message "")
+                            cmd]
+         [_                 (message (string-append* `("M-x " ,@(map ~a more) ,(~a key))))
+                            'prefix])]
       [(list "C-u" (? digit-char? ds) ... x ...)
        (match key
          [(? digit-char?) 'prefix]

@@ -339,32 +339,38 @@
         (current-window w))
       ;; Key Events
       (define/override (on-char event)
+        (displayln "-- on-key-event --")
         (current-point-color point-colors) ; make points visible when keyboard is active
         ; TODO syntax  (with-temp-buffer body ...)
         (define key-code (send event get-key-code))
         (unless (equal? key-code 'release)
           (define key (key-event->key event))
           ; (send msg set-label (~a "key: " key))
-          (define local-keymap (buffer-local-keymap (current-buffer)))
-          (define binding (or (and local-keymap (local-keymap prefix key))
-                              ((current-global-keymap) prefix key)
-                              ; If A-<key> is unbound, then use the character as-is.
-                              ; This makes A-a insert å.
-                              (and (char? key-code)
-                                   ((current-global-keymap) prefix key-code))))
-          (match binding
-            [(? procedure? thunk)  (clear-prefix!) (thunk) (current-prefix-argument #f)]
-            [(list 'replace pre)   (set! prefix pre)]
-            ['prefix               (add-prefix! key)]
-            ['ignore               (void)]
-            ['exit                ; (save-buffer! (current-buffer))
-             ; TODO : Ask how to handle unsaved buffers
-             (send (frame-frame% f) on-exit)]
-            ['release             (void)]
-            [_                    (unless (equal? (send event get-key-code) 'release)
-                                    (when (and (empty? prefix) key)
-                                      (message (~a "<" key "> undefined")))
-                                    (clear-prefix!))]))
+          (unless (member key '(control rcontrol))
+            (define local-keymap (buffer-local-keymap (current-buffer)))
+            (define binding      (or (and local-keymap (local-keymap prefix key))
+                                     ((current-global-keymap) prefix key)
+                                     ; If A-<key> is unbound, then use the character as-is.
+                                     ; This makes A-a insert å.
+                                     (and (char? key-code)
+                                          ; make sure C-[a-z] doesn't produce a character if
+                                          ; the key combination is unbound
+                                          (not (regexp-match "([a-z]|[0-9])" (string key-code)))
+                                          ((current-global-keymap) prefix key-code))))
+            (match binding
+              [(? procedure? thunk)  (clear-prefix!) (thunk) (current-prefix-argument #f)]
+              [(list 'replace pre)   (set! prefix pre)]
+              ['prefix               (add-prefix! key)]
+              ['clear-prefix         (clear-prefix!)]
+              ['ignore               (void)]
+              ['exit                ; (save-buffer! (current-buffer))
+               ; TODO : Ask how to handle unsaved buffers
+               (send (frame-frame% f) on-exit)]
+              ['release             (void)]
+              [_                    (unless (equal? (send event get-key-code) 'release)
+                                      (when (and (empty? prefix) key)
+                                        (message (~a "<" key "> undefined")))
+                                      (clear-prefix!))])))
         ; todo: don't trigger repaint on every key stroke ...
         (send canvas on-paint))
       ;; Rendering
