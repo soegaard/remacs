@@ -37,7 +37,7 @@
 
 (define global-keymap
   (λ (prefix key)
-    (writeln (list 'global-keymap: 'prefix prefix 'key key))
+    ; (writeln (list 'global-keymap: 'prefix prefix 'key key))
     ; if prefix + key event is bound, return thunk
     ; if prefix + key is a prefix return 'prefix
     ; if unbound and not prefix, return #f

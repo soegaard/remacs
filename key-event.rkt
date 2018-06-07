@@ -4,8 +4,8 @@
 (require racket/class racket/format racket/match)
 
 (define (key-event->key event)
-  (newline)
-  (begin
+  #;(newline)
+  #;(begin
       (write (list 'key-event->key
                    'key                (send event get-key-code)
                    'other-shift        (send event get-other-shift-key-code)
@@ -26,7 +26,7 @@
                    ; use the alt key as meta
                    [(macosx) (send event get-alt-down)]
                    [else     (send event get-meta-down)]))    ; mac: cmd, pc: alt, unix: meta
-  (displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta? 'cmd cmd? 'caps caps?))
+  #;(displayln (list 'shift shift? 'alt alt? 'ctrl ctrl? 'meta meta? 'cmd cmd? 'caps caps?))
   
   (define c      (send event get-key-code))
   ; mapping caps lock to control, results in rcontrol instead of control (sigh)
