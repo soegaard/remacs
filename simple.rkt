@@ -119,13 +119,24 @@
                                 (min screen-col (remainder prev-len n))))])]))
 
 
+(define-interactive (forward-word [n 1])
+  (define (forward-word1) (buffer-forward-word! (current-buffer)))
+  (cond [(region-mark) => mark-deactivate!])
+  (cond
+    [(= n 1) (forward-word1)]
+    [(= n 0) (void)]
+    [(< n 0) (backward-word (- n))]
+    [else    (for ([_ n]) (forward-word1))]))
 
-(define-interactive (backward-word)
+(define-interactive (backward-word [n 1])
+  (define (backward-word1) (buffer-backward-word! (current-buffer)))
   (cond [(region-mark) => mark-deactivate!])
-  (buffer-backward-word!   (current-buffer)))
-(define-interactive (forward-word)
-  (cond [(region-mark) => mark-deactivate!])
-  (buffer-forward-word!   (current-buffer)))
+  (cond
+    [(= n 1) (backward-word1)]
+    [(= n 0) (void)]
+    [(< n 0) (forward-word (- n))]
+    [else    (for ([_ n]) (backward-word1))]))
+
 
 
 (define-interactive (page-down [w (current-window)])
