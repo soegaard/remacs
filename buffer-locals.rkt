@@ -11,9 +11,10 @@
 
 ; Referencing an unbound variable will return the default value instead (see default.rkt).
 
-(provide set-buffer-local!
+(provide invoke-local
+         local
          ref-buffer-local
-         local)
+         set-buffer-local!)
 
 (require (for-syntax racket/base syntax/parse)
          racket/format
@@ -49,7 +50,6 @@
   (define ns (buffer-locals b))
   (namespace-variable-value sym #t on-unbound ns))
 
-(define local ref-buffer-local)
 
 ;;; Variable Assigments
 
@@ -59,3 +59,27 @@
   (define ns (buffer-locals b))
   (namespace-set-variable-value! sym v #f ns))
 
+; SYNTAX (invoke-lokal id expr ...)
+;        (invoke-lokal id expr ... #:buffer b)
+;   Lookup the buffer-local variable id in the buffer b (or (current-buffer)),
+;   then call it with arguments expr ... .
+(define-syntax (invoke-local stx)
+  (syntax-parse stx
+    [(_invoke-local id:id expr:expr ... #:buffer b)
+     (syntax/loc stx
+       (let ([f (ref-buffer-local 'id b #f)])
+         (cond
+           [(procedure? f) (f expr ...)]
+           [else           (raise-syntax-error
+                            'invoke-local "the buffer local is not bound to a procedure" #'id)])))]
+    [(_invoke-local id:id expr:expr ...)
+     (syntax/loc stx (invoke-local id expr ... #:buffer (current-buffer)))]
+    [_ (raise-syntax-error 'invoke-local "expected (invoke-local id expr ...)" stx)]))
+    
+
+
+(define-syntax (local stx)
+  (syntax-parse stx
+    [(_local id:id on-error) (syntax/loc stx (ref-buffer-local 'id on-error))]
+    [(_local id:id)          (syntax/loc stx (ref-buffer-local 'id))]
+    [_ (raise-syntax-error 'local "expected (local id) or (local id on-error)" stx)]))

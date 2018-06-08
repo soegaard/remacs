@@ -81,7 +81,7 @@
   ; Moves point one screen line down. Attempts to keep the column.
   (cond [(region-mark) => mark-deactivate!])  
   (define point  (get-point))
-  (define n        (local 'screen-line-length))
+  (define n        (local screen-line-length))
   (define len      (line-length (mark-line point)))
   (define-values   (_ col) (mark-row+column point))
   (define screen-col (remainder col n))
@@ -103,7 +103,7 @@
   (define point  (get-point))
   (cond
     [(mark-on-first-line? point)  (void)]
-    [else (define n              (local 'screen-line-length))
+    [else (define n              (local screen-line-length))
           (define len            (line-length (mark-line point)))
           (define-values (_ col) (mark-row+column point))
           (define screen-col     (remainder col n))
@@ -553,3 +553,36 @@
   (displayln (text->string (buffer-text b)))
   (buffer-insert-string-before-point! b "x")
   (displayln (text->string (buffer-text b))))
+
+
+;;;
+;;; INDENTATION
+;;;
+
+(define-interactive insert-space
+  (self-insert-command #\space))
+
+(define-interactive (insert-spaces [n 1])
+  (for ([i n]) (insert-space)))
+
+(define-interactive (insert-tab-as-spaces)
+  (define (next-greater-in-list y xs default) ; find first element in xs, greater than y
+    (define gs (filter (λ (x) (not (<= x y))) (sort xs <)))
+    (cond [(null? gs) default] [else (first gs)]))
+  (define (next-greater y m)  ; find first integer z greater than y such that m divides z
+    (if (zero? (remainder (+ y 1) m)) (+ y 1) (next-greater (+ y 1) m)))
+  (define w    (local tab-width))
+  (define tabs (local tab-stop-list))
+
+  (unless (and (integer? w) (<= 0 w))
+    (message "insert-tab-as-spaces: tab-width is not set to a positive integer, using 8 as tab-width")
+    (set! w 8))
+  (unless (or (eq? tabs #f) (and (list? tabs) (andmap integer? tabs)))
+    (message "insert-tab-as-spaces: tab-stop-list not #f or a list of natural numbers")
+    (set! tabs #f))
+
+  (define col               (mark-column (point)))
+  (define next-by-width     (next-greater col w))
+  (define next-tab-stop     (cond [tabs (next-greater-in-list col tabs next-by-width)]
+                                  [else next-by-width]))
+  (insert-spaces (- next-tab-stop col)))

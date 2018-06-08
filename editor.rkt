@@ -185,7 +185,7 @@
         (define text-background-color (send dc get-text-background))
         (define (set-text-background-color highlight?)
           (define background-color
-            (if highlight? (local 'region-highlighted-color) text-background-color))
+            (if highlight? (local region-highlighted-color) text-background-color))
           (send dc set-text-background background-color))
         ;; Placement of region
         (define-values (reg-begin reg-end)
@@ -211,7 +211,6 @@
           ; contents = screen line = list of (list position string/properties)
           (define xmax
             (for/fold ([x xmin]) ([p+s contents])
-              (writeln p+s)
               (match-define (list p s) p+s)              
               (when (and reg-begin (<= reg-begin p) (< p reg-end))  (set-text-background-color #t))
               (when (and reg-end   (<= reg-end   p))                (set-text-background-color #f))
@@ -297,7 +296,7 @@
     (for ([i (quotient now 100)])
       (current-point-color (cdr colors)))
     ;(color-fuel (remainder now 100))
-    (define points-off-pen (new pen% [color (local 'background-color)]))  
+    (define points-off-pen (new pen% [color (local background-color)]))  
     ; get point and mark height
     (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
     (when b
@@ -341,12 +340,12 @@
   (use-default-font-settings)
   (send dc set-font (default-fixed-font))
   (send dc set-text-mode 'solid) ; solid -> use text background color
-  (send dc set-background (local 'background-color))
+  (send dc set-background (local background-color))
   (unless (current-render-points-only?)
     (send dc clear))
   
-  (send dc set-text-background (local 'background-color))
-  (send dc set-text-foreground (local 'text-color))
+  (send dc set-text-background (local background-color))
+  (send dc set-text-foreground (local text-color))
   
   ;; render buffer
   (define-values (xmin xmax ymin ymax) (canvas-dimensions c))

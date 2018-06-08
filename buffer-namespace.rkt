@@ -56,7 +56,8 @@
     (namespace-require '"parameters.rkt")
 
     ; All configuration of defaults are in "config.rkt"
+    ; (dynamic-require "config.rkt" #f)
     (namespace-attach-module this-ns "config.rkt"    ns)
-    (namespace-require '"config.rkt")    
+    (namespace-require '"config.rkt")
     )
   ns)

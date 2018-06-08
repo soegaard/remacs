@@ -23,6 +23,8 @@
          buffer-point
          (struct-out mark)
          mark-row+column
+         mark-column
+         mark-row
          (struct-out mode)
          (struct-out window)
          (struct-out frame)
@@ -188,3 +190,11 @@
 (define (mark-row+column m)
   (position-row+column (buffer-text (mark-buffer m))
                        (mark-position m)))
+
+(define (mark-column m)
+  (define-values (_ c) (mark-row+column m))
+  c)
+
+(define (mark-row m)
+  (define-values (r _) (mark-row+column m))
+  r)

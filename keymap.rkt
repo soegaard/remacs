@@ -178,11 +178,11 @@
          ["M-b"           (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]
          ["M-i"           (λ () (buffer-insert-property! (current-buffer) (property 'italics)))]
          ["M-f1"          (λ () (buffer-insert-property! 
-                                 (current-buffer) (property yellow) (property (local 'text-color))))]
+                                 (current-buffer) (property yellow) (property (local text-color))))]
          ["M-f2"          (λ () (buffer-insert-property! 
-                                 (current-buffer) (property orange) (property (local 'text-color))))]
+                                 (current-buffer) (property orange) (property (local text-color))))]
          ["M-f3"          (λ () (buffer-insert-property! 
-                                 (current-buffer) (property blue)   (property (local 'text-color))))]
+                                 (current-buffer) (property blue)   (property (local text-color))))]
          ["f1"            test-buffer-output]
          ; ["M-d"           (λ () (buffer-display (current-buffer)))]
          ["M-d"           kill-word]
@@ -195,7 +195,7 @@
          [#\backspace     backward-delete-char]                                            ; backspace
          [#\rubout        (λ () (error 'todo))]                                            ; delete
          ; make tab insert 4 spaces
-         [#\tab           (λ() (define insert (self-insert-command #\space)) (for ([i 4]) (insert)))]
+         [#\tab           (local indent-for-tab)]
          ['home           (λ () (buffer-move-point-to-beginning-of-line! (current-buffer)))] ; fn+left
          ['end            (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
          ['next           page-down] 

@@ -5,7 +5,8 @@
 ;;; FRAMES
 ;;;
 
-(require racket/list racket/match
+(require racket/class racket/list racket/match
+         racket/gui/base
          "parameters.rkt"
          "render.rkt"
          "representation.rkt")
@@ -24,3 +25,4 @@
       [(vertical-split-window   f _ _ c p b s e u l)               (append (loop u) (loop l))]
       [(window frame panel borders canvas parent buffer start end) (list w)]))
   (flatten (loop (frame-windows f))))
+

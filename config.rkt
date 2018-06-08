@@ -8,8 +8,8 @@
 
 (provide (all-defined-out))
 
-(require "parameters.rkt"
-         "colors.rkt")
+(require "colors.rkt"
+         "parameters.rkt")
 
 ;;;
 ;;; MODES
@@ -18,6 +18,19 @@
 ; Set the initial mode to the fundamental mode.
 (define major-mode 'fundamental-mode)
 (define mode-name  "Fundamental")
+
+;;;
+;;; EDITING
+;;;
+
+;;; Indentation
+
+; Note! Tabs aren't supported in rendering yet...
+(define indent-tab-mode #f) ; #t = use tabs for indent, #f = use spaces
+(define indent-for-tab (dynamic-require "simple.rkt" 'insert-tab-as-spaces))
+(define tab-width       4)
+;(define tab-stop-list  #f)                                     ; every tab-width position
+(define tab-stop-list  (for/list ([i (in-range 7 200 8)]) i)) ; positions of tab stops
 
 ;;;
 ;;; RENDERING
