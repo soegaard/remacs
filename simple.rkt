@@ -375,7 +375,6 @@
          (sleep 1.)
          (loop (+ n 1)))))))
 
-
 ; (self-insert-command k) : -> void
 ;   insert character k and move point
 (define ((self-insert-command k))

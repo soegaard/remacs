@@ -5,7 +5,6 @@
 
 ; In order to start remacs, open this file in DrRacket and run it.
 
-;;; BUG  fix completion:  M-x fo <tab> c   leads to error
 ;;; TODO run fundamental-mode in upstart
 ;;; TODO cursor blinking stops when menu bar is active ?!
 ;;; TODO .remacs
@@ -137,8 +136,9 @@
             (define substrings      (map (λ (start end)
                                            (list start (substring s (- start p) (- end p))))
                                          start-positions end-positions))
+            (set! p (+ p sn))
             substrings]
-           [else (list p s)]))))
+           [else (list (list p s))]))))
     ; second, group strings in screen lines
     (let loop ([ps pieces] [start start-pos] [end start-pos]
                            [c 0] [i k] [l '()] [ls '()])
@@ -157,6 +157,7 @@
             (define n (string-length s))
             (loop ps start (+ end n) (+ c n) i (cons (list p s) l) ls)]
            [(cons (list p x) ps)
+            ; (displayln (list p x))
             (loop ps start    end       c    i (cons (list p x) l) ls)])])))
   (define (remove-trailing-newline s)
     (or (and (not (equal? s ""))
@@ -210,15 +211,16 @@
           ; contents = screen line = list of (list position string/properties)
           (define xmax
             (for/fold ([x xmin]) ([p+s contents])
-              (match-define (list p s) p+s)
+              (writeln p+s)
+              (match-define (list p s) p+s)              
               (when (and reg-begin (<= reg-begin p) (< p reg-end))  (set-text-background-color #t))
               (when (and reg-end   (<= reg-end   p))                (set-text-background-color #f))
               (match (second p+s)
-                [(? string?)           (draw-string (remove-trailing-newline s) x y)]
-                [(property 'bold)      (toggle-bold)    (send dc set-font (get-font))   x]
-                [(property 'italics)   (toggle-italics) (send dc set-font (get-font))   x]
-                [(property (? color? c))                (send dc set-text-foreground c) x]
-                [_ (displayln (~a "Warning: Got " s))                                   x])))
+                [(? string?)             (draw-string (remove-trailing-newline s) x y)]
+                [(property 'bold)        (toggle-bold)    (send dc set-font (get-font))   x]
+                [(property 'italics)     (toggle-italics) (send dc set-font (get-font))   x]
+                [(property (? color? c))                  (send dc set-text-foreground c) x]
+                [_ (displayln (~a "Warning: Got " s))                                     x])))
           (when wrapped-line-indicator?
             (draw-string wrapped-line-indicator xmax (- y 2)))
           (+ y (line-size)))
