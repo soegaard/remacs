@@ -641,7 +641,31 @@
 
 ; TODO M-=     (define (count-words-region) ...)
 
-;(define (what-cursor-position) ; C-x =
+(define (following-char)
+  ; Return character at point.
+  ; If point at end position, return #f.
+  (define p (mark-position (point)))
+  (define t (buffer-text (current-buffer)))
+  (cond [(>= p (- (text-length t) 1)) #f]
+        [else                        (define s (subtext->string t p (+ p 1)))
+                                     (if (not (zero? (string-length s)))
+                                         (string-ref s 0)
+                                         #f)]))
+
+(define-interactive (what-cursor-position) ; C-x =
+  (define pos   (mark-position (point)))
+  (define len   (max 1. (* 1. (buffer-length (current-buffer)))))
+  (define pct   (inexact->exact (floor (* (/ (+ pos 1.) len) 100))))
+  (define c     (following-char))
+  (cond
+    [c (define i     (char->integer c))
+       (define octal (number->string i 8))
+       (define hex   (number->string i 16))
+       (message (~a "Char: " c " "
+                    "(" i ", #o" octal ", #x" hex ") "
+                    "point=" (+ pos 1) " of " len " (" pct "%)"))]
+    [else
+     (message (~a "point=" (+ pos 1) " of " len " (EOB) "))]))
   
 
 
