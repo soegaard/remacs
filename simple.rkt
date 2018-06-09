@@ -639,6 +639,15 @@
   (message (cond [new  "Column-Number mode enabled"]
                  [else "Column-Number mode disabled"])))
 
+(define-interactive (hl-line-mode)
+  ; Toggle hl-line-mode?
+  (define new (not (local hl-line-mode?)))
+  (local! hl-line-mode? new)
+  (message (cond [new  "Highlight line mode enabled"]
+                 [else "Highlight line mode disabled"])))
+
+
+
 ; TODO M-=     (define (count-words-region) ...)
 
 (define (following-char)

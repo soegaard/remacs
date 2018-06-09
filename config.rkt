@@ -41,12 +41,13 @@
 (define screen-line-length  80)
 
 ;;; Line and Column Number Mode
-(define line-number-mode?         #t)
-(define column-number-mode?       #t)
+(define line-number-mode?         #t)    ; use line-number-mode to toggle
+(define column-number-mode?       #t)    ; use line-column-mode to toggle
 (define line-number-display-limit 10000) ; only display line number if buffer length is smaller
 
-
-
+; Highlight Line Containing Point
+(define hl-line-mode?             #t)      ; use hl-line-mode to toggle
+(define hl-line-mode-color        violet)
 ;;; Colors
 (define background-color         base03)
 (define region-highlighted-color base00)

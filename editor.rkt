@@ -181,11 +181,17 @@
     ;; Render
     (unless (current-render-points-only?)
       (when b
+        ;; Highlighting for line containing point
+        (define hl? (local hl-line-mode?))
+        (define hl-color (if hl? (local hl-line-mode-color) text-background-color))        
+        (define (set-highlight-line-color) (send dc set-text-background hl-color))
         ;; Highlighting for region between mark and point
         (define text-background-color (send dc get-text-background))
-        (define (set-text-background-color highlight?)
+        (define (set-text-background-color highlight-region? highlight-line?)
           (define background-color
-            (if highlight? (local region-highlighted-color) text-background-color))
+            (cond [highlight-region? (local region-highlighted-color)]
+                  [highlight-line?   hl-color]
+                  [else              text-background-color]))
           (send dc set-text-background background-color))
         ;; Placement of region
         (define-values (reg-begin reg-end)
@@ -201,19 +207,21 @@
         (define wrapped-line-indicator?          (ref-buffer-local 'wrapped-line-indicator? b #f))
         (define wrapped-line-indicator  (let ([s (ref-buffer-local 'wrapped-line-indicator  b "↵")])
                                           (or s (and (string? s) s) "↵")))
-        (define (render-screen-lines dc xmin y sls)
+        (define (render-screen-lines dc xmin y sls hl?)
           (let loop ([y y] [cs (map screen-line-contents sls)])
             (match cs
               [(list)       y]
-              [(list c)           (render-screen-line dc xmin y c #f)]
-              [(cons c cs)  (loop (render-screen-line dc xmin y c #t) cs)])))
-        (define (render-screen-line dc xmin y contents wrapped-line-indicator?)
+              [(list c)           (render-screen-line dc xmin y c #f hl?)]
+              [(cons c cs)  (loop (render-screen-line dc xmin y c #t hl?) cs)])))
+        (define (render-screen-line dc xmin y contents wrapped-line-indicator? highlight-line?)
+          (define hl? highlight-line?)
           ; contents = screen line = list of (list position string/properties)
           (define xmax
             (for/fold ([x xmin]) ([p+s contents])
-              (match-define (list p s) p+s)              
-              (when (and reg-begin (<= reg-begin p) (< p reg-end))  (set-text-background-color #t))
-              (when (and reg-end   (<= reg-end   p))                (set-text-background-color #f))
+              (match-define (list p s) p+s)
+              (set-text-background-color #f hl?)
+              (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t hl?))
+              (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f hl?))
               (match (second p+s)
                 [(? string?)             (draw-string (remove-trailing-newline s) x y)]
                 [(property 'bold)        (toggle-bold)    (send dc set-font (get-font))   x]
@@ -230,7 +238,8 @@
           (define (screen-line->start-position x)
             (match x [(list* (cons p _) more) p] [(list) #f]))
           (map screen-line->start-position xs))
-        
+
+        ; 
         (define-values (_ __ ___ all-screen-lines)
           ; render lines on screen
           (for/fold ([y ymin] [p 0] [n 0] [screen-line-positions '()]) ; n = screen line number
@@ -242,11 +251,12 @@
                (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f))
                (values y (+ p (line-length l)) 0 '())]
               [else
+               (define highlight-this-line? (= i row))
                (define region-positions
                  (append (if reg-begin (list reg-begin) '())
                          (if reg-end   (list reg-end)   '())))
                (define-values (sls new-n) (line->screen-lines b l i n p region-positions))
-               (define new-y (render-screen-lines dc xmin y sls))
+               (define new-y (render-screen-lines dc xmin y sls highlight-this-line?))
                (values new-y (+ p (line-length l)) new-n
                        (cons (list p sls)
                              screen-line-positions))])))
