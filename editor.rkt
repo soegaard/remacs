@@ -181,12 +181,12 @@
     ;; Render
     (unless (current-render-points-only?)
       (when b
+        (define text-background-color (send dc get-text-background))
         ;; Highlighting for line containing point
         (define hl? (local hl-line-mode?))
-        (define hl-color (if hl? (local hl-line-mode-color) text-background-color))        
+        (define hl-color (if hl? (local hl-line-mode-color) text-background-color))
         (define (set-highlight-line-color) (send dc set-text-background hl-color))
         ;; Highlighting for region between mark and point
-        (define text-background-color (send dc get-text-background))
         (define (set-text-background-color highlight-region? highlight-line?)
           (define background-color
             (cond [highlight-region? (local region-highlighted-color)]
