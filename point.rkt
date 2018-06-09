@@ -20,5 +20,5 @@
               [old-point (first points)]
               [new-point (copy-mark old-point)])
          (set-point! new-point b)
-         body ...
-         (set-point! old-point b)))]))
+         (begin0 (begin body ...)
+                 (set-point! old-point b))))]))

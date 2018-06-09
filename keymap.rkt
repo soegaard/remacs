@@ -114,6 +114,7 @@
          [#\s         save-some-buffers]
          [#\o         other-window]
          [#\=         what-cursor-position]
+         [#\.         set-fill-prefix]
          ["C-s"       save-buffer]
          ["C-x"       exchange-point-and-mark]
          ['right      next-buffer]
@@ -150,6 +151,7 @@
          ["C-S-backspace" kill-whole-line]
          ["C-p"           previous-line]
          ["C-n"           next-line]
+         ["C-o"           open-line]
          ["C-w"           kill-region]
          ; Cmd + something
          ["D-a"           mark-whole-buffer]   ; select all 

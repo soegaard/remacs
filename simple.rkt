@@ -617,6 +617,20 @@
   (insert-spaces (- next-tab-stop col)))
 
 ;;;
+;;; 7.7 Blank Lines
+;;;
+
+(define-interactive (open-line) ; C-o
+  ; Insert newline after point.
+  (break-line)
+  (backward-char)  
+  (when (local fill-prefix)
+    (define pos (position))
+    (define beg (with-saved-point (beginning-of-line) (position)))  
+    (when (= pos beg)
+      (insert (local fill-prefix)))))
+
+;;;
 ;;; 7.9 Cursor Position Information
 ;;;
 
@@ -676,7 +690,29 @@
     [else
      (message (~a "point=" (+ pos 1) " of " len " (EOB) "))]))
   
+;;;
+;;; 25.6 Filling Text
+;;;
 
+; When a fill prefix is set, then the fill fill commands will
+; remove the prefix from each line before filling, and insert it after filling.
 
+(define (position [m (point)])
+  (mark-position m))
 
-  
+(define-interactive (move-to-left-margin)
+  (move-to-column (local left-margin)))
+
+(define-interactive (set-fill-prefix)
+  ; make from point to beginning of line
+  (define b (current-buffer))
+  ; (with-saved-point (beginning-of-line) (set-mark))
+  (define pos             (position))
+  (define left-margin-pos (with-saved-point (move-to-left-margin) (position)))
+  (cond
+    [(> pos left-margin-pos) (define s (buffer-substring b left-margin-pos pos))
+                             (local! fill-prefix (if (equal? s "") #f s))]
+    [else                    (local! fill-prefix #f)])
+  (if (local fill-prefix)
+      (message (~a "fill-prefix: " (local fill-prefix)))
+      (message     "fill-prefix canceled")))

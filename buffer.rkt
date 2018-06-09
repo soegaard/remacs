@@ -509,6 +509,8 @@
     (define p (buffer-point b))
     ...)
 
+(define (buffer-substring b from to)
+  (subtext->string (buffer-text b) from to))
 
 ;;;
 ;;; POINT AND MARK

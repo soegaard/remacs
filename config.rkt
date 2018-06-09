@@ -32,6 +32,9 @@
 (define tab-stop-list  #f)                                     ; every tab-width position
 ;(define tab-stop-list  (for/list ([i (in-range 7 200 8)]) i)) ; positions of tab stops
 
+;;; Margins
+(define left-margin 0) ; used by move-to-left-margin and set-fill-prefix
+
 ;;;
 ;;; RENDERING
 ;;;
@@ -46,8 +49,8 @@
 (define line-number-display-limit 10000) ; only display line number if buffer length is smaller
 
 ; Highlight Line Containing Point
-(define hl-line-mode?             #t)      ; use hl-line-mode to toggle
-(define hl-line-mode-color        violet)
+(define hl-line-mode?             #f)      ; use hl-line-mode to toggle
+(define hl-line-mode-color        violet)  ; todo pick better color
 ;;; Colors
 (define background-color         base03)
 (define region-highlighted-color base00)
