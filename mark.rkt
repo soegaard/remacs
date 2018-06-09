@@ -89,7 +89,7 @@
 (define (mark-adjust-insertion-after! m p a)
   (define mp (mark-position m))
   (when (> mp p)
-    ; the insertion was before the mark
+    ; the insertion was after the mark
     (mark-move! m a)))
 
 ; mark-adjust-insertion-before! : mark integer natural -> void

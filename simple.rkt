@@ -18,7 +18,7 @@
 ;; The user can invoke them either via key bindings or via M-x.
 ;; See more on interactive commands in "commands.rkt".
 
-(require racket/class racket/list racket/match
+(require racket/class racket/format racket/list racket/match racket/string
          syntax/to-string
          racket/gui/base
          framework
@@ -555,6 +555,35 @@
   (displayln (text->string (buffer-text b))))
 
 
+
+;;;
+;;; INSERTION
+;;;
+
+; https://www.gnu.org/software/emacs/manual/html_node/elisp/Insertion.html
+
+(define-interactive (insert . strings-and-characters)
+  (define b (current-buffer))
+  ; Insert strings and characters in the current buffer.
+  ; Insert at point, moving the point forward (the insertation is done before point).
+  (define strings (for/list ([x strings-and-characters])
+                    (cond [(string? x) x]
+                          [(char? x)   (string x)]
+                          [else        (error 'insert
+                                              "expected strings and characters as input, got ~a"
+                                              x)])))  
+  (buffer-insert-string-before-point! b (string-append* strings)))
+
+
+(define-interactive (insert-char character [count 1])
+  ; Insert the character count times before point.
+  (insert (make-string count character)))
+
+; (define (insert-before-markers) ...)
+; (define (insert-buffer-substring from-buffer-or-name &optional start end) ...)
+; (define (insert-buffer-substring-no-properties from-buffer-or-name &optional start end)
+
+
 ;;;
 ;;; INDENTATION
 ;;;
@@ -586,3 +615,35 @@
   (define next-tab-stop     (cond [tabs (next-greater-in-list col tabs next-by-width)]
                                   [else next-by-width]))
   (insert-spaces (- next-tab-stop col)))
+
+;;;
+;;; 7.9 Cursor Position Information
+;;;
+
+(define-interactive (what-line)
+  ; Shows line number relative to the accessible portion.
+  ; Note: Rewrite when narrowing is introduced.
+  (message (~a "Line: " (+ (mark-row (point)) 1))))
+
+(define-interactive (line-number-mode)
+  ; Toggle line number mode
+  (define new (not (local line-number-mode?)))
+  (local! line-number-mode? new)
+  (message (cond [new  "Line-Number mode enabled"]
+                 [else "Line-Number mode disabled"])))
+
+(define-interactive (column-number-mode)
+  ; Toggle column number mode
+  (define new (not (local column-number-mode?)))
+  (local! column-number-mode? new)
+  (message (cond [new  "Column-Number mode enabled"]
+                 [else "Column-Number mode disabled"])))
+
+; TODO M-=     (define (count-words-region) ...)
+
+;(define (what-cursor-position) ; C-x =
+  
+
+
+
+  

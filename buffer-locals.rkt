@@ -13,6 +13,7 @@
 
 (provide invoke-local
          local
+         local!
          ref-buffer-local
          set-buffer-local!)
 
@@ -83,3 +84,9 @@
     [(_local id:id on-error) (syntax/loc stx (ref-buffer-local 'id on-error))]
     [(_local id:id)          (syntax/loc stx (ref-buffer-local 'id))]
     [_ (raise-syntax-error 'local "expected (local id) or (local id on-error)" stx)]))
+
+(define-syntax (local! stx)
+  (syntax-parse stx
+    [(_local! id:id e:expr on-error) (syntax/loc stx (set-buffer-local! 'id e on-error))]
+    [(_local! id:id e:expr)          (syntax/loc stx (set-buffer-local! 'id e))]
+    [_ (raise-syntax-error 'local! "expected (local! id expr) or (local! id expr on-error)" stx)]))

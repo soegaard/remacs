@@ -29,8 +29,8 @@
 (define indent-tab-mode #f) ; #t = use tabs for indent, #f = use spaces
 (define indent-for-tab (dynamic-require "simple.rkt" 'insert-tab-as-spaces))
 (define tab-width       4)
-;(define tab-stop-list  #f)                                     ; every tab-width position
-(define tab-stop-list  (for/list ([i (in-range 7 200 8)]) i)) ; positions of tab stops
+(define tab-stop-list  #f)                                     ; every tab-width position
+;(define tab-stop-list  (for/list ([i (in-range 7 200 8)]) i)) ; positions of tab stops
 
 ;;;
 ;;; RENDERING
@@ -39,6 +39,13 @@
 ;;; Screen Line Length
 ; Lines longer than  screen-line-length  are wrapped into multiple screen lines.
 (define screen-line-length  80)
+
+;;; Line and Column Number Mode
+(define line-number-mode?         #t)
+(define column-number-mode?       #t)
+(define line-number-display-limit 10000) ; only display line number if buffer length is smaller
+
+
 
 ;;; Colors
 (define background-color         base03)
