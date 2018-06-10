@@ -5,6 +5,9 @@
 
 ; In order to start remacs, open this file in DrRacket and run it.
 
+;;; TODO when normal-auto-fill needs to break the line, it shouldn't move the point
+;;; TODO The column position of the cursor when using down should stay the same
+;;;      even if one goes across short line.
 ;;; TODO run fundamental-mode in upstart
 ;;; TODO cursor blinking stops when menu bar is active ?!
 ;;; TODO .remacs
@@ -27,9 +30,6 @@
 ;;;        - output where? A new buffer?
 
 ;;; TODO Render #\tab correctly
-;;; TODO Let screen follow cursor rather than disappear to the right (for long lines)
-;;; TODO The column position of the cursor when using down should stay the same
-;;;      even if one goes across short line.
 ;;; TODO test with large file (words.txt)
 ;;;        ok  - open large file
 ;;;        ok  - end-of-buffer
@@ -45,7 +45,6 @@
 ;;; TODO recently opened files
 ;;; TODO indentation
 ;;; TODO paragraphs
-;;; TODO filling
 ;;; TODO documentation
 ;;; TODO left and right needs to toggle transient-mode rather than deactivate the mark
 ;;; TODO Properties and faces

@@ -389,6 +389,7 @@
   (for ([_ (in-range i)])
     (buffer-insert-char-before-point! b k)
     ; when insert a character that can break the line
+    
     (cond [(and (local auto-fill-mode?)
                 (set-member? (local auto-fill-chars) k)                
                 (or (local auto-fill-function) normal-auto-fill-function))
@@ -398,10 +399,12 @@
   (buffer-break-line! (current-buffer)))
 
 (define-interactive (break-line)    ; called newline in Emacs
+  (displayln 'break-line)
   ; Insert newline at before point. 
   ; If the column of point is greater than fill-column, auto-fill-function is called.
   ; If the new line is blank, move to left-margin.
   (cond [(and (local auto-fill-mode?)
+              (fill-needed?)
               (or (local auto-fill-function)
                   normal-auto-fill-function))
          => (λ (fill) (fill))]
@@ -690,7 +693,7 @@
 
 ; TODO M-=     (define (count-words-region) ...)
 
-(define (following-char)
+(define (following-char) ; TODO: use char-after-point instead?
   ; Return character at point.
   ; If point at end position, return #f.
   (define p (mark-position (point)))
@@ -771,15 +774,64 @@
     (define p (position))
     (cond [(> p end)   (backward-word) (loop)]
           [(<= p beg)  #f]
-          [else        #;(backward-skip-word-separators #:stay-on-line? #t)
+          [else        (backward-skip-word-separators #:stay-on-line? #t)
                        (position)])))
 
-(define (backward-skip-word-separator #:stay-on-line? stay?)
-  (define beg (or (and stay? (position-of-beginning-of-line)) 0))
-  (error))
+(define (backward-skip-word-separators #:stay-on-line? stay?)
+  (define beg (if stay? (position-of-beginning-of-line) (start-of-buffer-position)))
+  (let loop ()
+    (define p (position))
+    (when (> p beg)
+      (when (word-separator? (char-before-point))
+        (backward-char)
+        (loop)))))
+
+;;; Filling
+
+(define (fill-needed?)
+  (define col (- (position) (position-of-beginning-of-line)))
+  (> col (local fill-column)))
 
 (define-interactive (normal-auto-fill-function)
-  (define col (- (position) (position-of-beginning-of-line)))
-  (when (> col (local fill-column))
+  (when (fill-needed?)
     (fill-move-to-break-point)
     (insert-newline)))
+
+
+;;; Positions
+
+(define (start-of-buffer-position)
+  ; preparation for introduction of narrowing
+  0)
+
+(define (end-of-buffer-position)
+  (max 0 (- (buffer-length (current-buffer)) 1)))
+
+;;; Looking
+
+(define (char-before-point)
+  (define p (point))
+  (define l (mark-line p))
+  (define c (mark-column p))
+  (cond [(= (position p) (start-of-buffer-position)) #f]
+        [(= c 0)                                     #\newline]
+        [else                                        (line-ref l (- c 1))]))
+
+
+(define (char-after-point)
+  (define p   (point))
+  (define l   (mark-line p))
+  (define c   (mark-column p))
+  (cond [(= (position p) (end-of-buffer-position)) #f]
+        [(= c (line-length l))                     #\newline]
+        [else                                      (line-ref l c)]))
+           
+
+;;; 26.4 Moving by Parens
+
+#;(define (forward-sexp)  ; C-M-f
+    ; Move over balanced expression
+    ; Skip over any white space.
+    ; If next character is an opener, move over the corresponding closer.
+    ; If next character beins a symbol, string or number, move over.    
+    ...)

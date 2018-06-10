@@ -130,7 +130,12 @@
      (define p  (dcons-p d))
      (define pl (dfirst p))
      (set-dcons-a! p (line-append pl l))
+     (define affected-marks (linked-line-marks d))
+     (for ([m affected-marks])
+       (set-mark-link! m p))
      (dcons-remove! d)
      (set-text-length! t (- n 1))]
     [else      ; 
      (error 'todo)]))
+
+
