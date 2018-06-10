@@ -18,7 +18,7 @@
 ;; The user can invoke them either via key bindings or via M-x.
 ;; See more on interactive commands in "commands.rkt".
 
-(require racket/class racket/format racket/list racket/match racket/string
+(require racket/class racket/format racket/list racket/match racket/set racket/string
          syntax/to-string
          racket/gui/base
          framework
@@ -387,7 +387,12 @@
   (define pa (current-prefix-argument))
   (define i (or (and (integer? pa) (positive? pa) pa) 1))
   (for ([_ (in-range i)])
-    (buffer-insert-char-before-point! b k)))
+    (buffer-insert-char-before-point! b k)
+    ; when insert a character that can break the line
+    (cond [(and (local auto-fill-mode?)
+                (set-member? (local auto-fill-chars) k)                
+                (or (local auto-fill-function) normal-auto-fill-function))
+           => (λ (fill) (fill))])))
 
 (define-interactive (insert-newline)
   (buffer-break-line! (current-buffer)))
@@ -757,7 +762,6 @@
   (message "Auto fill mode disabled"))
 
 (define (fill-move-to-break-point)
-  (displayln 'fill-move-to-break-point)
   ; Move backward one word at a time until we are before fill-column.
   ; Return position of the break point.
   ; If there is no break point before beginning of the line, return #f.
@@ -774,7 +778,8 @@
   (define beg (or (and stay? (position-of-beginning-of-line)) 0))
   (error))
 
-
 (define-interactive (normal-auto-fill-function)
-  (fill-move-to-break-point)
-  (insert-newline))
+  (define col (- (position) (position-of-beginning-of-line)))
+  (when (> col (local fill-column))
+    (fill-move-to-break-point)
+    (insert-newline)))

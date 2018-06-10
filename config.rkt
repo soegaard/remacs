@@ -8,7 +8,8 @@
 
 (provide (all-defined-out))
 
-(require "colors.rkt"
+(require racket/set
+         "colors.rkt"
          "parameters.rkt")
 
 ;;;
@@ -38,6 +39,7 @@
 ;;; Filling
 (define auto-fill-mode?     #t)
 (define auto-fill-function  #f) ; set when mode activated
+(define auto-fill-chars     (set #\space))
 (define fill-column         76)
 
 ;;;

@@ -26,9 +26,7 @@
 ;;;        - on error: stop at first expression with error?
 ;;;        - output where? A new buffer?
 
-;;; TODO Wordwrap
-;;; TODO #\tab now inserts 4 space
-;;;      But ... if rendering breaks if the a file contains #\tab
+;;; TODO Render #\tab correctly
 ;;; TODO Let screen follow cursor rather than disappear to the right (for long lines)
 ;;; TODO The column position of the cursor when using down should stay the same
 ;;;      even if one goes across short line.
