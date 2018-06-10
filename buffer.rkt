@@ -104,7 +104,8 @@
 
 (define scratch-text
   '("Welcome to remacs, an Emacs style editor implemented in Racket.\n"
-    "The editor is still a work-in-progress.\n\n"
+    "The editor is still a work-in-progress.\n"
+    "\n"
     "\n"
     "Search for keymap in the source to see the available keybindings.\n"
     "\n"
@@ -114,8 +115,8 @@
     "    C-x 2      splits the window in two vertically\n"
     "    C-x 3      splits the window in two horizontally\n"
     "    C-x o      switch to other window\n"
-    "    C-x right  switch to next buffer\n\n"
-    
+    "    C-x right  switch to next buffer\n"
+    "\n"
     "\n"
     " BUFFERS\n"
     "    C-x h      mark whole buffer\n"
@@ -528,4 +529,6 @@
   (set-buffer-marks! b (cons m ms))
   m)
 
+(define (position [m (point)])
+  (mark-position m))
 

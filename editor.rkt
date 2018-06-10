@@ -114,13 +114,13 @@
     (define start-pos p)
     (define end-pos   (+ p (line-length l)))
     (define row       r)    
-    (define len (screen-line-length))
-    (define strings (line-strings l))
-    (define n       (length strings))
+    (define len       (screen-line-length))
+    (define strings   (line-strings l))
+    (define n         (length strings))
     ; first break the line into smaller pieces
     (define pieces
       (append*       
-       (for/list ([s (in-list strings)])
+       (for/list ([s (in-list strings)]) ; invariant: p is position of start of s
          (cond
            [(string? s)
             (define sn (string-length s))
@@ -129,7 +129,8 @@
               (sort-numbers (append (filter position-is-in-this-string? other)
                                     (marks-between (buffer-marks b)  p (+ p sn))
                                     (marks-between (buffer-points b) p (+ p sn))
-                                    (range (+ p len) (+ p sn) len))))
+                                    (filter position-is-in-this-string?
+                                            (range (+ start-pos len) (+ p sn) len)))))
             ; split the string at the mark positions (there might be a color change)
             (define start-positions (cons p positions-in-string))
             (define end-positions   (append positions-in-string (list (+ p sn))))
@@ -247,8 +248,8 @@
                      [i (in-range (+ start-row num-lines-on-screen))])
             (cond
               [(< i num-lines-to-skip)
-               (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t))
-               (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f))
+               (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t #f))
+               (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f #f))
                (values y (+ p (line-length l)) 0 '())]
               [else
                (define highlight-this-line? (= i row))

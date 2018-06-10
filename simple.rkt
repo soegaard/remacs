@@ -38,6 +38,7 @@
          "representation.rkt"
          "region.rkt"
          "render.rkt"
+         "search.rkt"
          "string-utils.rkt"
          "text.rkt"
          "window.rkt")
@@ -46,8 +47,10 @@
 ;;; MOVEMENT
 ;;;
 
-(define-interactive (beginning-of-line)   (buffer-move-point-to-beginning-of-line! (current-buffer)))
-(define-interactive (end-of-line)         (buffer-move-point-to-end-of-line!       (current-buffer)))
+(define-interactive (beginning-of-line [b (current-buffer)])
+  (buffer-move-point-to-beginning-of-line! b))
+(define-interactive (end-of-line [b (current-buffer)])
+  (buffer-move-point-to-end-of-line! b))
 
 (define-interactive (move-to-column n)    (buffer-move-to-column! (current-buffer) n)) ; n=numprefix 
 
@@ -215,10 +218,10 @@
   (buffer-backward-word! (current-buffer)))
 (define-interactive (beginning-of-line/extend-region)
   (prepare-extend-region)
-  (buffer-move-point-to-beginning-of-line! (current-buffer)))
+  (beginning-of-line))
 (define-interactive (end-of-line/extend-region)
   (prepare-extend-region)
-  (buffer-move-point-to-end-of-line! (current-buffer)))
+  (end-of-line))
 
 (define-interactive (save-buffer)         (save-buffer!    (current-buffer)) (refresh-frame))
 (define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
@@ -386,22 +389,42 @@
   (for ([_ (in-range i)])
     (buffer-insert-char-before-point! b k)))
 
-(define-interactive (break-line [b (current-buffer)])
-  (buffer-break-line! b))
+(define-interactive (insert-newline)
+  (buffer-break-line! (current-buffer)))
+
+(define-interactive (break-line)    ; called newline in Emacs
+  ; Insert newline at before point. 
+  ; If the column of point is greater than fill-column, auto-fill-function is called.
+  ; If the new line is blank, move to left-margin.
+  (cond [(and (local auto-fill-mode?)
+              (or (local auto-fill-function)
+                  normal-auto-fill-function))
+         => (λ (fill) (fill))]
+        [else (insert-newline)])
+  (cond
+    [(and (blank-line?) (local left-margin)) ; move to left-margin ?
+     => insert-spaces]))
+
+(define (blank-line?)
+  ; Is the line containing point blank?
+  (with-saved-point
+    (beginning-of-line)
+    (looking-at #px"^[[:blank:]]*$")))
+  
 
 (define-interactive (insert-line-after)
   ; insert new line after the current line,
   ; place point at beginning of new line
   ; [Sublime: cmd+enter]
   (end-of-line)
-  (break-line))
+  (insert-newline))
 
 (define-interactive (insert-line-before)
   ; insert new line before the current line,
   ; place point at beginning of new line
   ; [Sublime: cmd+enter]
   (beginning-of-line)
-  (break-line)
+  (insert-newline)
   (backward-char))
 
 (define-interactive (delete-region [b (current-buffer)])
@@ -440,7 +463,7 @@
 ; buffer-kill-whole-line : [buffer] -> void
 ;   kill whole line including its newline
 (define (buffer-kill-whole-line [b (current-buffer)])
-  (buffer-move-point-to-beginning-of-line! b)
+  (beginning-of-line b)
   (buffer-kill-line b #t)  
   (forward-char b)
   (buffer-backward-delete-char! b))
@@ -457,7 +480,7 @@
   (define rest-of-line (subtext->string (buffer-text b) p2 p1))
   ; delete to beginning of line
   (buffer-set-mark-to-point b)
-  (buffer-move-point-to-beginning-of-line! b)
+  (beginning-of-line b)
   (region-delete b)
   ; maybe delete newline
   (when (and (string-whitespace? rest-of-line)
@@ -622,13 +645,11 @@
 
 (define-interactive (open-line) ; C-o
   ; Insert newline after point.
-  (break-line)
+  (insert-newline)
   (backward-char)  
-  (when (local fill-prefix)
-    (define pos (position))
-    (define beg (with-saved-point (beginning-of-line) (position)))  
-    (when (= pos beg)
-      (insert (local fill-prefix)))))
+  (when (and (local fill-prefix)
+             (= (position) (position-of-beginning-of-line)))
+    (insert (local fill-prefix))))
 
 ;;;
 ;;; 7.9 Cursor Position Information
@@ -697,9 +718,6 @@
 ; When a fill prefix is set, then the fill fill commands will
 ; remove the prefix from each line before filling, and insert it after filling.
 
-(define (position [m (point)])
-  (mark-position m))
-
 (define-interactive (move-to-left-margin)
   (move-to-column (local left-margin)))
 
@@ -716,3 +734,47 @@
   (if (local fill-prefix)
       (message (~a "fill-prefix: " (local fill-prefix)))
       (message     "fill-prefix canceled")))
+
+(define-interactive (set-fill-column [column #f]) ; C-x f
+  (define old (local fill-column))
+  (define new (or column (mark-column (point))))
+  (local! fill-column new)
+  (message (~a "Fill column set to " new " (was " old ")"))
+  new)
+
+(define-interactive (auto-fill-mode)
+  ; Toggle auto-fill-mode?  
+  (if (local auto-fill-mode?) (turn-off-auto-fill) (turn-on-auto-fill)))
+
+(define-interactive (turn-on-auto-fill)
+  ; Turn auto-fill-mode on.
+  (local! auto-fill-mode? #t)
+  (message "Auto fill mode enabled"))
+
+(define-interactive (turn-off-auto-fill)
+  ; Turn auto-fill-mode off.
+  (local! auto-fill-mode? #f)
+  (message "Auto fill mode disabled"))
+
+(define (fill-move-to-break-point)
+  (displayln 'fill-move-to-break-point)
+  ; Move backward one word at a time until we are before fill-column.
+  ; Return position of the break point.
+  ; If there is no break point before beginning of the line, return #f.
+  (define beg (position-of-beginning-of-line))
+  (define end (+ beg (local fill-column)))
+  (let loop ()
+    (define p (position))
+    (cond [(> p end)   (backward-word) (loop)]
+          [(<= p beg)  #f]
+          [else        #;(backward-skip-word-separators #:stay-on-line? #t)
+                       (position)])))
+
+(define (backward-skip-word-separator #:stay-on-line? stay?)
+  (define beg (or (and stay? (position-of-beginning-of-line)) 0))
+  (error))
+
+
+(define-interactive (normal-auto-fill-function)
+  (fill-move-to-break-point)
+  (insert-newline))

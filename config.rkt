@@ -33,7 +33,12 @@
 ;(define tab-stop-list  (for/list ([i (in-range 7 200 8)]) i)) ; positions of tab stops
 
 ;;; Margins
-(define left-margin 0) ; used by move-to-left-margin and set-fill-prefix
+(define left-margin 0) ; used by break-line (newline), move-to-left-margin and set-fill-prefix
+
+;;; Filling
+(define auto-fill-mode?     #t)
+(define auto-fill-function  #f) ; set when mode activated
+(define fill-column         76)
 
 ;;;
 ;;; RENDERING
