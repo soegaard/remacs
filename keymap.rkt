@@ -88,8 +88,11 @@
                                   (list 'replace (cons "M-x" (string->list pre)))])])]
          ["return"          (define cmd-name (string-append* (map ~a more)))
                             (define cmd      (lookup-interactive-command cmd-name))
-                            (message "")
-                            cmd]
+                            (cond [cmd   (message "") cmd]
+                                  [else  (match prefix
+                                           [(list _M-x c ...)
+                                            (message (~a "M-x " (apply ~a c) " [Unbound]"))
+                                            (list 'replace (cons "M-x" c))])])]
          [_                 (message (string-append* `("M-x " ,@(map ~a more) ,(~a key))))
                             'prefix])]
       [(list "C-u" (? digit-char? ds) ... x ...)
@@ -115,6 +118,7 @@
          [#\o         other-window]
          [#\=         what-cursor-position]
          [#\.         set-fill-prefix]
+         [#\f         set-fill-column]
          ["C-s"       save-buffer]
          ["C-x"       exchange-point-and-mark]
          ['right      next-buffer]
