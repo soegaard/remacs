@@ -399,7 +399,6 @@
   (buffer-break-line! (current-buffer)))
 
 (define-interactive (break-line)    ; called newline in Emacs
-  (displayln 'break-line)
   ; Insert newline at before point. 
   ; If the column of point is greater than fill-column, auto-fill-function is called.
   ; If the new line is blank, move to left-margin.
@@ -827,10 +826,11 @@
         [else                                      (line-ref l c)]))
 
 (struct syntax-category ())
-(struct opener        syntax-category (close)) ; ( [ {
-(struct closer        syntax-category (open))  ; ) ] }
-(struct blank         syntax-category ())      ; space, tab
-(struct comment-ender syntax-category ())      ; newline
+(struct opener          syntax-category (close)) ; ( [ {
+(struct closer          syntax-category (open))  ; ) ] }
+(struct blank           syntax-category ())      ; space, tab
+(struct comment-ender   syntax-category ())      ; newline
+(struct comment-starter syntax-category ())      ; ;
 
 (define syntax-category-ht
   (hasheqv #\(       (opener #\))
@@ -842,7 +842,8 @@
            #\"       (closer #\")
            #\space   (blank)
            #\tab     (blank)
-           #\newline (comment-ender)))
+           #\newline (comment-ender)
+           #\;       (comment-starter)))
 
 (define (char-category c)
   (hash-ref syntax-category-ht c #f))
@@ -866,6 +867,17 @@
       (forward-char)
       (loop))))
 
+(define (backward-whitespace/quotes)
+  "Move backward over any whitespace (newline), quotes or quasiquotes"
+  (let loop ()
+    (define c   (char-before-point))
+    (define cat (char-category c))
+    (when (or (blank? cat)
+              (comment-ender? cat)
+              (eqv? c #\') (eqv? c #\`))
+      (backward-char)
+      (loop))))
+
 (define-interactive (forward-sexp)
   "Move forward over a balanced expression."  
   (define (loop depth seen)
@@ -887,11 +899,41 @@
                                                                (unless (= depth 1)
                                                                  (loop (- depth 1) (rest seen)))]
                                         [else (message (~a "forward-sexp: expected " (first seen)))])]
-             [(closer op)         (writeln (list 'huh 'c c 'op op 'seen seen))]
+             [(closer op)         #f]
              [_                   (forward-char)
                                   (loop depth seen)])])))
   (forward-whitespace/quotes)
   (loop 0 '()))
+
+(define-interactive (backward-sexp)
+  "Move backward over a balanced expression."
+  (define (loop depth seen)
+    (define c (char-before-point))
+    (when c
+      (match depth
+        [0 (match (char-category c)
+             [(blank)           #f]
+             [(opener _)        #f]
+             [(comment-starter) #f]
+             [(closer op)       (backward-char)
+                                (loop (+ depth 1) (cons op seen))]
+             [_                 (backward-char)
+                                (loop depth seen)])]
+        [d (match (char-category c)
+             [(closer cp)         (backward-char)
+                                  (loop (+ depth 1) (cons cp seen))]
+             [(opener cp)         (cond [(eqv? c (first seen)) (backward-char)
+                                                               (unless (= depth 1)
+                                                                 (loop (- depth 1) (rest seen)))]
+                                        [else
+                                         (message (~a "backward-sexp: expected " (first seen)))])]
+             [(opener cp)         #f]
+             [_                   (backward-char)
+                                  (loop depth seen)])])))
+  (backward-whitespace/quotes)
+  (loop 0 '()))
+
+
     
 
 ;;; 26.4 Moving by Parens
