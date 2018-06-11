@@ -179,7 +179,8 @@
          ; Meta + something
          ["M-S-@"         mark-word]
          ["M-left"        backward-word]
-         ["M-right"       forward-word]
+         ;["M-right"       forward-word] XXX
+         ["M-right"       forward-sexp]
          ["M-S-left"      backward-word/extend-region]
          ["M-S-right"     forward-word/extend-region]
          ["M-b"           (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]

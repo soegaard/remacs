@@ -825,7 +825,74 @@
   (cond [(= (position p) (end-of-buffer-position)) #f]
         [(= c (line-length l))                     #\newline]
         [else                                      (line-ref l c)]))
-           
+
+(struct syntax-category ())
+(struct opener        syntax-category (close)) ; ( [ {
+(struct closer        syntax-category (open))  ; ) ] }
+(struct blank         syntax-category ())      ; space, tab
+(struct comment-ender syntax-category ())      ; newline
+
+(define syntax-category-ht
+  (hasheqv #\(       (opener #\))
+           #\[       (opener #\])
+           #\{       (opener #\})
+           #\)       (closer #\()
+           #\]       (closer #\[)
+           #\}       (closer #\{)
+           #\"       (closer #\")
+           #\space   (blank)
+           #\tab     (blank)
+           #\newline (comment-ender)))
+
+(define (char-category c)
+  (hash-ref syntax-category-ht c #f))
+
+(define (forward-whitespace)
+  "Move forward over any whitespace."
+  (let loop ()
+    (define c   (char-after-point))
+    (when (blank? (char-category c)) 
+      (forward-char)
+      (loop))))
+
+(define (forward-whitespace/quotes)
+  "Move forward over any whitespace (newline), quotes or quasiquotes"
+  (let loop ()
+    (define c   (char-after-point))
+    (define cat (char-category c))
+    (when (or (blank? cat)
+              (comment-ender? cat)
+              (eqv? c #\') (eqv? c #\`))
+      (forward-char)
+      (loop))))
+
+(define-interactive (forward-sexp)
+  "Move forward over a balanced expression."  
+  (define (loop depth seen)
+    (define c (char-after-point))
+    (when c
+      (match depth
+        [0 (match (char-category c)
+             [(blank)         #f]
+             [(closer _)      #f]
+             [(comment-ender) #f]
+             [(opener cp)     (forward-char)
+                              (loop (+ depth 1) (cons cp seen))]             
+             [_               (forward-char)
+                              (loop depth seen)])]
+        [d (match (char-category c)
+             [(opener cp)         (forward-char)
+                                  (loop (+ depth 1) (cons cp seen))]
+             [(closer op)         (cond [(eqv? c (first seen)) (forward-char)
+                                                               (unless (= depth 1)
+                                                                 (loop (- depth 1) (rest seen)))]
+                                        [else (message (~a "forward-sexp: expected " (first seen)))])]
+             [(closer op)         (writeln (list 'huh 'c c 'op op 'seen seen))]
+             [_                   (forward-char)
+                                  (loop depth seen)])])))
+  (forward-whitespace/quotes)
+  (loop 0 '()))
+    
 
 ;;; 26.4 Moving by Parens
 
