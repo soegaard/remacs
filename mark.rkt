@@ -1,7 +1,8 @@
 #lang racket/base
-(provide (all-defined-out))
+(provide (except-out (all-defined-out) position))
 
 (require racket/set racket/match racket/format
+         data/interval-map
          "representation.rkt"
          "parameters.rkt"
          "dlist.rkt"
@@ -18,6 +19,16 @@
 ;;;
 ;;; MARKS
 ;;;
+
+(define (position mark-or-pos)
+  (define pos mark-or-pos)
+  (if (mark? pos) (mark-position pos) pos))
+
+(define (mark-column m)
+  (define i   (position m))
+  (define im  (text-positions (buffer-text (mark-buffer m))))
+  (define-values (start end d) (interval-map-ref/bounds im i))
+  (- i start))
 
 (define (mark-compare m1 m2 cmp)
   (define (pos m) (if (mark? m) (mark-position m) m))
@@ -62,23 +73,23 @@
 ; mark-move! : mark integer -> void
 ;  move the mark n characters
 (define (mark-move! m n)
-  (define b  (mark-buffer m))
-  (define p  (mark-position m))
-  (define l  (dfirst (mark-link m)))
-  (define ln (line-length l))
-  (define-values (old-r old-c) (mark-row+column m))
+  (define b    (mark-buffer m))
+  (define t    (buffer-text b))
+  (define im   (text-positions t))
+  (define p    (position m))
+  (define link (mark-link m))
+  (define l    (dfirst link))
+  (define ln   (line-length l))
   ; new position
   (define q (if (> n 0)
                 (min (+ p n) (max 0 (- (buffer-length b) 1)))
                 (max (+ p n) 0)))
   (set-mark-position! m q)
-  (define-values (r c) (mark-row+column m))
-  (unless (= old-r r)
-    ; remove mark from old line
-    (define link (mark-link m))
+  (define new-link (interval-map-ref im q))
+  (unless (eq? link new-link) ; same line?
+    ; remove mark from old line    
     (set-linked-line-marks! link (set-remove (linked-line-marks link) m))
     ; insert mark in new line
-    (define new-link (dlist-move (first-dcons link) r))
     ; the mark must point to the new line
     (set-mark-link! m new-link)
     ; (displayln new-link)
@@ -134,7 +145,7 @@
 ; mark-move-to-column! : mark integer -> void
 ;   move mark to column n (stay at text line)
 (define (mark-move-to-column! m n)
-  (define-values (r c) (mark-row+column m))
+  (define c   (mark-column m))
   (define len (line-length (mark-line m)))
   (unless (= n c)
     (let ([n (clamp 0 n (- len 1))]) ; stay on same line
@@ -154,7 +165,7 @@
 ;   move the mark to the beginning of its line
 (define (mark-move-beginning-of-line! m)
   (define p (mark-position m))
-  (define-values (row col) (mark-row+column m))
+  (define col (mark-column m))
   (set-mark-position! m (- p col)))
 
 ; position-of-end-of-line : [buffer or mark] -> integer
@@ -165,9 +176,10 @@
               [(buffer? b-or-m) (buffer-point b-or-m)]
               [else (error 'position-of-end-line (~a "expected mark or buffer, got " b-or-m))]))
   (define b (mark-buffer m))
-  (define-values (r c) (mark-row+column m))
-  (define n (line-length (dlist-ref (text-lines (buffer-text b)) r)))
+  (define c (mark-column m))
   (define p (mark-position m))
+  (define l (dfirst (interval-map-ref (text-positions (buffer-text b)) p)))
+  (define n (line-length l))
   (+ p (- n c) -1))
 
 ; position-of-beginning-of-line : [buffer or mark] -> integer
