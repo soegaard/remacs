@@ -642,7 +642,7 @@
     (message "insert-tab-as-spaces: tab-stop-list not #f or a list of natural numbers")
     (set! tabs #f))
 
-  (define col               (mark-column (point)))
+  (define col               (mark-column (get-point)))
   (define next-by-width     (next-greater col w))
   (define next-tab-stop     (cond [tabs (next-greater-in-list col tabs next-by-width)]
                                   [else next-by-width]))
@@ -667,7 +667,7 @@
 (define-interactive (what-line)
   ; Shows line number relative to the accessible portion.
   ; Note: Rewrite when narrowing is introduced.
-  (message (~a "Line: " (+ (mark-row (point)) 1))))
+  (message (~a "Line: " (+ (mark-row (get-point)) 1))))
 
 (define-interactive (line-number-mode)
   ; Toggle line number mode
@@ -697,7 +697,7 @@
 (define (following-char) ; TODO: use char-after-point instead?
   ; Return character at point.
   ; If point at end position, return #f.
-  (define p (mark-position (point)))
+  (define p (mark-position (get-point)))
   (define t (buffer-text (current-buffer)))
   (cond [(>= p (- (text-length t) 1)) #f]
         [else                        (define s (subtext->string t p (+ p 1)))
@@ -706,7 +706,7 @@
                                          #f)]))
 
 (define-interactive (what-cursor-position) ; C-x =
-  (define pos   (mark-position (point)))
+  (define pos   (mark-position (get-point)))
   (define len   (max 1. (* 1. (buffer-length (current-buffer)))))
   (define pct   (inexact->exact (floor (* (/ (+ pos 1.) len) 100))))
   (define c     (following-char))
@@ -746,7 +746,7 @@
 
 (define-interactive (set-fill-column [column #f]) ; C-x f
   (define old (local fill-column))
-  (define new (or column (mark-column (point))))
+  (define new (or column (mark-column (get-point))))
   (local! fill-column new)
   (message (~a "Fill column set to " new " (was " old ")"))
   new)
@@ -811,7 +811,7 @@
 ;;; Looking
 
 (define (char-before-point)
-  (define p (point))
+  (define p (get-point))
   (define l (mark-line p))
   (define c (mark-column p))
   (cond [(= (position p) (start-of-buffer-position)) #f]
@@ -820,7 +820,7 @@
 
 
 (define (char-after-point)
-  (define p   (point))
+  (define p   (get-point))
   (define l   (mark-line p))
   (define c   (mark-column p))
   (cond [(= (position p) (end-of-buffer-position)) #f]
@@ -983,7 +983,7 @@
 
 (define (point-min)      0)
 (define (point-max)      (end-of-buffer-position))
-(define (point-position) (position (point)))
+(define (point-position) (position (get-point)))
 
 (define (at-beginning-of-buffer?)
   (= (point-position) (point-min)))

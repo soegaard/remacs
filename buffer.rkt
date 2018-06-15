@@ -15,6 +15,7 @@
          "line.rkt"
          "mark.rkt"
          "parameters.rkt"
+         "point.rkt"
          "region.rkt"
          "representation.rkt"
          "text.rkt")
@@ -525,6 +526,6 @@
   (set-buffer-marks! b (cons m ms))
   m)
 
-(define (position [m (point)])
+(define (position [m (get-point)])
   (mark-position m))
 
