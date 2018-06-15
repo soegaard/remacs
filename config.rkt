@@ -41,6 +41,7 @@
 (define auto-fill-function  #f) ; set when mode activated
 (define auto-fill-chars     (set #\space))
 (define fill-column         76)
+(define fill-prefix         "")
 
 ;;;
 ;;; RENDERING

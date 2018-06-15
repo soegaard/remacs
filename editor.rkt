@@ -1,4 +1,7 @@
 #lang racket
+;;; TODO:
+;;;   Done  extend forward-sexp to handle strings "
+;;;    -    do the same with backward-sexp
 ;;;
 ;;; INSTRUCTIONS
 ;;;

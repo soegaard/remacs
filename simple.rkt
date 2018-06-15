@@ -567,14 +567,16 @@
   (set-mode-name!  "Racket")
   ; keymap
   ;   Demonstrates how to override a keymap
-  (set-buffer-local! 'local-keymap (λ (prefix key)
-                                     (match prefix
-                                       [(list)
-                                        (match key
-                                          ["return" (λ() (message "foo"))]
-                                          [_        #f])]
-                                       [_ #f]))
-                     b))
+  (local! local-keymap
+          (λ (prefix key)
+            (match prefix
+              [(list)
+               (match key
+                 ["M-left"   backward-sexp]
+                 ["M-right"  forward-sexp]
+                 [_          #f])]
+              [_ #f]))
+          b))
 
 (define-interactive (test)
   (define b (current-buffer))
@@ -825,12 +827,16 @@
         [(= c (line-length l))                     #\newline]
         [else                                      (line-ref l c)]))
 
+;;; Syntax Categories
+; Syntax categories are called syntax classes in Emacs
+
 (struct syntax-category ())
-(struct opener          syntax-category (close)) ; ( [ {
-(struct closer          syntax-category (open))  ; ) ] }
-(struct blank           syntax-category ())      ; space, tab
-(struct comment-ender   syntax-category ())      ; newline
-(struct comment-starter syntax-category ())      ; ;
+(struct opener           syntax-category (close)) ; ( [ {
+(struct closer           syntax-category (open))  ; ) ] }
+(struct blank            syntax-category ())      ; space, tab
+(struct comment-ender    syntax-category ())      ; newline
+(struct comment-starter  syntax-category ())      ; ;
+(struct string-starter   syntax-category (ender)) ; "
 
 (define syntax-category-ht
   (hasheqv #\(       (opener #\))
@@ -839,7 +845,7 @@
            #\)       (closer #\()
            #\]       (closer #\[)
            #\}       (closer #\{)
-           #\"       (closer #\")
+           #\"       (string-starter #\")
            #\space   (blank)
            #\tab     (blank)
            #\newline (comment-ender)
@@ -878,32 +884,160 @@
       (backward-char)
       (loop))))
 
+(define (forward-to-char target-char)
+  "Move forward to target char."
+  "Point will be to the left of the target character."
+  (let loop ()
+    (match (char-after-point)
+      [#f               #f] ; end reached
+      [(== target-char) #f] ; found
+      [_                (forward-char)
+                        (loop)])))
+
+(struct state (depth           ; depth in parentheses
+               inner-start     ; pos of inner most start paren, #f depth=0
+               inside-string   ; string ender if inside string
+               inside-comment  ; #t if inside comment, number if in nestable comment
+               after-quote     ; #t if point right after quote
+               comment-style
+               comment-start   ; valid if inside-comment is true (position)
+               string-start    ; valid if inside-string  is true (position)
+               seen            ; private: holds list of expected close characters
+               )
+  #:transparent)
+
+(require (for-syntax racket/base syntax/parse))
+
+(define empty-state (state 0 #f #f #f #f #f #f #f '()))
+
+(define (parse-partial-sexp start limit #:state [start-state #f])
+  "Parse sexp starting at the start position."
+  "Parsing stops at the limit position or earlier. Point is set to "
+  "the position where parsing stops. "
+
+  ; define the loop variables
+  (match-define (state depth inner-start inside-string  inside-comment after-quote comment-style
+                       comment-start string-start seen)
+    (or start-state empty-state))
+
+  (define-syntax (create-state stx)
+    (syntax-parse stx [(_) (syntax/loc stx
+                             (state depth inner-start inside-string inside-comment after-quote
+                                    comment-style comment-start string-start seen))]))
+  (define (loop i)    
+    ;(displayln (list i (create-state)))
+    (define j i)
+    (define (skip) (set! j (+ i 1)) (forward-char))
+    (cond
+      [(= i limit) (create-state)]
+      [else
+       (define c (char-after-point))
+       (if (not c)
+           (create-state)
+           (cond
+             [inside-string   (skip)
+                              (if (eqv? c inside-string) ; end of string?
+                                  (begin (set! inside-string #f) (loop j))
+                                  (loop j))]
+             [inside-comment  (skip)
+                              (match (char-category c)
+                                [(comment-ender) (begin (set! inside-comment #f) (loop j))]
+                                [_               (loop j)])]
+             [else
+              (match depth
+                ; outside
+                [0 (match (char-category c)
+                     [(blank)             (skip) (create-state)]
+                     [(string-starter e)  (skip) (begin (set! inside-string e)   (loop j))]
+                     [(comment-starter)   (skip) (begin (set! inside-comment #t) (loop j))]
+                     [(opener cp)         (skip) (begin (set! depth (+ depth 1))
+                                                        (set! seen (cons cp seen))
+                                                        (loop j))]
+                     [(closer _)          (create-state)] ; unexpected closer - don't eat!
+                     [_                   (skip) (loop j)])]
+                ; inside at least one parenthesis
+                [d (match (char-category c)
+                     [(blank)             (skip) (loop j)]
+                     [(string-starter e)  (skip) (begin (set! inside-string e)   (loop j))]
+                     [(comment-starter)   (skip) (begin (set! inside-comment #t) (loop j))]
+                     [(opener cp)         (skip) (begin (set! depth (+ depth 1))
+                                                        (set! seen (cons cp seen))
+                                                        (loop j))]
+                     [(closer op)         (define expected (first seen))
+                                          (cond [(eqv? c expected)
+                                                 (skip)
+                                                 (if (= depth 1)
+                                                     (create-state)
+                                                     (begin (set! depth (- depth 1))
+                                                            (set! seen (rest seen))
+                                                            (loop j)))]
+                                                [else
+                                                 ; (message
+                                                 ;   (~a "forward-sexp: expected " (first seen)))
+                                                 (create-state)])]
+                     [_                   (skip) (loop j)])])]))]))
+  (forward-whitespace/quotes)
+  (let ([result (loop start)])
+    ; (writeln (list 'state: result))
+    result))
+
+(define (point-min)      0)
+(define (point-max)      (end-of-buffer-position))
+(define (point-position) (position (point)))
+
+(define (at-beginning-of-buffer?)
+  (= (point-position) (point-min)))
+
+(define-interactive (backward-to-open-parenthesis-on-beginning-of-line)
+  "Moves backwards for a open parenthesis on the beginning of a line."
+  (let loop ()
+    (beginning-of-line)
+    (unless (at-beginning-of-buffer?)
+      (unless (eqv? (char-after-point) #\()
+        (backward-line)
+        (loop)))))
+
 (define-interactive (forward-sexp)
+  (define here (point-position))
+  ; get to position where parser state is empty
+  (backward-to-open-parenthesis-on-beginning-of-line)
+  (define start       (point-position))
+  (define start-state (let loop ([state empty-state])
+                        (unless (>= (point-position) here)
+                          (parse-partial-sexp start here #:state state))))
+  (parse-partial-sexp here (position-of-end)))
+
+#;(define-interactive (forward-sexp)
   "Move forward over a balanced expression."  
-  (define (loop depth seen)
+  (define (loop i depth seen)
+    (define j (+ i 1))
     (define c (char-after-point))
     (when c
       (match depth
         [0 (match (char-category c)
-             [(blank)         #f]
-             [(closer _)      #f]
-             [(comment-ender) #f]
-             [(opener cp)     (forward-char)
-                              (loop (+ depth 1) (cons cp seen))]             
-             [_               (forward-char)
-                              (loop depth seen)])]
-        [d (match (char-category c)
+             [(blank)             #f]
+             [(closer _)          #f]
+             [(comment-ender)     #f]
+             [(string-starter e)  (when (= i 0)
+                                    (forward-char) (forward-to-char e) (forward-char))]
              [(opener cp)         (forward-char)
-                                  (loop (+ depth 1) (cons cp seen))]
+                                  (loop j (+ depth 1) (cons cp seen))]             
+             [_                   (forward-char)
+                                  (loop j depth seen)])]
+        [d (match (char-category c)
+             [(string-starter e)  (forward-char) (forward-to-char e) (forward-char)
+                                  (loop j depth seen)]
+             [(opener cp)         (forward-char)
+                                  (loop j (+ depth 1) (cons cp seen))]
              [(closer op)         (cond [(eqv? c (first seen)) (forward-char)
                                                                (unless (= depth 1)
                                                                  (loop (- depth 1) (rest seen)))]
                                         [else (message (~a "forward-sexp: expected " (first seen)))])]
              [(closer op)         #f]
              [_                   (forward-char)
-                                  (loop depth seen)])])))
+                                  (loop j depth seen)])])))
   (forward-whitespace/quotes)
-  (loop 0 '()))
+  (loop 0 0 '()))
 
 (define-interactive (backward-sexp)
   "Move backward over a balanced expression."

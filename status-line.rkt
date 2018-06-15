@@ -15,6 +15,7 @@
 
 ; The status line is shown at the bottom of a buffer window.
 (define (status-line-hook)
+  (display "x")
   (define b (current-buffer))
   (cond
     [b (define save-status      (if (buffer-modified? b) "***" "---"))
@@ -28,7 +29,7 @@
                                       [col?             (~a "C" col)]
                                       [else             ""]))
        (~a save-status  
-           "   " "Buffer: "          (buffer-name) "    " line+col
+           "   " "Buffer: "   (buffer-name) "    " line+col
            "   " "Position: " (mark-position (buffer-point (current-buffer)))
            "   " "Length: "   (buffer-length (current-buffer))
            "   " "Mode: "     "(" (get-mode-name) ")")]

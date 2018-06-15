@@ -356,40 +356,43 @@
                                           ; the key combination is unbound
                                           (not (regexp-match "([a-z]|[0-9])" (string key-code)))
                                           ((current-global-keymap) prefix key-code))))
-            (match binding
-              [(? procedure? thunk)  (clear-prefix!) (thunk) (current-prefix-argument #f)]
-              [(list 'replace pre)   (set! prefix pre)]
-              ['prefix               (add-prefix! key)]
-              ['clear-prefix         (clear-prefix!)]
-              ['ignore               (void)]
-              ['exit                ; (save-buffer! (current-buffer))
-               ; TODO : Ask how to handle unsaved buffers
-               (send (frame-frame% f) on-exit)]
-              ['release             (void)]
-              [_                    (unless (equal? (send event get-key-code) 'release)
-                                      (when (and (empty? prefix) key)
-                                        (message (~a "<" key "> undefined")))
-                                      (clear-prefix!))])))
+              (with-suspended-rendering
+                  (match binding
+                    [(? procedure? thunk)  (clear-prefix!) (thunk) (current-prefix-argument #f)]
+                    [(list 'replace pre)   (set! prefix pre)]
+                    ['prefix               (add-prefix! key)]
+                    ['clear-prefix         (clear-prefix!)]
+                    ['ignore               (void)]
+                    ['exit                ; (save-buffer! (current-buffer))
+                     ; TODO : Ask how to handle unsaved buffers
+                     (send (frame-frame% f) on-exit)]
+                    ['release             (void)]
+                    [_                    (unless (equal? (send event get-key-code) 'release)
+                                            (when (and (empty? prefix) key)
+                                              (message (~a "<" key "> undefined")))
+                                            (clear-prefix!))]))))
         ; todo: don't trigger repaint on every key stroke ...
-        (send canvas on-paint))
+        (send canvas refresh))
       ;; Rendering
       (public on-paint-points)
       (define (display-status-line s)
-        (when (eq? (window-buffer this-window) (current-buffer))
-          (send (frame-status-line f) set-label s)))
+        (unless (current-rendering-suspended?)
+          (when (eq? (window-buffer this-window) (current-buffer))
+            (send (frame-status-line f) set-label s))))
       (define (on-paint-points on?) ; render points only
         (unless (current-rendering-suspended?)
           (parameterize ([current-render-points-only? #t]
                          [current-show-points?        on?])
-            (display-status-line (status-line-hook))
+            ; (display-status-line (status-line-hook))
             ((current-render-window) this-window))))
       (define/override (on-paint) ; render everything
+        (display ".")
         (unless (current-rendering-suspended?)
           (parameterize ([current-show-points? #t])
             (display-status-line (status-line-hook))
             ((current-render-frame) f))))
       (super-new)))
-  (define canvas (new window-canvas% [parent panel]))
+  (define canvas (new window-canvas% [parent panel] [style '(no-autoclear)]))
   (set-window-canvas! this-window canvas)
   (send canvas min-client-width  20)
   (send canvas min-client-height 20)

@@ -10,7 +10,7 @@
          racket/set
          "buffer-locals.rkt"
          "buffer-namespace.rkt"
-         "dlist.rkt"
+         ; "dlist.rkt"
          "default.rkt"
          "line.rkt"
          "mark.rkt"
@@ -406,8 +406,7 @@
 ;   break line at point
 (define (buffer-break-line! b)
   (define m (buffer-point b))
-  (define-values (row col) (mark-row+column m))
-  (text-break-line! (buffer-text b) row col)
+  (text-break-line! (buffer-text b) m)
   (mark-move! m 1)
   (buffer-dirty! b))
 
@@ -417,8 +416,7 @@
   (define m (buffer-point b))
   (define t (buffer-text b))
   (for ([i count]) ; TODO improve efficiency!
-    (define-values (row col) (mark-row+column m))
-    (text-delete-backward-char! t row col)
+    (text-delete-backward-char! t m)
     (buffer-adjust-marks-due-to-deletion-before! b (mark-position m) 1)
     (mark-move! m -1) ; point
     (buffer-dirty! b)))
@@ -428,11 +426,9 @@
     (mark-adjust-deletion-before! m p a)))
 
 (define (buffer-insert-property-at-point! b p)
-  (define m (buffer-point b))
-  (define t (buffer-text b))
-  (define-values (row col) (mark-row+column m))
-  (line-insert-property! (dlist-ref (text-lines t) row) p col)
-  #;(buffer-dirty! b))
+  (define m  (buffer-point b))
+  (define t  (buffer-text b))
+  (text-insert-property-at-mark! t m p))
 
 (define (buffer-insert-property! b p [p-end p])
   ; if the region is active, the property is inserted
