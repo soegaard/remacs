@@ -10,7 +10,6 @@
          racket/set
          "buffer-locals.rkt"
          "buffer-namespace.rkt"
-         ; "dlist.rkt"
          "default.rkt"
          "line.rkt"
          "mark.rkt"
@@ -283,9 +282,6 @@
 ; buffer-point-set! : buffer mark -> void
 ;   set the point at the position given by the mark m
 
-(define (point [b (current-buffer)])
-  (buffer-point b))
-
 (define (buffer-move-point! b n)
   (mark-move! (buffer-point b) n))
 
@@ -514,6 +510,10 @@
 ;;; POINT AND MARK
 ;;;
 
+(define (position [mark-or-pos (get-point)])
+  (define pos mark-or-pos)
+  (if (mark? pos) (mark-position pos) pos))
+
 (define (get-mark [b (current-buffer)])
   (define marks (buffer-marks b))
   (if (empty? marks) #f (first marks)))
@@ -525,7 +525,4 @@
   (define ms (buffer-marks b))
   (set-buffer-marks! b (cons m ms))
   m)
-
-(define (position [m (get-point)])
-  (mark-position m))
 

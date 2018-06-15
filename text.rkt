@@ -162,7 +162,7 @@
 
 
 ; text-break-line! : text position-or-mark -> void
-;   break line number row into two at the given position
+;   break line into two at the given position
 (define (text-break-line! t pos) ; ok
   (define i                    (if (mark? pos) (mark-position pos) pos))
   (define im                   (text-positions t))
@@ -171,7 +171,7 @@
   (define l                    (dfirst d))
   (interval-map-remove!   im start end)
   (interval-map-contract! im start end)
-  (define-values (pre post)    (line-split l col)) ; xxx
+  (define-values (pre post)    (line-split l col))
   (set-dcons-a! d pre)
   (dinsert-after! d post (λ (a p n) (linked-line a p n #f (seteq))))
   (interval-map-insert! im    start        (+ start col 1)         d)

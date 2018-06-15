@@ -280,8 +280,8 @@
       (define screen-row (quotient y ls))
       (define screen-col (quotient x w))      
       ; find first row displayed on screen
-      (define start-mark              (window-start-mark this-window))
-      (define-values (start-row ___)  (mark-row+column start-mark))
+      (define start-mark (window-start-mark this-window))
+      (define start-row  (mark-row start-mark))
       ; Add start-row and row to get the buffer start row
       (define b (window-buffer this-window))
       (define-values (row col)
@@ -407,13 +407,13 @@
 
 (define (maybe-recenter-top-bottom [force? #f] [w (current-window)])
   ; move current buffer line to center of window
-  (define b                    (window-buffer w))
-  (define n                    (number-of-lines-on-screen w))
-  (define-values (row col)     (mark-row+column (buffer-point b)))
-  (define start-mark           (window-start-mark w))
-  (define end-mark             (window-end-mark w))
-  (define-values (start-row _) (mark-row+column start-mark))
-  (define-values (end-row  __) (mark-row+column end-mark))  
+  (define b                (window-buffer w))
+  (define n                (number-of-lines-on-screen w))
+  (define-values (row col) (mark-row+column (buffer-point b)))
+  (define start-mark       (window-start-mark w))
+  (define end-mark         (window-end-mark w))
+  (define start-row        (mark-row start-mark))
+  (define end-row          (mark-row end-mark))
   ;(displayln (list 'before: 'row row 'start-row start-row 'end-row end-row 'n num-lines-on-screen))
   (when (or force?
             (not (and (<= start-row row) (< row (+ start-row n)))))

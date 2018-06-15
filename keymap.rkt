@@ -15,8 +15,7 @@
          "representation.rkt"
          "simple.rkt"
          "text.rkt"
-         "window.rkt"
-         "mark.rkt")
+         "window.rkt")
 
 ;;;
 ;;; KEYMAP

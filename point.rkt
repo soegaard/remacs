@@ -7,6 +7,9 @@
 (define (get-point [b (current-buffer)])
   (buffer-point b))
 
+(define (point [b (current-buffer)])
+  (mark-position (buffer-point b)))
+
 (define (set-point! m [b (current-buffer)])
   (set-buffer-points! b (cons m (rest (buffer-points b)))))
 
