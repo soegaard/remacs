@@ -379,15 +379,17 @@
         (unless (current-rendering-suspended?)
           (when (eq? (window-buffer this-window) (current-buffer))
             (send (frame-status-line f) set-label s))))
-      (define (on-paint-points on?) ; render points only
+      (define (on-paint-points on?) ; render points only        
         (unless (current-rendering-suspended?)
           (parameterize ([current-render-points-only? #t]
                          [current-show-points?        on?])
             ; (display-status-line (status-line-hook))
             ((current-render-window) this-window))))
       (define/override (on-paint) ; render everything
-        (display ".")
+        (when (current-rendering-suspended?)
+          (display "s"))
         (unless (current-rendering-suspended?)
+          (display ".")
           (parameterize ([current-show-points? #t])
             (display-status-line (status-line-hook))
             ((current-render-frame) f))))
