@@ -189,8 +189,7 @@
               [(mark?   b-or-m) b-or-m]
               [(buffer? b-or-m) (buffer-point b-or-m)]
               [else (error 'position-of-end-line (~a "expected mark or buffer, got " b-or-m))]))
-  (define b (mark-buffer m))
-  (define-values (r c) (mark-row+column m))
+  (define c (mark-column m))
   (define p (mark-position m))
   (- p c))
 
@@ -232,18 +231,19 @@
 (define (mark-move-up! m [n 1])
   ; todo : go from mark to line rather than use dlist-move
   (define (move-one!)
-    (define p (mark-position m))
-    (define-values (row col) (mark-row+column m))
-    (unless (= row 0)
-      (define link (dlist-move (first-dcons (text-lines (buffer-text (mark-buffer m)))) (- row 1)))
+    (define p    (mark-position m))    
+    (define col  (mark-column m))
+    (define im   (text-positions (buffer-text (mark-buffer m))))
+    (define old-link (interval-map-ref im p))
+    (unless (mark-on-first-line? m)
+      (define link (dprev old-link))
       (define l (dfirst link)) ; line
       (define new-col (min (line-length l) col))
       (define new-pos (- p col (line-length l) (- new-col)))
       (set-mark-position! m new-pos)
       (set-linked-line-marks! link (set-add (linked-line-marks link) m))
       (set-mark-link! m link)
-      (define old-link (dlist-move link 1))
-      (unless (dempty? old-link) ; xxx
+      (unless (dempty? old-link)
         (set-linked-line-marks! old-link (set-remove (linked-line-marks link) m)))))
   (cond
     [(< n 0) (mark-move-down! m (- n))]
@@ -254,11 +254,13 @@
 ;  move mark down one text line, stay at same column
 (define (mark-move-down! m [n 1])
   (define (move-one!)
-    (define p (mark-position m))
-    (define-values (row col) (mark-row+column m))
-    (define t (buffer-text (mark-buffer m)))
-    (unless (= (+ row 1) (text-num-lines t))
-      (define d (dlist-move (text-lines t) row))
+    (define p        (mark-position m))
+    (define col      (mark-column m))
+    (define t        (buffer-text (mark-buffer m)))
+    (define im       (text-positions t))
+    (define old-link (interval-map-ref im p))
+    (unless (mark-on-last-line? m)
+      (define d (dnext old-link))
       (unless (dempty? d)
         (set-linked-line-marks! d (set-remove (linked-line-marks d) m))
         (define l1 (dfirst d))
@@ -277,9 +279,9 @@
 ; mark-backward-word! : mark -> void
 ;   move mark backward until a word separator is found
 (define (mark-backward-word! m)
-  (define-values (row col) (mark-row+column m))
-  (define t (buffer-text (mark-buffer m)))
-  (define l (text-line t row))
+  (define col (mark-column m))
+  (define t   (buffer-text (mark-buffer m)))
+  (define l   (dfirst (interval-map-ref (text-positions t) (position m))))
   ; first skip whitespace
   (define i (for/first ([i (in-range (- col 1) -1 -1)]
                         #:when (not (word-separator? (line-ref l i))))
@@ -288,7 +290,7 @@
     [(or (not i) (= i 0))
      ; continue searching for word at previous line (unless at top line)
      (mark-move-beginning-of-line! m)
-     (unless (= row 0)
+     (unless (mark-on-first-line? m)
        (mark-move! m -1)
        (mark-backward-word! m))]
     [else
@@ -302,9 +304,9 @@
 ; mark-forward-word! : mark -> void
 ;   move mark forward until a word separator is found
 (define (mark-forward-word! m)
-  (define-values (row col) (mark-row+column m))
+  (define col (mark-column m))  
   (define t (buffer-text (mark-buffer m)))
-  (define l (text-line t row))
+  (define l (dfirst (interval-map-ref (text-positions t) (position m))))
   (define n (line-length l))
   ; first skip whitespace
   (define i (for/first ([i (in-range col n)]
@@ -314,7 +316,7 @@
     [(or (not i) (= i (- n 1)))
      ; continue searching for word at next line (unless at bottom line)
      (mark-move-end-of-line! m)
-     (unless (= row (- (text-num-lines t) 1))
+     (unless (mark-on-last-line? m)
        (mark-move! m 1)
        (mark-forward-word! m))]
     [else
@@ -338,8 +340,8 @@
   (define l (mark-link m))
   (remove-mark-from-linked-line! m l)  
   ; find the new line
-  (define-values (row col) (mark-row+column m))
-  (define d (dlist-move (text-lines (buffer-text (mark-buffer m))) row))
+  (define t (buffer-text (mark-buffer m)))
+  (define d (interval-map-ref (text-positions t) (mark-position m)))
   ; add mark to the new line
   (add-mark-to-linked-line! m d)  
   (set-mark-link! m d)
