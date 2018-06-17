@@ -16,7 +16,7 @@
        (let ()
          (parameterize ([current-rendering-suspended? #t])
            body ...)
-         ((current-render-frame) (current-frame))))]))
+         #;((current-render-frame) (current-frame))))]))
 
 ;;;
 ;;; FONT

@@ -70,7 +70,7 @@
 (define current-window               (make-parameter #f))
 
 ; This is a temporary fix to avoid circular module dependencies.
-(define current-render-frame         (make-parameter #f))
+(define current-render-frame         (make-parameter void))
 (define current-render-window        (make-parameter #f))
 
 (define current-next-screen-context-lines (make-parameter 2)) ; TODO use a buffer local?

@@ -1,5 +1,6 @@
 #lang racket/base
-(provide status-line-hook)
+(provide status-line-hook
+         status-line-time)
 
 ;;;
 ;;; STATUS LINE
@@ -12,6 +13,8 @@
          "parameters.rkt"
          "representation.rkt")
 
+(define the-time 0)
+(define (status-line-time t) (set! the-time t))
 
 ; The status line is shown at the bottom of a buffer window.
 (define (status-line-hook)
@@ -32,6 +35,7 @@
            "   " "Buffer: "   (buffer-name) "    " line+col
            "   " "Position: " (mark-position (buffer-point (current-buffer)))
            "   " "Length: "   (buffer-length (current-buffer))
-           "   " "Mode: "     "(" (get-mode-name) ")")]
+           "   " "Mode: "     "(" (get-mode-name) ")"
+           "   " "Time: "     the-time)]
     [else
      "No current buffer"]))

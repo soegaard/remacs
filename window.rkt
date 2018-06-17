@@ -1,6 +1,8 @@
 #lang racket/base
 (provide (all-defined-out))
 
+(define (debug-display x) (void))
+
 (require racket/class racket/format racket/list racket/match racket/math racket/set
          racket/gui/base
          "buffer.rkt"
@@ -355,22 +357,27 @@
                                           ; make sure C-[a-z] doesn't produce a character if
                                           ; the key combination is unbound
                                           (not (regexp-match "([a-z]|[0-9])" (string key-code)))
-                                          ((current-global-keymap) prefix key-code))))
-              (with-suspended-rendering
-                  (match binding
-                    [(? procedure? thunk)  (clear-prefix!) (thunk) (current-prefix-argument #f)]
-                    [(list 'replace pre)   (set! prefix pre)]
-                    ['prefix               (add-prefix! key)]
-                    ['clear-prefix         (clear-prefix!)]
-                    ['ignore               (void)]
-                    ['exit                ; (save-buffer! (current-buffer))
-                     ; TODO : Ask how to handle unsaved buffers
-                     (send (frame-frame% f) on-exit)]
-                    ['release             (void)]
-                    [_                    (unless (equal? (send event get-key-code) 'release)
-                                            (when (and (empty? prefix) key)
-                                              (message (~a "<" key "> undefined")))
-                                            (clear-prefix!))]))))
+                                          ((current-global-keymap) prefix key-code))))            
+            (with-suspended-rendering
+                (match binding
+                  [(? procedure? thunk)  (clear-prefix!)
+                                         (define now (current-milliseconds))
+                                         (thunk)
+                                         (define later (current-milliseconds))
+                                         (status-line-time (- later now))
+                                         (current-prefix-argument #f)]
+                  [(list 'replace pre)   (set! prefix pre)]
+                  ['prefix               (add-prefix! key)]
+                  ['clear-prefix         (clear-prefix!)]
+                  ['ignore               (void)]
+                  ['exit                ; (save-buffer! (current-buffer))
+                   ; TODO : Ask how to handle unsaved buffers
+                   (send (frame-frame% f) on-exit)]
+                  ['release             (void)]
+                  [_                    (unless (equal? (send event get-key-code) 'release)
+                                          (when (and (empty? prefix) key)
+                                            (message (~a "<" key "> undefined")))
+                                          (clear-prefix!))]))))
         ; todo: don't trigger repaint on every key stroke ...
         (send canvas refresh))
       ;; Rendering
@@ -389,7 +396,7 @@
         (when (current-rendering-suspended?)
           (display "s"))
         (unless (current-rendering-suspended?)
-          (display ".")
+          (debug-display ".")
           (parameterize ([current-show-points? #t])
             (display-status-line (status-line-hook))
             ((current-render-frame) f))))
@@ -408,7 +415,7 @@
   canvas)
 
 (define (maybe-recenter-top-bottom [force? #f] [w (current-window)])
-  ; move current buffer line to center of window
+  "Move line containing point to center of window."
   (define b                (window-buffer w))
   (define n                (number-of-lines-on-screen w))
   (define-values (row col) (mark-row+column (buffer-point b)))
@@ -416,7 +423,6 @@
   (define end-mark         (window-end-mark w))
   (define start-row        (mark-row start-mark))
   (define end-row          (mark-row end-mark))
-  ;(displayln (list 'before: 'row row 'start-row start-row 'end-row end-row 'n num-lines-on-screen))
   (when (or force?
             (not (and (<= start-row row) (< row (+ start-row n)))))
     ;(define n num-lines-on-screen)

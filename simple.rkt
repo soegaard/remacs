@@ -818,7 +818,6 @@
         [(= c 0)                                     #\newline]
         [else                                        (line-ref l (- c 1))]))
 
-
 (define (char-after-point)
   (define p   (get-point))
   (define l   (mark-line p))
@@ -831,25 +830,34 @@
 ; Syntax categories are called syntax classes in Emacs
 
 (struct syntax-category ())
-(struct opener           syntax-category (close)) ; ( [ {
-(struct closer           syntax-category (open))  ; ) ] }
-(struct blank            syntax-category ())      ; space, tab
-(struct comment-ender    syntax-category ())      ; newline
-(struct comment-starter  syntax-category ())      ; ;
-(struct string-starter   syntax-category (ender)) ; "
+(struct opener             syntax-category (close)) ; ( [ {
+(struct closer             syntax-category (open))  ; ) ] }
+(struct blank              syntax-category ())      ; space, tab
+(struct comment-ender      syntax-category ())      ; newline
+(struct comment-starter    syntax-category ())      ; ;
+(struct string-starter     syntax-category (ender)) ; "
+(struct symbol-constituent syntax-category ())      ; a-z A-Z 0-9
 
 (define syntax-category-ht
-  (hasheqv #\(       (opener #\))
-           #\[       (opener #\])
-           #\{       (opener #\})
-           #\)       (closer #\()
-           #\]       (closer #\[)
-           #\}       (closer #\{)
-           #\"       (string-starter #\")
-           #\space   (blank)
-           #\tab     (blank)
-           #\newline (comment-ender)
-           #\;       (comment-starter)))
+  (make-hasheqv (list (cons #\(       (opener #\)))
+                      (cons #\[       (opener #\]))
+                      (cons #\{       (opener #\}))
+                      (cons #\)       (closer #\())
+                      (cons #\]       (closer #\[))
+                      (cons #\}       (closer #\{))
+                      (cons #\"       (string-starter #\"))
+                      (cons #\space   (blank))
+                      (cons #\tab     (blank))
+                      (cons #\newline (comment-ender))
+                      (cons #\;       (comment-starter)))))
+(define (add-char-range from to cat)
+  (for ([c (in-range (char->integer from) (char->integer to))])
+    (hash-set! syntax-category-ht (integer->char c) cat)))
+(add-char-range #\a #\z (symbol-constituent))
+(add-char-range #\A #\Z (symbol-constituent))
+(add-char-range #\0 #\9 (symbol-constituent))
+
+
 
 (define (char-category c)
   (hash-ref syntax-category-ht c #f))
@@ -862,16 +870,17 @@
       (forward-char)
       (loop))))
 
-(define (forward-whitespace/quotes)
-  "Move forward over any whitespace (newline), quotes or quasiquotes"
+(define (forward-whitespace/quotes [limit #f])
+  "Move forward over any whitespace (newline), quotes or quasiquotes - not scanning past limit."
   (let loop ()
-    (define c   (char-after-point))
-    (define cat (char-category c))
-    (when (or (blank? cat)
-              (comment-ender? cat)
-              (eqv? c #\') (eqv? c #\`))
-      (forward-char)
-      (loop))))
+    (unless (>= (point) (or limit -inf.0))
+      (define c   (char-after-point))
+      (define cat (char-category c))
+      (when (or (blank? cat)
+                (comment-ender? cat)
+                (eqv? c #\') (eqv? c #\`))
+        (forward-char)
+        (loop)))))
 
 (define (backward-whitespace/quotes)
   "Move backward over any whitespace (newline), quotes or quasiquotes"
@@ -896,6 +905,7 @@
 
 (struct state (depth           ; depth in parentheses
                inner-start     ; pos of inner most start paren, #f depth=0
+               last-complete   ; start of last complete sexp terminated
                inside-string   ; string ender if inside string
                inside-comment  ; #t if inside comment, number if in nestable comment
                after-quote     ; #t if point right after quote
@@ -903,81 +913,131 @@
                comment-start   ; valid if inside-comment is true (position)
                string-start    ; valid if inside-string  is true (position)
                seen            ; private: holds list of expected close characters
+               inner-starts    ; stack holding previous values of inner-start
                )
   #:transparent)
 
 (require (for-syntax racket/base syntax/parse))
 
-(define empty-state (state 0 #f #f #f #f #f #f #f '()))
+(define empty-state (state 0 #f #f #f #f #f #f #f #f '() '()))
 
-(define (parse-partial-sexp start limit #:state [start-state #f])
+(define-syntax (push! stx) (syntax-parse stx [(_push! id:id e:expr) #'(set! id (cons e id))]))
+(define-syntax (pop! stx) (syntax-parse stx[(_pop! id:id) #'(begin0 (first id) (set! id (rest id)))]))
+
+(define (parse-partial-sexp start limit #:state [start-state #f] #:target-depth [target-depth #f])
+  ; TODO: set last-complete correctly for non-string, non-parens e.g. for a symbol
+  ; (displayln (list 'parse-partial-sexp 'start start 'limit limit))
   "Parse sexp starting at the start position."
-  "Parsing stops at the limit position or earlier. Point is set to "
-  "the position where parsing stops. "
+  "Parsing stops at the limit position or earlier. Point is set to the position where parsing stops. "
+  "If the optional argument target-depth is set, parsing stops when the depth becomes target-depth."
 
   ; define the loop variables
-  (match-define (state depth inner-start inside-string  inside-comment after-quote comment-style
-                       comment-start string-start seen)
+  (match-define (state depth inner-start last-complete
+                       inside-string inside-comment after-quote comment-style
+                       comment-start string-start seen inner-starts)
     (or start-state empty-state))
+
+  (set! target-depth (or target-depth             ; target-depth is given explicitly.
+                         (and start-state depth)  ; otherwise use depth from state if given,
+                         0))                      ; otherwise use 0.
 
   (define-syntax (create-state stx)
     (syntax-parse stx [(_) (syntax/loc stx
-                             (state depth inner-start inside-string inside-comment after-quote
-                                    comment-style comment-start string-start seen))]))
-  (define (loop i)    
-    ;(displayln (list i (create-state)))
+                             (state depth inner-start last-complete inside-string inside-comment
+                                    after-quote
+                                    comment-style comment-start string-start seen inner-starts))]))
+  (define (loop i)
+    #; (displayln (list i (create-state)))
     (define j i)
     (define (skip) (set! j (+ i 1)) (forward-char))
     (cond
       [(= i limit) (create-state)]
       [else
        (define c (char-after-point))
-       (if (not c)
-           (create-state)
+       ; (displayln (list c (and c (char-category c))))
+       ; (display (list i c)) (display " ")
+       (if
+        (not c)
+        (create-state)
+        (match depth
+          [(or 0 (== target-depth))
            (cond
-             [inside-string   (skip)
-                              (if (eqv? c inside-string) ; end of string?
-                                  (begin (set! inside-string #f) (loop j))
-                                  (loop j))]
-             [inside-comment  (skip)
-                              (match (char-category c)
-                                [(comment-ender) (begin (set! inside-comment #f) (loop j))]
-                                [_               (loop j)])]
+             [inside-string        (skip)
+                                   (cond [(eqv? c inside-string) ; end of string?
+                                          (set! last-complete string-start)
+                                          (set! inside-string #f)
+                                          (create-state)]
+                                         [else (loop j)])]
+             [inside-comment       (skip)
+                                   (match (char-category c)
+                                     [(comment-ender) (set! inside-comment #f)]
+                                     [_               (void)])
+                                   (loop j)]             
+             [else ; strings and comments
+              (match (char-category c)
+                [(blank)              (create-state)]
+                [(comment-ender)      (set! comment-start #f) (loop j)]
+                [(symbol-constituent) (skip) (loop j)]
+                [(string-starter e)   (skip) (begin (set! string-start i)
+                                                    (set! inside-string e) (loop j))]
+                [(comment-starter)    (skip) (begin (set! comment-start i)
+                                                    (set! inside-comment #t) (loop j))]
+                [(opener cp)          (skip) (begin (push! inner-starts inner-start)
+                                                    (set! inner-start i)
+                                                    (set! depth (+ depth 1))
+                                                    (set! seen (cons cp seen))
+                                                    (loop j))]
+                [(closer _)           (create-state)] ; unexpected closer - don't eat!
+                [_                    (skip) (loop j)])])]          
+          [d ; inside at least one parenthesis, not at target-depth
+           (cond
+             [inside-string        (skip)
+                                   (when (eqv? c inside-string) ; end of string?
+                                     (set! last-complete string-start)
+                                     (set! inside-string #f))
+                                   (loop j)]
+             [inside-comment       (skip)
+                                   (match (char-category c)
+                                     [(comment-ender) (set! inside-comment #f)]
+                                     [_               (void)])
+                                   (loop j)]
              [else
-              (match depth
-                ; outside
-                [0 (match (char-category c)
-                     [(blank)             (skip) (create-state)]
-                     [(string-starter e)  (skip) (begin (set! inside-string e)   (loop j))]
-                     [(comment-starter)   (skip) (begin (set! inside-comment #t) (loop j))]
-                     [(opener cp)         (skip) (begin (set! depth (+ depth 1))
-                                                        (set! seen (cons cp seen))
-                                                        (loop j))]
-                     [(closer _)          (create-state)] ; unexpected closer - don't eat!
-                     [_                   (skip) (loop j)])]
-                ; inside at least one parenthesis
-                [d (match (char-category c)
-                     [(blank)             (skip) (loop j)]
-                     [(string-starter e)  (skip) (begin (set! inside-string e)   (loop j))]
-                     [(comment-starter)   (skip) (begin (set! inside-comment #t) (loop j))]
-                     [(opener cp)         (skip) (begin (set! depth (+ depth 1))
-                                                        (set! seen (cons cp seen))
-                                                        (loop j))]
-                     [(closer op)         (define expected (first seen))
-                                          (cond [(eqv? c expected)
-                                                 (skip)
-                                                 (if (= depth 1)
-                                                     (create-state)
-                                                     (begin (set! depth (- depth 1))
-                                                            (set! seen (rest seen))
-                                                            (loop j)))]
-                                                [else
-                                                 ; (message
-                                                 ;   (~a "forward-sexp: expected " (first seen)))
-                                                 (create-state)])]
-                     [_                   (skip) (loop j)])])]))]))
-  (forward-whitespace/quotes)
-  (let ([result (loop start)])
+              (match (char-category c)
+                [(blank)              (skip) (loop j)]
+                [(symbol-constituent) (skip) (loop j)]
+                [(comment-ender)      (skip) (set! comment-start #f) (loop j)]
+                [(string-starter e)   (skip) (begin (set! string-start i)
+                                                    (set! inside-string e)   (loop j))]
+                [(comment-starter)    (skip) (begin (set! comment-start i)
+                                                    (set! inside-comment #t) (loop j))]
+                [(opener cp)          (skip) (begin (push! inner-starts inner-start)
+                                                    (set! inner-start i) ; start of innermost par
+                                                    (set! depth (+ depth 1))
+                                                    (set! seen (cons cp seen))
+                                                    (loop j))]
+                [(closer op)      (define expected (first seen))
+                                  (cond [(eqv? c expected)
+                                         (skip)
+                                         (set! last-complete inner-start)
+                                         (displayln (list 'closer-seen-at-depth depth
+                                                          'target-depth target-depth))
+                                         (set! inner-start (pop! inner-starts))
+                                         ; we are about to go a paren depth down,
+                                         ; if the target-depth is hit, we stop
+                                         (if (or (= depth 1)
+                                                 (= depth (and target-depth (+ target-depth 1))))
+                                             (create-state)
+                                             (begin (set! depth (- depth 1))
+                                                    (set! seen (rest seen))
+                                                    (loop j)))]
+                                        [else
+                                         ; (message
+                                         ;   (~a "forward-sexp: expected " (first seen)))
+                                         (create-state)])]
+                [_                (skip) (loop j)])])]))]))
+  (forward-whitespace/quotes limit)
+  (when (> (point) limit) (error 'sigh))
+  (let ([result (loop (point))])
     ; (writeln (list 'state: result))
     result))
 
@@ -997,15 +1057,38 @@
         (backward-line)
         (loop)))))
 
-(define-interactive (forward-sexp)
-  (define here (point-position))
-  ; get to position where parser state is empty
-  (backward-to-open-parenthesis-on-beginning-of-line)
-  (define start       (point-position))
-  (define start-state (let loop ([state empty-state])
-                        (unless (>= (point-position) here)
-                          (parse-partial-sexp start here #:state state))))
-  (parse-partial-sexp here (position-of-end)))
+(define-interactive (forward-sexp [n 1])
+  (define (forward-sexp-1)
+    ; Move over one balanced sexp.
+    (define here (point))
+    ; get to position where parser state is empty
+    (backward-to-open-parenthesis-on-beginning-of-line)
+    (define back (point))
+    (displayln (list 'forward-sexp 'back-to (point)))
+    ; (displayln (list 'before here 'after (point)))
+    ; repeatedly call parse-partial-sexp
+    (define start       (point))
+    (define state-here
+      (let loop ([state empty-state])
+        (cond [(< (point) here)  (displayln (list 'forward-sexp 'back-to back 'parse (point) here))
+                                 (loop (parse-partial-sexp (point) here
+                                                           #:state state #:target-depth 0))]
+              [else              state])))
+    (define depth-here (state-depth state-here))
+    (displayln (list 'forward-sexp 'back-to back 'last-parse (point) (position-of-end)))
+    (displayln (list 'forward-sexp 'state-here state-here))
+    (define end-state
+      (parse-partial-sexp (point) (position-of-end)
+                          #:state state-here #:target-depth depth-here))
+    (displayln end-state)
+    end-state)
+  (match n
+    [#f (forward-sexp-1)]
+    [0  (void)]
+    [1  (forward-sexp-1)]
+    [n  (if (> n 1)
+            (for ([_ n]) (forward-sexp-1))
+            (backward-sexp (- n)))]))
 
 #;(define-interactive (forward-sexp)
   "Move forward over a balanced expression."  

@@ -67,6 +67,7 @@
          "dlist.rkt"
          "keymap.rkt"
          "killing.rkt"
+         "mark.rkt"
          "parameters.rkt"
          "render.rkt"
          "region.rkt"

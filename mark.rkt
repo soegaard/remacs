@@ -27,8 +27,9 @@
 (define (mark-column m)
   (define i   (position m))
   (define im  (text-positions (buffer-text (mark-buffer m))))
-  (define-values (start end d) (interval-map-ref/bounds im i))
-  (- i start))
+  (define-values (start end d) (interval-map-ref/bounds im i #f))
+  (and d
+       (- i start)))
 
 (define (mark-compare m1 m2 cmp)
   (define (pos m) (if (mark? m) (mark-position m) m))
