@@ -914,12 +914,13 @@
                string-start    ; valid if inside-string  is true (position)
                seen            ; private: holds list of expected close characters
                inner-starts    ; stack holding previous values of inner-start
+               start-current   ; start position of the current expression
                )
   #:transparent)
 
 (require (for-syntax racket/base syntax/parse))
 
-(define empty-state (state 0 #f #f #f #f #f #f #f #f '() '()))
+(define empty-state (state 0 #f #f #f #f #f #f #f #f '() '() #f))
 
 (define-syntax (push! stx) (syntax-parse stx [(_push! id:id e:expr) #'(set! id (cons e id))]))
 (define-syntax (pop! stx) (syntax-parse stx[(_pop! id:id) #'(begin0 (first id) (set! id (rest id)))]))
@@ -934,7 +935,7 @@
   ; define the loop variables
   (match-define (state depth inner-start last-complete
                        inside-string inside-comment after-quote comment-style
-                       comment-start string-start seen inner-starts)
+                       comment-start string-start seen inner-starts start-current)
     (or start-state empty-state))
 
   (set! target-depth (or target-depth             ; target-depth is given explicitly.
@@ -944,14 +945,28 @@
   (define-syntax (create-state stx)
     (syntax-parse stx [(_) (syntax/loc stx
                              (state depth inner-start last-complete inside-string inside-comment
-                                    after-quote
-                                    comment-style comment-start string-start seen inner-starts))]))
+                                    after-quote comment-style comment-start string-start
+                                    seen inner-starts start-current))]))
+  (define-syntax (complete! stx) ; an sexp was completed
+    (syntax-parse stx [(_new!) #'(when start-current
+                                   (set! last-complete start-current)
+                                   (set! start-current #f))]))
   (define (loop i)
+    (define-syntax (new! stx)    ; possible new sexp start
+      (syntax-parse stx [(_new!) #'(unless start-current (set! start-current i))]))
     #; (displayln (list i (create-state)))
     (define j i)
     (define (skip) (set! j (+ i 1)) (forward-char))
     (cond
-      [(= i limit) (create-state)]
+      [(= i limit)
+       ; we need to set last-complete and start-current to proper values,
+       ; before returning the parse state      
+       (define c (char-after-point))
+       (define x (char-category c))
+       (when (and (not (or inside-string inside-comment))
+                  (or (blank? x) (string-starter? x) (comment-starter? x) (closer? x)))
+         (complete!))
+       (create-state)]
       [else
        (define c (char-after-point))
        ; (displayln (list c (and c (char-category c))))
@@ -975,49 +990,62 @@
                                    (loop j)]             
              [else ; strings and comments
               (match (char-category c)
-                [(blank)              (create-state)]
+                [(blank)              (displayln "tb")
+                                      (complete!) (set! start-current #f) (create-state)]
                 [(comment-ender)      (set! comment-start #f) (loop j)]
-                [(symbol-constituent) (skip) (loop j)]
-                [(string-starter e)   (skip) (begin (set! string-start i)
-                                                    (set! inside-string e) (loop j))]
-                [(comment-starter)    (skip) (begin (set! comment-start i)
-                                                    (set! inside-comment #t) (loop j))]
-                [(opener cp)          (skip) (begin (push! inner-starts inner-start)
-                                                    (set! inner-start i)
-                                                    (set! depth (+ depth 1))
-                                                    (set! seen (cons cp seen))
-                                                    (loop j))]
+                [(symbol-constituent) (displayln "ts")
+                                      (new!) (skip) (loop j)]
+                [(string-starter e)   (new!) (skip)
+                                      (set! string-start i) (set! inside-string e) (loop j)]
+                [(comment-starter)    (complete!) (skip)
+                                      (set! comment-start i)
+                                      (set! inside-comment #t) (loop j)]
+                [(opener cp)          (complete!) (skip)
+                                      (push! inner-starts inner-start)
+                                      (set! inner-start i)
+                                      (set! depth (+ depth 1))
+                                      (set! seen (cons cp seen))
+                                      (loop j)]
                 [(closer _)           (create-state)] ; unexpected closer - don't eat!
                 [_                    (skip) (loop j)])])]          
           [d ; inside at least one parenthesis, not at target-depth
            (cond
              [inside-string        (skip)
                                    (when (eqv? c inside-string) ; end of string?
+                                     (complete!) 
                                      (set! last-complete string-start)
                                      (set! inside-string #f))
                                    (loop j)]
-             [inside-comment       (skip)
+             [inside-comment       (skip) 
                                    (match (char-category c)
                                      [(comment-ender) (set! inside-comment #f)]
                                      [_               (void)])
                                    (loop j)]
              [else
               (match (char-category c)
-                [(blank)              (skip) (loop j)]
-                [(symbol-constituent) (skip) (loop j)]
+                [(blank)              (displayln "db")
+                                      (skip) (complete!) (set! start-current #f) (loop j)]
+                [(symbol-constituent) (displayln "ds")
+                                      (skip) (displayln (list 'here1 (point) start-current (create-state)))
+                                      (new!)
+                                      (displayln (list 'here2 (point) start-current (create-state)))
+                                      (loop j)]
                 [(comment-ender)      (skip) (set! comment-start #f) (loop j)]
-                [(string-starter e)   (skip) (begin (set! string-start i)
-                                                    (set! inside-string e)   (loop j))]
-                [(comment-starter)    (skip) (begin (set! comment-start i)
-                                                    (set! inside-comment #t) (loop j))]
-                [(opener cp)          (skip) (begin (push! inner-starts inner-start)
-                                                    (set! inner-start i) ; start of innermost par
-                                                    (set! depth (+ depth 1))
-                                                    (set! seen (cons cp seen))
-                                                    (loop j))]
+                [(string-starter e)   (skip) (complete!) (new!)
+                                      (set! string-start i)
+                                      (set! inside-string e)   (loop j)]
+                [(comment-starter)    (skip) (complete!)
+                                      (set! comment-start i)
+                                      (set! inside-comment #t) (loop j)]
+                [(opener cp)          (skip) (complete!)
+                                      (push! inner-starts inner-start)
+                                      (set! inner-start i) ; start of innermost par
+                                      (set! depth (+ depth 1))
+                                      (set! seen (cons cp seen))
+                                      (loop j)]
                 [(closer op)      (define expected (first seen))
                                   (cond [(eqv? c expected)
-                                         (skip)
+                                         (skip) (complete!)
                                          (set! last-complete inner-start)
                                          (displayln (list 'closer-seen-at-depth depth
                                                           'target-depth target-depth))
@@ -1036,6 +1064,8 @@
                                          (create-state)])]
                 [_                (skip) (loop j)])])]))]))
   (forward-whitespace/quotes limit)
+  (unless start-current
+    (set! start-current (point)))
   (when (> (point) limit) (error 'sigh))
   (let ([result (loop (point))])
     ; (writeln (list 'state: result))
