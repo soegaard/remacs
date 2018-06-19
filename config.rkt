@@ -3,7 +3,7 @@
 ;;; CONFIGURATION
 ;;;
 
-; This file contains the default configuration of Emacs.
+; This file contains the default configuration of Remacs.
 ; Variables defined in this file are used to make the default namespace.
 
 (provide (all-defined-out))
@@ -59,6 +59,7 @@
 ; Highlight Line Containing Point
 (define hl-line-mode?             #f)      ; use hl-line-mode to toggle
 (define hl-line-mode-color        violet)  ; todo pick better color
+
 ;;; Colors
 (define background-color         base03)
 (define region-highlighted-color base00)

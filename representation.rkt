@@ -162,7 +162,6 @@
   ; TODO (redisplay-mode-line-for-current-buffer]
   (when flag (set-buffer-modified?! b #t)))
 
-
 ; position-row+column : text position -> integer integer
 ;   return row and column number of the position (index)
 (define (position-row+column t p)
