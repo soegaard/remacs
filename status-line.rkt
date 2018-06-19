@@ -1,10 +1,20 @@
 #lang racket/base
 (provide status-line-hook
          status-line-time)
-
 ;;;
 ;;; STATUS LINE
 ;;;
+
+; Each frame (GUI window) has a status line - a horizontal line at
+; the bottom of the frame (under the displayed buffer). The status
+; line is used to display information on the current buffer.
+
+; The default information displayed is:
+;   - name of the current buffer
+;   - the row and column of the point 
+;   - the position of the point
+;   - the current major mode
+;   - the time used to run the last commands (measured in milliseconds)
 
 (require racket/format
          "buffer-locals.rkt"
@@ -13,12 +23,12 @@
          "parameters.rkt"
          "representation.rkt")
 
+; The variable the-time keeps track of the time used by the last command.
 (define the-time 0)
 (define (status-line-time t) (set! the-time t))
 
-; The status line is shown at the bottom of a buffer window.
+; The default function used to compute status line information
 (define (status-line-hook)
-  (display "x")
   (define b (current-buffer))
   (cond
     [b (define save-status      (if (buffer-modified? b) "***" "---"))
