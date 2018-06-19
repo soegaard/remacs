@@ -452,7 +452,6 @@
 
 ; select all
 (define-interactive (mark-whole-buffer [b (current-buffer)])
-  (displayln (list 'mark-whole-buffer))
   (parameterize ([current-buffer b])
     (end-of-buffer)
     (command-set-mark)
@@ -514,6 +513,8 @@
   ; later than the latest kill, that text is inserted.
   ; Note: The timestamp is ignored in OS X.
   (define s (send the-clipboard get-clipboard-string 0))
+  (define b (current-buffer))
+  (when (use-region? b) (backward-delete-char))
   (cond
     [(or (equal? s "") 
          (equal? s (current-clipboard-at-latest-kill)))
@@ -521,8 +522,7 @@
      (buffer-insert-latest-kill)]
     [else
      ; system clipboard is newer
-     (buffer-insert-string-before-point! (current-buffer) s)
-     (refresh-frame)]))
+     (buffer-insert-string-before-point! b s)]))
 
 (define-interactive (copy-region)
   (update-current-clipboard-at-latest-kill)
@@ -1028,7 +1028,8 @@
                 [(blank)              (displayln "db")
                                       (skip) (complete!) (set! start-current #f) (loop j)]
                 [(symbol-constituent) (displayln "ds")
-                                      (skip) (displayln (list 'here1 (point) start-current (create-state)))
+                                      (skip)
+                                      (displayln (list 'here1 (point) start-current (create-state)))
                                       (new!)
                                       (displayln (list 'here2 (point) start-current (create-state)))
                                       (loop j)]

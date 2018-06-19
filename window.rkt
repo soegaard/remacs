@@ -1,7 +1,7 @@
 #lang racket/base
 (provide (all-defined-out))
 
-(define (debug-display x) (displayln x))
+(define (debug-display x) (void x))
 
 (require racket/class racket/format racket/list racket/match racket/math racket/set
          racket/gui/base
@@ -360,7 +360,6 @@
                                           (not (regexp-match "([a-z]|[0-9])" (string key-code)))
                                           ((current-global-keymap) prefix key-code))))
             (with-suspended-rendering
-                (debug-display " ok ")
                 (match binding
                   [(? procedure? thunk)  (clear-prefix!)
                                          (define now (current-milliseconds))
@@ -380,11 +379,7 @@
                                           (when (and (empty? prefix) key)
                                             (message (~a "<" key "> undefined")))
                                           (clear-prefix!))])))
-          (debug-display " rn ")
-          (send this refresh-now))
-        ; todo: don't trigger repaint on every key stroke ...
-        ; (send canvas refresh)
-        )
+          (send this refresh-now)))
       ;; Rendering
       (public on-paint-points)
       (define (display-status-line s)

@@ -1,9 +1,4 @@
 #lang racket
-;;; TODO BUG  Menu short cuts doesn't call refresh-now.
-
-;;; TODO:
-;;;   Done  extend forward-sexp to handle strings "
-;;;    -    do the same with backward-sexp
 ;;;
 ;;; INSTRUCTIONS
 ;;;
@@ -14,8 +9,7 @@
 ;;; TODO The column position of the cursor when using down should stay the same
 ;;;      even if one goes across short line.
 ;;; TODO run fundamental-mode in upstart
-;;; TODO cursor blinking stops when menu bar is active ?!
-;;; TODO .remacs
+;;; TODO support .remacs files
 ;;; TODO buffer narrowing
 ;;; TODO Introduce double buffering to avoid any flicker.
 ;;;      https://www.facebook.com/notes/daniel-colascione/buttery-smooth-emacs/10155313440066102/
@@ -58,6 +52,7 @@
 ;;; TODO Completions ala http://sublimetext.info/docs/en/extensibility/completions.html
 ;;; TODO "Overlay" GUI Element as in Sublime Text
 ;;; TODO Sidebar as in Visual Studio Code
+;;; TODO cursor blinking stops when menu bar is active ?!
 
 
 (module+ test (require rackunit))
@@ -473,8 +468,10 @@
     ;; After invoking a command, we need to rerender the display
     (define-syntax (wrap stx)
       (syntax-parse stx
-        [(_wrap expr:expr ...) #'(λ (_ e) (with-suspended-rendering expr ...)
-                                   ((current-render-frame) (current-frame)))]))
+        [(_wrap expr:expr ...)
+         (syntax/loc stx
+           (λ (_ e) (with-suspended-rendering expr ...)
+             ((current-render-frame) (current-frame))))]))
     ;; Remacs Menu
     (define m (new menu% (label "Remacs") (parent mb)))
     (new-menu-item m "About   "   #f #f                  (wrap (about-remacs)))
