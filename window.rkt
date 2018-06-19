@@ -1,7 +1,7 @@
 #lang racket/base
 (provide (all-defined-out))
 
-(define (debug-display x) (void))
+(define (debug-display x) (displayln x))
 
 (require racket/class racket/format racket/list racket/match racket/math racket/set
          racket/gui/base
@@ -341,12 +341,13 @@
         (current-window w))
       ;; Key Events
       (define/override (on-char event)
+        ; NOTE: Menu shorts cuts are intercepted and on-char is never called.
         (current-point-color point-colors) ; make points visible when keyboard is active
         ; TODO syntax  (with-temp-buffer body ...)
         (define key-code (send event get-key-code))
         (unless (equal? key-code 'release)
           (define key (key-event->key event))
-          ; (send msg set-label (~a "key: " key))
+          (message (~a "key: " key))
           (unless (member key '(control rcontrol))
             (define local-keymap (buffer-local-keymap (current-buffer)))
             (define binding      (or (and local-keymap (local-keymap prefix key))
@@ -357,8 +358,9 @@
                                           ; make sure C-[a-z] doesn't produce a character if
                                           ; the key combination is unbound
                                           (not (regexp-match "([a-z]|[0-9])" (string key-code)))
-                                          ((current-global-keymap) prefix key-code))))            
+                                          ((current-global-keymap) prefix key-code))))
             (with-suspended-rendering
+                (debug-display " ok ")
                 (match binding
                   [(? procedure? thunk)  (clear-prefix!)
                                          (define now (current-milliseconds))
@@ -377,9 +379,12 @@
                   [_                    (unless (equal? (send event get-key-code) 'release)
                                           (when (and (empty? prefix) key)
                                             (message (~a "<" key "> undefined")))
-                                          (clear-prefix!))]))))
+                                          (clear-prefix!))])))
+          (debug-display " rn ")
+          (send this refresh-now))
         ; todo: don't trigger repaint on every key stroke ...
-        (send canvas refresh))
+        ; (send canvas refresh)
+        )
       ;; Rendering
       (public on-paint-points)
       (define (display-status-line s)
@@ -394,7 +399,7 @@
             ((current-render-window) this-window))))
       (define/override (on-paint) ; render everything
         (when (current-rendering-suspended?)
-          (display "s"))
+          (debug-display "s"))
         (unless (current-rendering-suspended?)
           (debug-display ".")
           (parameterize ([current-show-points? #t])

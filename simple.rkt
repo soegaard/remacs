@@ -452,11 +452,12 @@
 
 ; select all
 (define-interactive (mark-whole-buffer [b (current-buffer)])
+  (displayln (list 'mark-whole-buffer))
   (parameterize ([current-buffer b])
     (end-of-buffer)
     (command-set-mark)
     (beginning-of-buffer)
-    (refresh-frame)))
+    #;(refresh-frame)))
 
 (define-interactive (kill-line)
   (buffer-kill-line)
@@ -572,9 +573,10 @@
             (match prefix
               [(list)
                (match key
-                 ["M-left"   backward-sexp]
-                 ["M-right"  forward-sexp]
-                 [_          #f])]
+                 ["M-left"    backward-sexp]
+                 ["M-right"   forward-sexp]
+                 ["M-S-right" forward-sexp/extend-region]
+                 [_           #f])]
               [_ #f]))
           b))
 
@@ -925,7 +927,7 @@
 (define-syntax (push! stx) (syntax-parse stx [(_push! id:id e:expr) #'(set! id (cons e id))]))
 (define-syntax (pop! stx) (syntax-parse stx[(_pop! id:id) #'(begin0 (first id) (set! id (rest id)))]))
 
-(define (parse-partial-sexp start limit #:state [start-state #f] #:target-depth [target-depth #f])
+(define (parse-partial-sexp start limit #:state [start-state #f] #:target-depth [target-depth #f])  
   ; TODO: set last-complete correctly for non-string, non-parens e.g. for a symbol
   ; (displayln (list 'parse-partial-sexp 'start start 'limit limit))
   "Parse sexp starting at the start position."
@@ -1087,6 +1089,14 @@
         (backward-line)
         (loop)))))
 
+(define (parse-state-at-point)
+  (define here (point))
+  (backward-to-open-parenthesis-on-beginning-of-line)
+  (let loop ([state empty-state])
+    (cond [(< (point) here)  (loop (parse-partial-sexp (point) here
+                                                       #:state state #:target-depth 0))]
+          [else              state])))
+
 (define-interactive (forward-sexp [n 1])
   (define (forward-sexp-1)
     ; Move over one balanced sexp.
@@ -1119,6 +1129,13 @@
     [n  (if (> n 1)
             (for ([_ n]) (forward-sexp-1))
             (backward-sexp (- n)))]))
+
+(define-interactive (forward-sexp/extend-region)
+  ; TODO BUG forward-sexp will deactivate the region,
+  ;          find start and end first, then create region
+  (displayln 'forward-sexp/extend-region)
+  (prepare-extend-region)
+  (forward-sexp))
 
 #;(define-interactive (forward-sexp)
   "Move forward over a balanced expression."  
@@ -1181,6 +1198,8 @@
   (loop 0 '()))
 
 
+;(define (form-name-at-point)
+;  inner-start
     
 
 ;;; 26.4 Moving by Parens
