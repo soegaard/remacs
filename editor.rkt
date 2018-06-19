@@ -1,4 +1,6 @@
 #lang racket
+;;; TODO BUG  Menu short cuts doesn't call refresh-now.
+
 ;;; TODO:
 ;;;   Done  extend forward-sexp to handle strings "
 ;;;    -    do the same with backward-sexp
@@ -54,6 +56,9 @@
 ;;; TODO Introduce global that controls which key to use for meta
 ;;; TODO Implement open-input-buffer
 ;;; TODO Completions ala http://sublimetext.info/docs/en/extensibility/completions.html
+;;; TODO "Overlay" GUI Element as in Sublime Text
+;;; TODO Sidebar as in Visual Studio Code
+
 
 (module+ test (require rackunit))
 
@@ -463,15 +468,17 @@
                       [shortcut-prefix (if (list? m) m (list m))])
                  (new menu-item% [label l] [parent par] [shortcut sc] [callback cb])))]))
     (define mb (new menu-bar% (parent frame)))
+    ;; The default prefix is cmd (mac), ctl (win) or mumble (linux)
+    (define def (get-default-shortcut-prefix))
     ;; Remacs Menu
     (define m (new menu% (label "Remacs") (parent mb)))
     (new-menu-item m "About   "   #f #f            (λ (_ e) (about-remacs)))
     ;; File Menu
     (define fm (new menu% (label "File") (parent mb)))
-    (new-menu-item fm "New File"   #\n #f           (λ (_ e) (create-new-buffer)))
-    (new-menu-item fm "Open"       #\o #f           (λ (_ e) (open-file-or-create)))
-    (new-menu-item fm "Save"       #\s #f           (λ (_ e) (save-buffer)))
-    (new-menu-item fm "Save As..." #\s '(shift cmd) (λ (_ e) (save-buffer-as)))
+    (new-menu-item fm "New File"   #\n #f                (λ (_ e) (create-new-buffer)))
+    (new-menu-item fm "Open"       #\o #f                (λ (_ e) (open-file-or-create)))
+    (new-menu-item fm "Save"       #\s #f                (λ (_ e) (save-buffer)))    
+    (new-menu-item fm "Save As..." #\s (cons 'shift def) (λ (_ e) (save-buffer-as)))
     ;; Edit Menu
     (define em (new menu% (label "Edit") (parent mb)))
     (new-menu-item em "Select All" #\a #f (λ (_ e) (mark-whole-buffer)))
@@ -482,7 +489,7 @@
     (define etm (new menu% (label "Text") (parent em)))
     (new-menu-item etm "Kill line"         #\k         '(ctl)      (λ (_ e) (kill-line)))
     (new-menu-item etm "Kill Whole Line"   #\k         '(ctl shift)(λ (_ e) (kill-whole-line)))    
-    (new-menu-item etm "Kill to Beginning" #\backspace '(cmd)      (λ (_ e) (kill-line-to-beginning)))
+    (new-menu-item etm "Kill to Beginning" #\backspace def         (λ (_ e) (kill-line-to-beginning)))
     ;; Racket Menu
     (define rm (new menu% (label "Racket") (parent mb)))
     (new-menu-item rm "Run"                #\r #f (λ (_ e) (test-buffer-output)))
