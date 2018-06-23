@@ -11,6 +11,7 @@
          "buffer-locals.rkt"
          "buffer-namespace.rkt"
          "default.rkt"
+         "embedded.rkt"
          "line.rkt"
          "mark.rkt"
          "parameters.rkt"
@@ -422,15 +423,19 @@
   (for ([m (buffer-marks b)])
     (mark-adjust-deletion-before! m p a)))
 
-(define (buffer-insert-property-at-point! b p)
-  (define m  (buffer-point b))
-  (define t  (buffer-text b))
-  (text-insert-property-at-mark! t m p))
+(define (buffer-insert-property-at-position! b i sym val)
+  (define t (buffer-text b))
+  (define xs (text-embedded t i))
+  (unless (set-first-property! xs sym val)
+    (text-insert-embedded! t i (property val sym))))
 
-(define (buffer-insert-property! b p [p-end p])
+(define (buffer-insert-property-at-point! b sym val)
+  (buffer-insert-property-at-position! b (point) sym val))
+
+(define (buffer-insert-property! b sym val [val-end val])
   ; if the region is active, the property is inserted
   ; before and after the region (consider: are all properties toggles?)
-  ; if there are no region the property is simply inserted
+  ; if there are no region the property is simply inserted at point
   (cond
     [(use-region? b)
      (define rb (region-beginning b))
@@ -438,12 +443,12 @@
      (define m (buffer-point b))
      (define old (mark-position m))
      (mark-move-to-position! m rb)
-     (buffer-insert-property-at-point! b p)
+     (buffer-insert-property-at-point! b sym val)
      (mark-move-to-position! m re)
-     (buffer-insert-property-at-point! b p-end)
+     (buffer-insert-property-at-point! b sym val-end)
      (mark-move-to-position! m old)]
     [else
-     (buffer-insert-property-at-point! b p)]))
+     (buffer-insert-property-at-point! b sym val)]))
 
 (define (buffer-move-point-to-position! b n)
   (mark-move-to-position! (buffer-point b) n))

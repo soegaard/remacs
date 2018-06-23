@@ -2,9 +2,10 @@
 (provide new-text                    ; -> text                create an empty text
          text-append!                ; text text -> text      append the texts
          text-break-line!            ; text pos/mark -> void  break at position
-         text-delete-backward-char!  
+         text-delete-backward-char!
+         text-embedded
          text-insert-char-at-mark!
-         text-insert-property-at-mark!
+         text-insert-embedded!
          text-insert-string-at-mark!
          text-line                   ; text integer -> line    the i'th line
          text-num-lines
@@ -138,12 +139,18 @@
   (line-insert-char! (dfirst dline) c col)
   (set-text-length! t (+ (text-length t) 1)))
 
-(define (text-insert-property-at-mark! t m p)
-  (define i  (mark-position m))
+(define (text-insert-embedded! t i x)
   (define im (text-positions t))
   (define-values (start end d) (interval-map-ref/bounds im i))
   (define col (- i start))
-  (line-insert-property! (dfirst d) p col))
+  (line-insert-embedded! (dfirst d) x col))
+
+(define (text-embedded t i)
+  (define im (text-positions t))
+  (define-values (start end d) (interval-map-ref/bounds im i))
+  (define col (- i start))
+  (line-embedded (dfirst d) col))
+
 
 (define (text-insert-string-at-mark! t m b s) ; ok
   (when (string-contains? s "\n")

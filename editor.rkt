@@ -69,6 +69,7 @@
          "killing.rkt"
          "mark.rkt"
          "parameters.rkt"
+         "point.rkt"
          "render.rkt"
          "region.rkt"
          "representation.rkt"
@@ -226,10 +227,10 @@
               (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f hl?))
               (match (second p+s)
                 [(? string?)             (draw-string (remove-trailing-newline s) x y)]
-                [(property 'bold)        (toggle-bold)    (send dc set-font (get-font))   x]
-                [(property 'italics)     (toggle-italics) (send dc set-font (get-font))   x]
-                [(property (? color? c))                  (send dc set-text-foreground c) x]
-                [_ (displayln (~a "Warning: Got " s))                                     x])))
+                [(property 'bold        'style) (toggle-bold)    (send dc set-font (get-font))   x]
+                [(property 'italics     'style) (toggle-italics) (send dc set-font (get-font))   x]
+                [(property (? color? c) 'color)                  (send dc set-text-foreground c) x]
+                [_ (displayln (~a "Warning: Got " s))                                            x])))
           (when wrapped-line-indicator?
             (draw-string wrapped-line-indicator xmax (- y 2)))
           (+ y (line-size)))

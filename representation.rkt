@@ -6,8 +6,9 @@
 ; This file contains all structure definitions. 
 
 (provide (struct-out line)
-         (struct-out overlay)
-         (struct-out property)
+         (struct-out embedded)
+         (struct-out overlay)  new-overlay
+         (struct-out property) new-property
          (struct-out linked-line)
          (struct-out text)
          position-row+column
@@ -36,13 +37,17 @@
 (struct line (strings length) #:transparent #:mutable)
 ; A line is a list of elements of the types:
 ;   strings       represents actual text
-;   property      represents a text property e.g. bold
-;   overlay       represents ...
+;   embedded,     one of
+;     property      represents a text property e.g. bold
+;     overlay       represents ...
 
 ; properties are copied as part of the text
 ; overlays are not copied - they are specifically not part of the text
-(struct overlay  (specification) #:transparent)
-(struct property (specification) #:transparent)
+(struct embedded          (value)  #:transparent #:mutable)
+(struct property embedded (symbol) #:transparent #:mutable)
+(struct overlay  embedded (symbol) #:transparent #:mutable)
+(define (new-property sym val) (property val sym))
+(define (new-overlay  sym val) (overlay  val sym))
 
 (struct linked-line dcons (version marks) #:transparent #:mutable)
 ; the element of a linked-line is a line struct

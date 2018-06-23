@@ -6,7 +6,10 @@
          line-delete-backward-char!
          line-insert-char!
          line-insert-string!
-         line-insert-property!
+         line-insert-embedded!
+         line-embedded
+         line-properties
+         line-overlays
          line-ref
          line-split
 
@@ -71,8 +74,7 @@
   (define (pos->elm p)
     (match (first (pos-rest p))
       [(? string?   s) (string-ref s (pos-i p))]
-      [(? property? p) p]
-      [(? overlay?  o) o]
+      [(? embedded? e) e]
       [else (error 'pos->elm "internal error")]))
   (define (next-pos p)
     (define r (pos-rest p))
@@ -81,8 +83,7 @@
                      (if (= (string-length s) (+ i 1))
                          (pos (rest r) 0)
                          (pos r (+ i 1)))]
-      [(? property? p) (pos (rest r) 0)]
-      [(? overlay? o)  (pos (rest r) 0)]
+      [(? embedded? e) (pos (rest r) 0)]
       [else (error 'next-post "internal error")]))
   (define initial-pos (pos (line-strings l) 0))
   (define (continue-with-pos? p) (not (empty? (pos-rest p))))
@@ -153,7 +154,7 @@
                       (if (<= n i) 
                           (cons s (take-to (- i n) more greedy?))
                           (list (substring s 0 i)))]
-                     [(cons (and head (or (? property? s) (? overlay? s))) more)
+                     [(cons (and head (? embedded s)) more)
                       (cons head (take-to i more greedy?))]
                      [_ (error 'take-to "expected list of strings, properties and overlays")])]))
   (take-to (- i2 i1) (skip-start i1 (line-strings l)) greedy?))
@@ -190,11 +191,13 @@
     [(= i 0) (string-append t s)]
     [else    (string-append (substring s 0 i) t (substring s i n))]))
 
-; skip-strings : list-of-strings index -> index strings strings
+; skip-strings : list-of-strings-and-properties-and-overlays index -> index strings strings
 ;   If (j, us, vs) is returned,
 ;   then ss = (append us vs)
-;   and  (string-ref (concat ss) i) = (string-ref (first vs) j)
-(define (skip-strings ss i)
+;   and  (string-ref (concat ss) i) = (string-ref (first vs) j).
+;   If there are embedable values (properties or overlays) at index i,
+;   they will be the first elements of vs.
+(define (skip-strings ss i #:non-strings-as-after? [non-strings-returned-as-after? #f])
   (let loop ([i i] [before '()] [after ss])
     (cond 
       [(null? after) (values #f (reverse before) '())]
@@ -204,7 +207,10 @@
                                     (if (< i n)
                                         (values i (reverse before) after)
                                         (loop (- i n) (cons s before) (rest after)))]
-                       [else         (loop i (cons s before) (rest after))])])))
+                       ; non-string means property or overlay
+                       [else        (if (and (= i 0) non-strings-returned-as-after?)
+                                        (values i (reverse before) after)
+                                        (loop i (cons s before) (rest after)))])])))
 
 (module+ test
   (check-equal? (call-with-values (λ () (skip-strings '("ab" "cde" "fg") 0)) list)
@@ -245,23 +251,35 @@
   (set-line-length!  l (+ n (string-length t))))
 
 
-; line-insert-property! : line property index -> void
-;   insert property p in the line l at index i
-(define (line-insert-property! l p i)
+; line-insert-embedded! : line embedded index -> void
+;   insert embedded value e in the line l at index i
+(define (line-insert-embedded! l e i)
   (define n (line-length l))
-  (unless (<= i n) (error 'line-insert-property! "index i greater than line length, i=~a, l=~a" i l))
+  (unless (<= i n) (error 'line-insert-embedded! "index i greater than line length, i=~a, l=~a" i l))
   (define-values (j us vs) (skip-strings (line-strings l) i))
   (define v (first vs))
   (define vn (string-length v))
   (define w (cond 
-              [(= j 0)  (cons p (list v))]
-              [(= j vn) (append (list v) (list p))]
-              [else     (list (substring v 0 j) p (substring v j vn))]))
-  (set-line-strings! l (append us w (rest vs)))
-  (set-line-length!  l (+ n 1)))
+              [(= j 0)  (cons e (list v))]
+              [(= j vn) (append (list v) (list e))]
+              [else     (list (substring v 0 j) e (substring v j vn))]))
+  (set-line-strings! l (append us w (rest vs))))
+
+; line-embedded : line index -> list
+;    return a list of all embedded values at index i
+(define (line-embedded l i)
+  (define n (line-length l))
+  (unless (<= i n)
+    (error 'line-embedded "index i greater than line length, i=~a, l=~a" i l))
+  (define-values (j us vs) (skip-strings (line-strings l) i #:non-strings-as-after? #t))
+  (takef vs embedded?))
+
+(define (line-properties l i) (filter property? (line-embedded l i)))
+(define (line-overlays   l i) (filter overlay?  (line-embedded l i)))
+
 
 ; line-split : line index -> line line
-;   split the line in two at the index
+;   Split the line in two at the index.
 (define (line-split l i)
   (define n (line-length l))
   (unless (<= i n) (error 'line-split "index ~a larger than line length ~a, the line is ~a" i n l))

@@ -617,6 +617,9 @@
 ; (define (insert-buffer-substring from-buffer-or-name &optional start end) ...)
 ; (define (insert-buffer-substring-no-properties from-buffer-or-name &optional start end)
 
+(define (insert-property! sym val [val-end val])
+  (define b (current-buffer))
+  (buffer-insert-property! b sym val val-end))
 
 ;;;
 ;;; INDENTATION

@@ -7,6 +7,7 @@
          "colors.rkt"
          "completion.rkt"
          "commands.rkt"
+         "embedded.rkt"
          "frame.rkt"
          "killing.rkt"
          "mark.rkt"
@@ -178,17 +179,14 @@
          ; Meta + something
          ["M-S-@"         mark-word]
          ["M-left"        backward-word]
-         ["M-right"       forward-word]         
+         ["M-right"       forward-word]
          ["M-S-left"      backward-word/extend-region]
          ["M-S-right"     forward-word/extend-region]
-         ["M-b"           (λ () (buffer-insert-property! (current-buffer) (property 'bold)))]
-         ["M-i"           (λ () (buffer-insert-property! (current-buffer) (property 'italics)))]
-         ["M-f1"          (λ () (buffer-insert-property! 
-                                 (current-buffer) (property yellow) (property (local text-color))))]
-         ["M-f2"          (λ () (buffer-insert-property! 
-                                 (current-buffer) (property orange) (property (local text-color))))]
-         ["M-f3"          (λ () (buffer-insert-property! 
-                                 (current-buffer) (property blue)   (property (local text-color))))]
+         ["M-b"           (λ () (insert-property! 'style 'bold))]
+         ["M-i"           (λ () (insert-property! 'style 'italics))]
+         ["M-f1"          (λ () (insert-property! 'color yellow (local text-color)))]
+         ["M-f2"          (λ () (insert-property! 'color orange (local text-color)))]
+         ["M-f3"          (λ () (insert-property! 'color blue   (local text-color)))]
          ["f1"            test-buffer-output]
          ; ["M-d"           (λ () (buffer-display (current-buffer)))]
          ["M-d"           kill-word]
