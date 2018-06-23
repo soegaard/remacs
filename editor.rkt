@@ -11,7 +11,7 @@
 ;;; TODO run fundamental-mode in upstart
 ;;; TODO support .remacs files
 ;;; TODO buffer narrowing
-;;; TODO Introduce double buffering to avoid any flicker.
+;;; TODO Introduce double buffering to avoid any flicker? (Not a problem now)
 ;;;      https://www.facebook.com/notes/daniel-colascione/buttery-smooth-emacs/10155313440066102/
 ;;; TODO C-u <digit> ... now sets current-prefix-argument.
 ;;;      but only self-insert-char actually uses the prefix argument.
