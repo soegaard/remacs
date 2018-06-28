@@ -4,6 +4,7 @@
          text-break-line!            ; text pos/mark -> void  break at position
          text-delete-backward-char!
          text-embedded
+         text-embedded-between
          text-insert-char-at-mark!
          text-insert-embedded!
          text-insert-string-at-mark!
@@ -150,6 +151,26 @@
   (define-values (start end d) (interval-map-ref/bounds im i))
   (define col (- i start))
   (line-embedded (dfirst d) col))
+
+(define (text-embedded-between t i j sym)
+  (define im (text-positions t))
+  (define-values (from-start from-end from-d) (interval-map-ref/bounds im i))
+  (define-values (  to-start   to-end   to-d) (interval-map-ref/bounds im j))
+  (define from-col (- i from-start))
+  (define   to-col (- j   to-start))
+  (define l0 (dfirst from-d)) ; first
+  (define ln (dfirst   to-d)) ; last
+  (cond
+    [(eq? l0 ln) (line-embedded-between l0 from-col to-col)]
+    [else        (define xs0 (line-embedded-from l0 from-col))  
+                 (define xsn (line-embedded-to   ln   to-col))
+                 (define xs  (let loop ([xss '()] [d (dnext from-d)])
+                               (define this (and (not (null? d)) (dfirst d)))
+                               (cond [(null? d)     (apply append xss)]
+                                     [(eq? this ln) (apply append xss)]                      
+                                     [else          (loop (cons (line-all-embedded this) xss)
+                                                          (dnext d))])))
+                 (append xs0 xs xsn)]))
 
 
 (define (text-insert-string-at-mark! t m b s) ; ok

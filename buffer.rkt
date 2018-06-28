@@ -63,15 +63,17 @@
 ;   create fresh buffer without an associated file
 (define (new-buffer [text (new-text)] [path #f] [name (generate-new-buffer-name "buffer")])
   (define locals (new-buffer-namespace)) ; see "buffer-namespace.rkt"
+  (define overlays (new-overlays))
   (define b (buffer text name path 
-                    '()   ; points
-                    '()   ; marks
-                    '()   ; modes 
-                    0     ; cur-line
-                    0     ; num-chars
-                    0     ; num-lines
-                    #f    ; modified?
-                    locals))  ; locals
+                    '()        ; points
+                    '()        ; marks
+                    '()        ; modes 
+                    0          ; cur-line
+                    0          ; num-chars
+                    0          ; num-lines
+                    #f         ; modified?
+                    locals     ; locals
+                    overlays)) ; overlays
   (define point (new-mark b "*point*"))
   (define points (list point))
   (set-buffer-points! b points)
@@ -432,21 +434,26 @@
 (define (buffer-insert-property-at-point! b sym val)
   (buffer-insert-property-at-position! b (point) sym val))
 
+(define (buffer-remove-property-between! b i j sym)
+  (define t (buffer-text b))
+  (define xs (text-embedded-between t i j sym))
+  (for ([x (in-list xs)])
+    (set-property-symbol! x #f)))
+
 (define (buffer-insert-property! b sym val [val-end val])
   ; if the region is active, the property is inserted
   ; before and after the region (consider: are all properties toggles?)
   ; if there are no region the property is simply inserted at point
   (cond
     [(use-region? b)
+     (define t (buffer-text b))     
      (define rb (region-beginning b))
      (define re (region-end b))
-     (define m (buffer-point b))
-     (define old (mark-position m))
-     (mark-move-to-position! m rb)
-     (buffer-insert-property-at-point! b sym val)
-     (mark-move-to-position! m re)
-     (buffer-insert-property-at-point! b sym val-end)
-     (mark-move-to-position! m old)]
+     ; first remove existing 
+     (buffer-remove-property-between! b rb re sym)
+     ; then insert properties before and after region
+     (buffer-insert-property-at-position! b rb sym val)
+     (buffer-insert-property-at-position! b re sym val-end)]
     [else
      (buffer-insert-property-at-point! b sym val)]))
 

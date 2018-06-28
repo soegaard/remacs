@@ -6,6 +6,7 @@
          (for-template "parameters.rkt")
          racket/class racket/draw
          "canvas.rkt"
+         "colors.rkt"
          "parameters.rkt"
          "representation.rkt")
 
@@ -25,14 +26,19 @@
 
 (define font-style  (make-parameter 'normal))  ; style  in '(normal italic)
 (define font-weight (make-parameter 'normal))  ; weight in '(normal bold)
+(define font-color  (make-parameter  base1))   ; 
+
 (define the-font-size default-font-size)
 (define (font-size [n #f]) (when n (set! the-font-size n)) the-font-size)
+
 (define font-family (make-parameter 'modern))  ; fixed width
+
 (define (use-default-font-settings)
   (font-style  'normal)
   (font-weight 'normal)
   ;(font-size   16)
   (font-family 'modern))
+
 (define font-ht (make-hash))                   ; (list size family style weight) -> font  
 (define (get-font)
   (define key (list (font-size) (font-family) (font-style) (font-weight)))
@@ -41,10 +47,29 @@
     (set! font (make-object font% (font-size) (font-family) (font-style) (font-weight)))
     (hash-set! font-ht key font))
   font)
+
 (define (toggle-bold)    (font-weight (if (eq? (font-weight) 'normal) 'bold   'normal)))
 (define (toggle-italics) (font-style  (if (eq? (font-style)  'normal) 'italic 'normal)))
 (define (default-fixed-font)  (get-font))
 
+(define-syntax (define-stack stx)
+  (syntax-parse stx
+    [(_define-stack name reset push pop param default)
+     (syntax/loc stx
+       (begin (define name '())
+              (define (reset) (set! name '()))
+              (define (push v) (set! name (cons v name)))
+              (define (pop)
+                (cond [(null? name) (displayln (list "Warning: default used" 'name)) default]
+                      [else         (begin0 (car name)
+                                            (param (car name))
+                                            (set! name (cdr name)))]))))]))
+
+(define-stack color-stack  reset-color-stack  push-color  pop-color  font-color   cyan)
+(define-stack weight-stack reset-weight-stack push-weight pop-weight font-weight  'normal)
+(define-stack style-stack  reset-style-stack  push-style  pop-style  font-style   'normal)
+
+(define (set-font dc) (send dc set-font (get-font)))
 
 ;;; 
 ;;; LINES

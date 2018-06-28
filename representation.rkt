@@ -7,7 +7,7 @@
 
 (provide (struct-out line)
          (struct-out embedded)
-         (struct-out overlay)  new-overlay
+         (struct-out overlays) new-overlays
          (struct-out property) new-property
          (struct-out linked-line)
          (struct-out text)
@@ -39,15 +39,15 @@
 ;   strings       represents actual text
 ;   embedded,     one of
 ;     property      represents a text property e.g. bold
-;     overlay       represents ...
 
 ; properties are copied as part of the text
 ; overlays are not copied - they are specifically not part of the text
 (struct embedded          (value)  #:transparent #:mutable)
 (struct property embedded (symbol) #:transparent #:mutable)
-(struct overlay  embedded (symbol) #:transparent #:mutable)
 (define (new-property sym val) (property val sym))
-(define (new-overlay  sym val) (overlay  val sym))
+
+(struct overlays (ht))
+(define (new-overlays) (overlays (make-hasheq)))
 
 (struct linked-line dcons (version marks) #:transparent #:mutable)
 ; the element of a linked-line is a line struct
@@ -68,7 +68,8 @@
   ; buffer-name and buffer-modified? are extendeded to handle current-buffer later on
   (provide (except-out (struct-out buffer) buffer-name buffer-modified?) 
            (rename-out [buffer-name -buffer-name] [buffer-modified? -buffer-modified?]))
-  (struct buffer (text name path points marks modes cur-line num-chars num-lines modified? locals)
+  (struct buffer (text name path points marks modes cur-line num-chars num-lines modified?
+                       locals overlays)
     #:transparent #:mutable))
 (require (submod "." buffer-struct))
 ; A buffer is the basic unit of text being edited.

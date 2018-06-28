@@ -184,6 +184,10 @@
     ;; Render
     (unless (current-render-points-only?)
       (when b
+        ;; Foreground color
+        (reset-color-stack)
+        (font-color (local text-color))
+        (push-color (local text-color))
         (define text-background-color (send dc get-text-background))
         ;; Highlighting for line containing point
         (define hl? (local hl-line-mode?))
@@ -217,6 +221,12 @@
               [(list c)           (render-screen-line dc xmin y c #f hl?)]
               [(cons c cs)  (loop (render-screen-line dc xmin y c #t hl?) cs)])))
         (define (render-screen-line dc xmin y contents wrapped-line-indicator? highlight-line?)
+          (define (col s)
+            (match s
+              ['yellow yellow]
+              ['orange orange]
+              ['blue   blue]
+              [_        s]))
           (define hl? highlight-line?)
           ; contents = screen line = list of (list position string/properties)
           (define xmax
@@ -226,11 +236,16 @@
               (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t hl?))
               (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f hl?))
               (match (second p+s)
-                [(? string?)             (draw-string (remove-trailing-newline s) x y)]
-                [(property 'bold        'style) (toggle-bold)    (send dc set-font (get-font))   x]
-                [(property 'italics     'style) (toggle-italics) (send dc set-font (get-font))   x]
-                [(property (? color? c) 'color)                  (send dc set-text-foreground c) x]
-                [_ (displayln (~a "Warning: Got " s))                                            x])))
+                [(? string?)                     (draw-string (remove-trailing-newline s) x y)]
+                [(property (and 'bold    w) 'weight) (push-weight)  (toggle-bold)    (set-font dc)  x]
+                [(property (and 'italics s) 'style)  (push-style s) (toggle-italics) (set-font dc)  x]
+                [(property (? color? c)     'color)  (push-color (font-color))
+                                                     (send dc set-text-foreground c) x]
+                [(property 'pop             'weight) (send dc set-weight          (pop-weight)) x]
+                [(property 'pop             'style)  (send dc set-style           (pop-style))  x]
+                [(property 'pop             'color)  (send dc set-text-foreground (pop-color))  x]
+                ; [(property _            #f)                      (void 'removed)       -inf.0]
+                [_ (void '(displayln (~a "Warning: Got " s)))                                 x])))
           (when wrapped-line-indicator?
             (draw-string wrapped-line-indicator xmax (- y 2)))
           (+ y (line-size)))

@@ -1,22 +1,24 @@
 #lang racket/base
-(provide 
+(provide new-line
+         
          line->string
          line-append
          line-blank?
          line-delete-backward-char!
          line-insert-char!
          line-insert-string!
-         line-insert-embedded!
-         line-embedded
-         line-properties
-         line-overlays
          line-ref
          line-split
-
-         list->lines
          
-         new-line
-         string->line)
+         string->line
+         list->lines
+
+         line-insert-embedded!
+         line-embedded
+         line-all-embedded
+         line-embedded-from
+         line-embedded-to
+         line-embedded-between)
 
 ;;;
 ;;; LINE
@@ -143,8 +145,8 @@
     (cond
       [(empty? ss) '()]
       [(= i 0)     (define head (first ss))
-                   (if (and greedy? 
-                            (or (overlay? head) (property? head)))
+                   (if (and greedy?
+                            (embedded? head))
                        (cons head (take-to i (rest ss) greedy?))
                        '())]
       [(< i 0)     '()]
@@ -275,8 +277,32 @@
   (takef vs embedded?))
 
 (define (line-properties l i) (filter property? (line-embedded l i)))
-(define (line-overlays   l i) (filter overlay?  (line-embedded l i)))
+;(define (line-overlays   l i) (filter overlay?  (line-embedded l i)))
 
+(define (line-all-embedded l)
+  (filter embedded? (line-strings l)))
+
+(define (line-embedded-from l i)
+  (define n (line-length l))
+  (unless (<= i n) (error 'line-all-embedded-from "index i greater than line length, i=~a, l=~a" i l))
+  (define-values (j us vs) (skip-strings (line-strings l) i #:non-strings-as-after? #t))
+  (filter embedded? vs))
+
+(define (line-embedded-to l i)
+  (define n (line-length l))
+  (unless (<= i n) (error 'line-all-embedded-from "index i greater than line length, i=~a, l=~a" i l))
+  (define-values (j us vs) (skip-strings (line-strings l) (+ i 1) #:non-strings-as-after? #t))
+  (filter embedded? us))
+
+(define (line-embedded-between l i k)
+  (define n (line-length l))
+  (unless (<= i n) (error 'line-all-embedded-from "index i greater than line length, i=~a, l=~a" i l))
+  (unless (<= k n) (error 'line-all-embedded-from "index i greater than line length, i=~a, l=~a" k l))
+  (define-values (j1 us vs) (skip-strings (line-strings l) i #:non-strings-as-after? #t))
+  (define-values (j2 ss ts) (skip-strings vs (+ j1 (- k i)) #:non-strings-as-after? #t))
+  (displayln (list 'j1 j1 'us us 'vs vs))
+  (displayln (list 'j2 j2 'ss ss 'ts ts))
+  (filter embedded? ss))
 
 ; line-split : line index -> line line
 ;   Split the line in two at the index.

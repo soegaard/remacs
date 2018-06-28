@@ -41,7 +41,8 @@
          "search.rkt"
          "string-utils.rkt"
          "text.rkt"
-         "window.rkt")
+         "window.rkt"
+         (prefix-in overlays: "overlays.rkt"))
 
 ;;;
 ;;; MOVEMENT
@@ -1238,3 +1239,12 @@
     ; If next character is an opener, move over the corresponding closer.
     ; If next character beins a symbol, string or number, move over.    
     ...)
+
+
+(define (overlay-set i j sym val [b (current-buffer)])
+  (define os (buffer-overlays b))
+  (overlays:overlays-set! os i j sym val))
+
+(define (overlay-ref i j sym val [b (current-buffer)])
+  (define os (buffer-overlays b))
+  (overlays:overlays-ref os i j sym val))
