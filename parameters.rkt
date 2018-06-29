@@ -25,6 +25,7 @@
          current-next-screen-context-lines
          ;;; Globals
          cached-screen-lines-ht
+         current-auto-mode-ht
          )
 
 (require (for-syntax racket/base syntax/parse))
@@ -41,6 +42,13 @@
 
 (define current-append-next-kill   (make-parameter #f))
 
+;;;
+;;; FILE AND I/O
+;;;
+
+; current-auto-mode-ht : hashtable from string to mode function
+;   see mode.rkt
+(define current-auto-mode-ht       (make-parameter (make-hash)))
 
 ;;;
 ;;;GUI PARAMETERS

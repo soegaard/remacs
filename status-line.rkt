@@ -1,6 +1,7 @@
 #lang racket/base
 (provide status-line-hook
-         status-line-time)
+         status-line-time
+         status-line-render-time)
 ;;;
 ;;; STATUS LINE
 ;;;
@@ -27,6 +28,9 @@
 (define the-time 0)
 (define (status-line-time t) (set! the-time t))
 
+(define the-render-time 0)
+(define (status-line-render-time t) (set! the-render-time t))
+
 ; The default function used to compute status line information
 (define (status-line-hook)
   (define b (current-buffer))
@@ -42,10 +46,11 @@
                                       [col?             (~a "C" col)]
                                       [else             ""]))
        (~a save-status  
-           "   " "Buffer: "   (buffer-name) "    " line+col
-           "   " "Position: " (mark-position (buffer-point (current-buffer)))
-           "   " "Length: "   (buffer-length (current-buffer))
-           "   " "Mode: "     "(" (get-mode-name) ")"
-           "   " "Time: "     the-time)]
+           "   " "Buffer: "          (buffer-name) "    " line+col
+           "   " "Position: "        (mark-position (buffer-point (current-buffer)))
+           "   " "Length: "          (buffer-length (current-buffer))
+           "   " "Mode: "            "(" (get-mode-name) ")"
+           "   " "Time: "            the-time
+           "   " "Render Time: "     the-render-time)]
     [else
      "No current buffer"]))

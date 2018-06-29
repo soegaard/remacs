@@ -39,6 +39,7 @@
          "region.rkt"
          "render.rkt"
          "search.rkt"
+         "status-line.rkt"
          "string-utils.rkt"
          "text.rkt"
          "window.rkt"
@@ -240,10 +241,17 @@
 
 (define-interactive (open-file-or-create [path (finder:get-file)])
   (when path ; #f = none selected
+    ; open buffer and display it in window
     (define b (buffer-open-file-or-create path))
     (set-window-buffer! (current-window) b)
     (current-buffer b)
-    (refresh-frame (current-frame))))
+    ; set mode
+    (cond [(file-path->mode-function path) => (λ (mode) (mode))]
+          [else                               (fundamental-mode)])
+    (define f (current-frame))
+    ; make sure a mode change is seen in the status line below
+    (send (frame-status-line f) set-label (status-line-hook))
+    (refresh-frame f)))
 
 (define-interactive (next-buffer) ; show next buffer in current window
   (define w (current-window))
@@ -567,6 +575,7 @@
   ; name
   (set-major-mode! 'racket)
   (set-mode-name!  "Racket")
+  ; (set-buffer-local! 'color-buffer  b)
   ; keymap
   ;   Demonstrates how to override a keymap
   (local! local-keymap
@@ -1149,7 +1158,7 @@
     (define end-state
       (parse-partial-sexp (point) (position-of-end)
                           #:state state-here #:target-depth depth-here))
-    (displayln end-state)
+    ; (displayln end-state)
     end-state)
   (match n
     [#f (forward-sexp-1)]

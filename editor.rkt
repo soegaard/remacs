@@ -68,12 +68,14 @@
          "keymap.rkt"
          "killing.rkt"
          "mark.rkt"
+         "mode.rkt"
          "parameters.rkt"
          "point.rkt"
          "render.rkt"
          "region.rkt"
          "representation.rkt"
          "simple.rkt"
+         "status-line.rkt"
          "window.rkt")
 
 (current-global-keymap global-keymap)
@@ -106,6 +108,7 @@
 (define (screen-line-length) (ref-buffer-local 'screen-line-length))
 
 (define (render-buffer w)
+  (define now (current-milliseconds))
   (define (marks-between marks from to)
     (for/list ([m marks] #:when (<= from (mark-position m) to))
       (mark-position m)))
@@ -170,7 +173,8 @@
              (char=? (string-ref s (- (string-length s) 1)) #\newline)
              (substring s 0 (max 0 (- (string-length s) 1))))
         s))
-  
+  (cond [(local color-buffer) => (λ (f) (f))]
+        [else                    (void)])
   (unless (current-rendering-suspended?)
     (define b  (window-buffer w))
     (define c  (window-canvas w))
@@ -322,7 +326,9 @@
         (send dc resume-flush)
         (void)))
     ; draw points
-    (render-points w start-row end-row)))
+    (render-points w start-row end-row)
+    (define later (current-milliseconds))
+    (status-line-render-time (- later now))))
 
 (define debug-buffer #f)
 (define debug-info #f)
@@ -463,10 +469,11 @@
 
 ;;; MINI BUFFER
 
-; The mini buffer is a buffer displayed in the mini canvas.
-; Most buffer operations are avaialble, but it can not be split.
-; <tab>, <space> and <return> are usually bound to completion 
-; operations in a minibuffer.
+; This is how mini buffers work in Emacs:
+;   The mini buffer is a buffer displayed in the mini canvas.
+;   Most buffer operations are available, but it can not be split.
+;   <tab>, <space> and <return> are usually bound to completion 
+;   operations in a minibuffer.
 
 #;(define (message format-string . arguments)
     ; TODO
@@ -618,5 +625,7 @@
   (set-frame-windows! f w)
   (current-window w)
   (current-frame f)
+
+  (register-auto-mode "rkt" racket-mode)
   
   (send (window-canvas w) focus))

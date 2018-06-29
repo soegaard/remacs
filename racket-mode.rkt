@@ -46,7 +46,7 @@
 (require syntax-color/racket-lexer)
 
 (define (color-buffer)
-  (displayln (list "racket-mode: color-buffer"))
+  ; (displayln (list "racket-mode: color-buffer"))
   (define b    (current-buffer))
   (define from 0)
   (define to   (buffer-length b))
@@ -55,11 +55,11 @@
     (define-values (token style paren start end) (racket-lexer in))
     (cond
       [(eof-object? token) (void)]
-      [else                (writeln (list token style (~a paren) (list start end)))
+      [else                ; (writeln (list token style (~a paren) (list start end)))
                            (define color (hash-ref color-ht style grey))
                            (overlay-set (- start 1) (- end 1) 'color color b)
                            (loop)])))
 
-
+(local! color-buffer color-buffer)
 
 

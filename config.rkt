@@ -17,8 +17,9 @@
 ;;;
 
 ; Set the initial mode to the fundamental mode.
-(define major-mode 'fundamental-mode)
-(define mode-name  "Fundamental")
+(define major-mode      'fundamental-mode)
+(define mode-name       "Fundamental")
+(define color-buffer    #f)
 
 ;;;
 ;;; EDITING

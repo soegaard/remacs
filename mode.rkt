@@ -1,5 +1,9 @@
 #lang racket/base
-(require "representation.rkt" "parameters.rkt" "buffer-locals.rkt")
+(require racket/path
+         "buffer-locals.rkt"
+         "parameters.rkt"
+         "representation.rkt")
+
 (provide (all-defined-out))
 
 ;;;
@@ -45,3 +49,14 @@
 ; (add-to-list 'auto-mode-alist '("\\.wpd\\'" . wpdl-mode))
 ; syntax table
 ; local (key)map
+
+(define (register-auto-mode extension mode)  
+  (hash-set! (current-auto-mode-ht) extension mode))
+
+
+(define (file-path->mode-function path)
+  (define ext-bytes (bytes->string/utf-8 (path-get-extension path)))
+  (define ext       (substring ext-bytes 1 (string-length ext-bytes)))
+  (define mode      (hash-ref (current-auto-mode-ht)  ext #f))
+  mode)
+
