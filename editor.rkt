@@ -46,7 +46,6 @@
 ;;; TODO paragraphs
 ;;; TODO documentation
 ;;; TODO left and right needs to toggle transient-mode rather than deactivate the mark
-;;; TODO Properties and faces
 ;;; TODO Introduce global that controls which key to use for meta
 ;;; TODO Implement open-input-buffer
 ;;; TODO Completions ala http://sublimetext.info/docs/en/extensibility/completions.html
@@ -58,6 +57,7 @@
 (module+ test (require rackunit))
 
 (require (for-syntax syntax/parse)
+         data/interval-map
          racket/gui/base
          framework
          "buffer.rkt"
@@ -128,11 +128,14 @@
             (define sn (string-length s))
             (define (position-is-in-this-string? x) (and (<= p x) (< x (+ p sn))))
             (define positions-in-string ; find positions of points, marks and wrap posns in the string
-              (sort-numbers (append (filter position-is-in-this-string? other)
-                                    (marks-between (buffer-marks b)  p (+ p sn))
-                                    (marks-between (buffer-points b) p (+ p sn))
-                                    (filter position-is-in-this-string?
-                                            (range (+ start-pos len) (+ p sn) len)))))
+              (sort-numbers
+               (append (filter position-is-in-this-string? other)
+                       (marks-between (buffer-marks b)  p (+ p sn))
+                       (marks-between (buffer-points b) p (+ p sn))
+                       (filter position-is-in-this-string? (buffer-overlay-positions b 'color))
+                       (filter position-is-in-this-string? (buffer-overlay-positions b 'style))
+                       (filter position-is-in-this-string? (buffer-overlay-positions b 'weight))
+                       (filter position-is-in-this-string? (range (+ start-pos len) (+ p sn) len)))))
             ; split the string at the mark positions (there might be a color change)
             (define start-positions (cons p positions-in-string))
             (define end-positions   (append positions-in-string (list (+ p sn))))
@@ -184,10 +187,6 @@
     ;; Render
     (unless (current-render-points-only?)
       (when b
-        ;; Foreground color
-        (reset-color-stack)
-        (font-color (local text-color))
-        (push-color (local text-color))
         (define text-background-color (send dc get-text-background))
         ;; Highlighting for line containing point
         (define hl? (local hl-line-mode?))
@@ -228,24 +227,46 @@
               ['blue   blue]
               [_        s]))
           (define hl? highlight-line?)
+          ;;; Overlays
+          (define the-overlays-ht (overlays-ht (buffer-overlays b)))
+          (define color-im        (hash-ref the-overlays-ht 'color  #f))
+          (define style-im        (hash-ref the-overlays-ht 'style  #f))
+          (define weight-im       (hash-ref the-overlays-ht 'weight #f))
+          (define default-color   (ref-buffer-local 'text-color  b))
+          (define default-style   (ref-buffer-local 'text-style  b))
+          (define default-weight  (ref-buffer-local 'text-weight b))
+          (define (make-getter im default) (λ (p) (if im (interval-map-ref im p default) default)))
+          (define get-text-color  (make-getter  color-im default-color))
+          (define get-style       (make-getter  style-im default-style))
+          (define get-weight      (make-getter weight-im default-weight))
+          (define cur-text-color  #f)
+          (define-syntax (set-unless-same stx)
+            (syntax-parse stx
+              [(_set-unless-smae p msg cur get)
+               (syntax/loc stx
+                 (let ([t (get p)])
+                   (unless (equal? t cur)
+                     (set! cur t)
+                     (send dc msg t))))]))
           ; contents = screen line = list of (list position string/properties)
           (define xmax
             (for/fold ([x xmin]) ([p+s contents])
               (match-define (list p s) p+s)
+              ; background color
               (set-text-background-color #f hl?)
               (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t hl?))
               (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f hl?))
+              ; foreground color
+              (set-unless-same p set-text-foreground cur-text-color  get-text-color)
+              ; pen
+              (font-style  (get-style  p))
+              (font-weight (get-weight p))
+              (set-font dc)
+              ; draw string
               (match (second p+s)
-                [(? string?)                     (draw-string (remove-trailing-newline s) x y)]
-                [(property (and 'bold    w) 'weight) (push-weight)  (toggle-bold)    (set-font dc)  x]
-                [(property (and 'italics s) 'style)  (push-style s) (toggle-italics) (set-font dc)  x]
-                [(property (? color? c)     'color)  (push-color (font-color))
-                                                     (send dc set-text-foreground c) x]
-                [(property 'pop             'weight) (send dc set-weight          (pop-weight)) x]
-                [(property 'pop             'style)  (send dc set-style           (pop-style))  x]
-                [(property 'pop             'color)  (send dc set-text-foreground (pop-color))  x]
-                ; [(property _            #f)                      (void 'removed)       -inf.0]
-                [_ (void '(displayln (~a "Warning: Got " s)))                                 x])))
+                [(? string?) (draw-string (remove-trailing-newline s) x y)]
+                [_ (void '(displayln (~a "Warning: Got " s)))
+                   x])))
           (when wrapped-line-indicator?
             (draw-string wrapped-line-indicator xmax (- y 2)))
           (+ y (line-size)))
@@ -323,7 +344,6 @@
     (define now   (remainder (current-milliseconds) 100000))
     (for ([i (quotient now 100)])
       (current-point-color (cdr colors)))
-    ;(color-fuel (remainder now 100))
     (define points-off-pen (new pen% [color (local background-color)]))  
     ; get point and mark height
     (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
@@ -344,8 +364,6 @@
                                                 (<  n (screen-line-end-position sl))))
                           sl))
             (when sl
-              ; (error)
-              
               (define s (screen-line-start-position sl))
               (define c (- n s))
               (define r (screen-line-screen-row sl))

@@ -14,6 +14,7 @@
          "embedded.rkt"
          "line.rkt"
          "mark.rkt"
+         "overlays.rkt"
          "parameters.rkt"
          "point.rkt"
          "region.rkt"
@@ -330,6 +331,7 @@
   (define m (buffer-point b))
   (define t (buffer-text b))
   (text-insert-char-at-mark! t m b c)
+  (buffer-stretch-overlays b m 1)
   (buffer-dirty! b))
 
 ; buffer-insert-string! : buffer string -> void
@@ -337,6 +339,8 @@
 (define (buffer-insert-string! b s)
   (define m (buffer-point b))
   (define t (buffer-text b))
+  (define n (string-length s))
+  (buffer-stretch-overlays b m n)
   ; the function text-insert-string-at-mark! works for strings
   ; containing no newlines - so we will need to split the string s
   ; into segments.  
@@ -415,6 +419,8 @@
   ; emacs: delete-backward-char
   (define m (buffer-point b))
   (define t (buffer-text b))
+  (define p (position m))
+  (buffer-contract-overlays b p count)
   (for ([i count]) ; TODO improve efficiency!
     (text-delete-backward-char! t m)
     (buffer-adjust-marks-due-to-deletion-before! b (mark-position m) 1)
@@ -538,3 +544,35 @@
   (set-buffer-marks! b (cons m ms))
   m)
 
+
+;;;
+;;; OVERLAYS
+;;;
+
+(define (buffer-overlay-range-set! b from to sym val)
+  (define os (buffer-overlays b))
+  (overlays-set! os (position from) (position to) sym val))
+
+(define (buffer-overlay-set! b sym i val)
+  (define j (position i))
+  (buffer-overlay-range-set! b sym j (+ j 1) val))
+
+(define (buffer-overlay-ref b sym i [default #f])
+  (define os (buffer-overlays b))
+  (overlays-ref os sym (position i) default))
+
+(define (buffer-overlay-ref/bounds b sym i [default #f])
+  (define os (buffer-overlays b))
+  (overlays-ref/bounds os sym (position i) default))
+
+(define (buffer-stretch-overlays b i n)
+  (define os (buffer-overlays b))
+  (overlays-stretch-all os (position i) n))
+
+(define (buffer-contract-overlays b i n)
+  (define os (buffer-overlays b))
+  (overlays-contract-all os (position i) n))
+
+(define (buffer-overlay-positions b sym)
+  (define os (buffer-overlays b))
+  (overlays-positions os sym))

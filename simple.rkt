@@ -1240,11 +1240,20 @@
     ; If next character beins a symbol, string or number, move over.    
     ...)
 
+;;; 37.9 Overlays
 
-(define (overlay-set i j sym val [b (current-buffer)])
-  (define os (buffer-overlays b))
-  (overlays:overlays-set! os i j sym val))
+(define (overlay-set from to sym val [b (current-buffer)])
+  (define i (position from))
+  (define j (position to))
+  (buffer-overlay-range-set! sym (min i j) (max i j) val))
 
-(define (overlay-ref i j sym val [b (current-buffer)])
-  (define os (buffer-overlays b))
-  (overlays:overlays-ref os i j sym val))
+(define (overlay-ref sym i [b (current-buffer)])
+  (buffer-overlay-ref b sym i))
+
+(define (region-overlay sym val [b (current-buffer)])
+  (cond [(use-region? b)
+         (define rb (region-beginning b))
+         (define re (region-end b))
+         (buffer-overlay-range-set! b rb re sym val)
+         (cond [(region-mark) => mark-deactivate!])] ; deactivate region
+        [else (void)]))

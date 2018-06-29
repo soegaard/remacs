@@ -65,6 +65,9 @@
 (define region-highlighted-color base00)
 (define text-color               base1)
 (define border-color             base00)
+;;; Style and Weight
+(define text-style               'normal)
+(define text-weight              'normal)
 
 
 ;;; Wrapped Lines

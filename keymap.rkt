@@ -44,7 +44,7 @@
     (define (digits->number ds) (string->number (list->string ds)))
     (define (digit-char? x) (and (char? x) (char<=? #\0 x #\9)))
     ; todo: allow negative numeric prefix
-    (match prefix
+    (match prefix      
       [(list "M-x" more ...)
        (match key
          [(or "ESC" "C-g")  (message "") 'clear-prefix]
@@ -101,6 +101,17 @@
          [#\c             (displayln (digits->number ds)) (λ () (move-to-column (digits->number ds)))]
          [else            (current-prefix-argument (digits->number ds))
                           (global-keymap x key)])]
+      [(list "M-g" more ...)
+       (match key         
+         [#\b         (λ () (region-overlay 'weight 'bold))]
+         [#\i         (λ () (region-overlay 'style  'italic))]
+         ['shift     '(replace ("M-g"))]
+         [#\Y         (λ () (region-overlay 'color   yellow))] 
+         [#\O         (λ () (region-overlay 'color   orange))] 
+         [#\R         (λ () (region-overlay 'color   red))]
+         [#\G         (λ () (region-overlay 'color   green))]
+         [#\B         (λ () (region-overlay 'color   blue))]
+         [_           #f])]
       [(list "ESC") 
        (match key
          [#\b         backward-word]
@@ -124,7 +135,7 @@
          ['right      next-buffer]
          ['left       previous-buffer]
          ; ["C-b"     list-buffers]     TODO        
-         [_           #f])]
+         [_           #f])]      
       [(list)
        ; (write (list 'empty-prefix 'key key)) (newline)
        (match key
@@ -132,6 +143,7 @@
          ["C-x"          'prefix]
          ["C-u"          'prefix]
          ["M-x"          (message "M-x ") 'prefix]
+         ["M-g"          (message "M-g ") 'prefix]
          ; movement
          ['left           backward-char]
          ['right          forward-char]
@@ -182,11 +194,6 @@
          ["M-right"       forward-word]
          ["M-S-left"      backward-word/extend-region]
          ["M-S-right"     forward-word/extend-region]
-         ["M-b"           (λ () (insert-property! 'weight 'bold     'pop))]
-         ["M-i"           (λ () (insert-property! 'style  'italics  'pop))]
-         ["M-f1"          (λ () (insert-property! 'color   yellow   'pop))]
-         ["M-f2"          (λ () (insert-property! 'color   orange   'pop))]
-         ["M-f3"          (λ () (insert-property! 'color   blue     'pop))]
          ["f1"            test-buffer-output]
          ; ["M-d"           (λ () (buffer-display (current-buffer)))]
          ["M-d"           kill-word]
