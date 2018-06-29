@@ -239,15 +239,16 @@
           (define get-text-color  (make-getter  color-im default-color))
           (define get-style       (make-getter  style-im default-style))
           (define get-weight      (make-getter weight-im default-weight))
-          (define cur-text-color  #f)
+          (define cur-text-color  default-color)
           (define-syntax (set-unless-same stx)
             (syntax-parse stx
               [(_set-unless-smae p msg cur get)
                (syntax/loc stx
                  (let ([t (get p)])
                    (unless (equal? t cur)
-                     (set! cur t)
-                     (send dc msg t))))]))
+                     (when (is-a? t color%)
+                       (set! cur t)
+                       (send dc msg t)))))]))
           ; contents = screen line = list of (list position string/properties)
           (define xmax
             (for/fold ([x xmin]) ([p+s contents])

@@ -216,6 +216,31 @@
 (define (refresh-buffer [b (current-buffer)])
   ((current-refresh-buffer) b))
 
+#;(make-input-port name read-in peek close
+                   ; optionals
+                   get-progress-evt
+                   commit
+                   get-location
+                   count-lines!
+                   init-position
+                   buffer-mode)
+
+#;(define (make-input-buffer b)
+    ; State
+    (define count-lines? #f)
+    ; Setup port
+    (define name (buffer-name b)) ; name for input port
+    (define read-in
+      (λ (mbs) ; a mutable byte string to receive the read data
+        ; 1. Fill in mbs
+        ; 2. Return number of read bytes
+        )))
+
+; TODO implement it properly
+(define (open-input-buffer b) ; temporary definition
+  (open-input-string
+   (text->string (buffer-text b))))
+
 (define (make-output-buffer b)
   ;(displayln (list 'make-output-buffer 'current-frame (refresh-frame)))
   ;; State

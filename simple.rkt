@@ -1245,7 +1245,7 @@
 (define (overlay-set from to sym val [b (current-buffer)])
   (define i (position from))
   (define j (position to))
-  (buffer-overlay-range-set! sym (min i j) (max i j) val))
+  (buffer-overlay-range-set! b (min i j) (max i j) sym val))
 
 (define (overlay-ref sym i [b (current-buffer)])
   (buffer-overlay-ref b sym i))
