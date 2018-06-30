@@ -167,7 +167,8 @@
 (define (mark-move-beginning-of-line! m)
   (define p (mark-position m))
   (define col (mark-column m))
-  (set-mark-position! m (- p col)))
+  (when (and p col)
+    (set-mark-position! m (- p col))))
 
 ; position-of-end-of-line : [buffer or mark] -> integer
 ;   return the position just before the newline of the line of point
@@ -232,20 +233,22 @@
 (define (mark-move-up! m [n 1])
   ; todo : go from mark to line rather than use dlist-move
   (define (move-one!)
-    (define p    (mark-position m))    
-    (define col  (mark-column m))
-    (define im   (text-positions (buffer-text (mark-buffer m))))
-    (define old-link (interval-map-ref im p))
-    (unless (mark-on-first-line? m)
-      (define link (dprev old-link))
-      (define l (dfirst link)) ; line
-      (define new-col (min (line-length l) col))
-      (define new-pos (- p col (line-length l) (- new-col)))
-      (set-mark-position! m new-pos)
-      (set-linked-line-marks! link (set-add (linked-line-marks link) m))
-      (set-mark-link! m link)
-      (unless (dempty? old-link)
-        (set-linked-line-marks! old-link (set-remove (linked-line-marks link) m)))))
+    (define p    (mark-position m))
+    (when p
+      (define col  (mark-column m))
+      (define im   (text-positions (buffer-text (mark-buffer m))))
+      (define old-link (interval-map-ref im p #f))
+      (when old-link
+        (unless (mark-on-first-line? m)
+          (define link (dprev old-link))
+          (define l (dfirst link)) ; line
+          (define new-col (min (line-length l) col))
+          (define new-pos (- p col (line-length l) (- new-col)))
+          (set-mark-position! m new-pos)
+          (set-linked-line-marks! link (set-add (linked-line-marks link) m))
+          (set-mark-link! m link)
+          (unless (dempty? old-link)
+            (set-linked-line-marks! old-link (set-remove (linked-line-marks link) m)))))))
   (cond
     [(< n 0) (mark-move-down! m (- n))]
     [else    (for ([i (in-range n)])

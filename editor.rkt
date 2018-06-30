@@ -173,8 +173,6 @@
              (char=? (string-ref s (- (string-length s) 1)) #\newline)
              (substring s 0 (max 0 (- (string-length s) 1))))
         s))
-  (cond [(local color-buffer) => (λ (f) (f))]
-        [else                    (void)])
   (unless (current-rendering-suspended?)
     (define b  (window-buffer w))
     (define c  (window-canvas w))
@@ -188,6 +186,12 @@
     (define-values (row col)           (mark-row+column (buffer-point  b)))
     (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
     (define num-lines-to-skip   start-row)
+    ;; Color area on screen (TODO: cache the coloring)
+    (when (local color-buffer)
+      (define from (or (position (window-start-mark w)) 0))
+      (define to   (or (position (window-end-mark w)) (buffer-length b)))
+      (displayln (list from to))
+      ((local color-buffer) b (max 0 from) (max 0 to)))
     ;; Render
     (unless (current-render-points-only?)
       (when b
@@ -283,7 +287,7 @@
             (match x [(list* (cons p _) more) p] [(list) #f]))
           (map screen-line->start-position xs))
 
-        ; 
+        ;
         (define-values (_ __ ___ all-screen-lines)
           ; render lines on screen
           (for/fold ([y ymin] [p 0] [n 0] [screen-line-positions '()]) ; n = screen line number
@@ -295,6 +299,9 @@
                (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f #f))
                (values y (+ p (line-length l)) 0 '())]
               [else
+               ; color the part of the buffer that is on screen
+               ; - but only before rendering the first line
+               ; render the current screen line to the canvas
                (define highlight-this-line? (= i row))
                (define region-positions
                  (append (if reg-begin (list reg-begin) '())

@@ -30,7 +30,7 @@
 ; new-text : -> text
 ;   create an empty text
 (define (new-text [dlines dempty]) ;ok
-  (unless (linked-line? dlines)
+  (unless (or (linked-line? dlines) (dempty? dlines))
     (error 'new-text "expected a linked-line, got ~a" dlines))
   (define im   (make-interval-map))
   (cond 

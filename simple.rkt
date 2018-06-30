@@ -588,7 +588,13 @@
                  ["M-S-right" forward-sexp/extend-region]
                  [_           #f])]
               [_ #f]))
-          b))
+          b)
+  (define ns (current-namespace))
+  (parameterize ([current-namespace (buffer-locals b)]
+                 [current-buffer    b])
+    (namespace-attach-module ns 'racket/gui/base)
+    (namespace-attach-module ns 'data/interval-map)
+    (namespace-require "racket-mode/racket-mode.rkt")))
 
 (define-interactive (test)
   (define b (current-buffer))
@@ -838,6 +844,7 @@
   (define l   (mark-line p))
   (define c   (mark-column p))
   (cond [(= (position p) (end-of-buffer-position)) #f]
+        [(not c)                                   #f]  ; empty line?
         [(= c (line-length l))                     #\newline]
         [else                                      (line-ref l c)]))
 
