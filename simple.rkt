@@ -1133,14 +1133,14 @@
 
 (define (backward-sexp)
   (define s (parse-state-at-point))
-  ; (display-state s)
+  (display-state s)
   (match-define (state depth inner-start last-complete
                        inside-string inside-comment after-quote comment-style
                        comment-start string-start seen inner-starts start-current)
     s)
   (goto-char (max (or last-complete 0)
                   (or start-current 0)
-                  (or inner-start   0))))
+                  (or (and inner-start (+ inner-start 1)) 0))))
 
 (define-interactive (forward-sexp [n 1])
   (define (forward-sexp-1)
