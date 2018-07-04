@@ -17,16 +17,40 @@
   (define red   (remainder (quotient x 65536) 256))
   (make-object color% red green blue))
 
+;;;
+;;; SOLARIZED
+;;;
+
+; The following color scheme is called "Solarized" and was
+; created by Ethan Schoonover. The idea is to make a color scheme eith
+;  1) Selective contrast
+;  2) Light/Dark mode
+;  3) 16/5 Palette mode  (not relevant for us)
+;  4) Precision, symmetry
+
+; See more here:
+;   http://ethanschoonover.com/solarized
+
+; Dark Mode:
+;   base0   = body text
+;   base1   = optional emphasized contents
+;   base01  = comments
+;   base02  = background hilights
+;   base03  = background
+
+; These are for light mode
 (define base03  (hex->color #x002b36)) ; brblack    background   (darkest)
 (define base02  (hex->color #x073642)) ; black      background 
 (define base01  (hex->color #x586e75)) ; brgreen    content tone (darkest)
 (define base00  (hex->color #x657b83)) ; bryellow   content tone
 
+; These are for dark mode
 (define base0   (hex->color #x839496)) ; brblue     content tone
 (define base1   (hex->color #x93a1a1)) ; brcyan     content tone (brigtest)
 (define base2   (hex->color #xeee8d5)) ; white      background
 (define base3   (hex->color #xfdf6e3)) ; brwhite    background   (brightest)
 
+; Common for both modes
 (define yellow  (hex->color #xb58900)) ; yellow     accent color
 (define orange  (hex->color #xcb4b16)) ; brred      accent color
 (define red     (hex->color #xdc322f)) ; red        accent color

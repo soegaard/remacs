@@ -59,15 +59,15 @@
 
 ; Highlight Line Containing Point
 (define hl-line-mode?             #f)      ; use hl-line-mode to toggle
-(define hl-line-mode-color        violet)  ; todo pick better color
+(define hl-line-mode-color        base00)  ; (base02 used for region high light)
 
 ;;; Colors
-(define background-color         base03)
-(define region-highlighted-color base00)
-(define text-color               base1)
-(define border-color             base00)
+(define background-color         base03)   ; solarized dark mode
+(define region-highlighted-color base01)   ; solarized dark mode 
+(define text-color               base0)    ; solarized dark mode
+(define border-color             base00)   ; ?
 ;;; Style and Weight
-(define text-style               'normal)
+(define text-style               'normal)  
 (define text-weight              'normal)
 
 
