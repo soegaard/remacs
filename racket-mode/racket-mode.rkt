@@ -1,6 +1,7 @@
 #lang racket/base
 (provide color-buffer
-         indent-for-tab)
+         indent-for-tab
+         racket-run)
 
 ;;;
 ;;; RACKET MODE
@@ -12,10 +13,12 @@
          "../buffer-locals.rkt"
          "../colors.rkt"
          "../commands.rkt"
+         "../frame.rkt"
          "../parameters.rkt"
          "../point.rkt"
          "../representation.rkt"
          "../simple.rkt"
+         "../window.rkt"
          "../text.rkt")
 
 ;;;
@@ -42,8 +45,8 @@
 
 (define color-ht  
   (hasheq 'error               red
-          'comment             brown
-          'sexp-comment        brown
+          'comment             base01 ; brown
+          'sexp-comment        base01 ; brown
           'white-space         #f
           'constant            green
           'string              green
@@ -55,7 +58,7 @@
           'other               black))
 
 (define (color-buffer [b (current-buffer)] [from 0] [to #f])
-  (displayln (list 'color-buffer 'from from 'to to))
+  ; (displayln (list "racket-mode.rkt" 'color-buffer 'from from 'to to))
   ; (displayln (list "racket-mode: color-buffer"))
   ;; set optional arguments
   (unless to (set! to (buffer-length b)))
@@ -89,17 +92,56 @@
 ;;; RUN
 ;;;
 
+; Running the contents of a buffer in racket-mode
+; Take 1: No repl - just run program and see output in buffer.
+;   1) Setup an output buffer
+;   2) Setup an environment in which the program can run without any risk of affecting the editor.
+;      Things to consider:
+;          - namespace
+;          - custodian
+;          - memory limit
+;          - current-directory
+;          - printer
+;          - logging
+;          - event space (for gui)
+;          - custodian (when a custodian is shut down, ports, tcp connections etc
+;                       will be terminated)
+; Note: A way to break and kill a user program thread is needed.
+
+(define user-running? #f)  ; is the program in the buffer running
+(define user-thread   #f)
+(define user-buffer   #f)
+
 (define-interactive (racket-run)
-  (define b  (new-buffer (new-text) #f (generate-new-buffer-name "*output*")))
+  ; New output buffer
+  ;   - only create new buffer, on first run
+  (define first-run? (not user-buffer))
+  (define w (current-window))
+  (cond [first-run?
+         (set! first-run? #f)
+         (set! user-buffer
+               (new-buffer (new-text) #f (generate-new-buffer-name "*output*")))
+         (define b user-buffer)
+         (split-window-right)
+         (define ws (frame-window-tree (current-frame)))
+         (define w  (list-next ws (current-window) eq?))
+         (set-window-buffer! w b)
+         (other-window)
+         (current-buffer b)]
+        [else
+         (define b user-buffer)
+         (current-buffer b)])
+  (define b  user-buffer)
   (define p  (make-output-buffer b))
-  (define ns (make-empty-namespace))
-  (set-window-buffer! (current-window) b)
+  ; Setup environment
+  (define ns   (make-base-empty-namespace))
+  (define cust (make-custodian (current-custodian)))
   (parameterize ([current-buffer      b]
                  [current-output-port p]
-                 [current-namespace   ns])
-    (thread
-     (λ ()
-       (let loop ([n 0])
-         (displayln n)
-         (sleep 1.)
-         (loop (+ n 1)))))))
+                 [current-namespace   ns]
+                 [current-custodian   cust])
+    (set! user-running? #t)
+    (set! user-thread   (thread
+                         (λ ()
+                           (displayln (list 'racket-run "thread"))
+                           (namespace-require "fact.rkt"))))))

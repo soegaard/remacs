@@ -586,6 +586,7 @@
                  ["M-left"    backward-sexp]
                  ["M-right"   forward-sexp]
                  ["M-S-right" forward-sexp/extend-region]
+                 ["M-S-left"  backward-sexp/extend-region]
                  [_           #f])]
               [_ #f]))
           b)
@@ -1181,6 +1182,13 @@
   (displayln 'forward-sexp/extend-region)
   (prepare-extend-region)
   (forward-sexp))
+
+(define-interactive (backward-sexp/extend-region)
+  ; TODO BUG forward-sexp will deactivate the region,
+  ;          find start and end first, then create region
+  (displayln 'backward-sexp/extend-region)
+  (prepare-extend-region)
+  (backward-sexp))
 
 #;(define-interactive (forward-sexp)
   "Move forward over a balanced expression."  

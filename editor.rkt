@@ -5,6 +5,7 @@
 
 ; In order to start remacs, open this file in DrRacket and run it.
 
+;;; BUG  Blinking point must follow current-buffer.
 ;;; TODO when normal-auto-fill needs to break the line, it shouldn't move the point
 ;;; TODO The column position of the cursor when using down should stay the same
 ;;;      even if one goes across short line.
@@ -190,7 +191,7 @@
     (when (local color-buffer)
       (define from (or (position (window-start-mark w)) 0))
       (define to   (or (position (window-end-mark w)) (buffer-length b)))
-      (displayln (list from to))
+      ; (displayln (list from to))
       ((local color-buffer) b (max 0 from) (max 0 to)))
     ;; Render
     (unless (current-render-points-only?)
@@ -542,8 +543,10 @@
     (new-menu-item etm "Kill Whole Line"   #\k         '(ctl shift)(wrap (kill-whole-line)))    
     (new-menu-item etm "Kill to Beginning" #\backspace def         (wrap (kill-line-to-beginning)))
     ;; Racket Menu
+    ; TODO: display this menu only in racket-mode
     (define rm (new menu% (label "Racket") (parent mb)))
-    (new-menu-item rm "Run"                #\r #f (wrap (test-buffer-output)))
+    ; todo : let racket-mode add this to the menu
+    (new-menu-item rm "Run"                #\r #f (wrap ((local racket-run))))
     ;; Window Menu
     (define        wm (new menu% (label "Window") (parent mb)))
     (new-menu-item wm "C-x 0       Delete Window"        #f #f (wrap (delete-window)))

@@ -189,9 +189,9 @@
 (define (save-buffer! b)
   (define file (buffer-path b))
   (unless file
-    (set! file (finder:put-file))
-    (set-buffer-name! b (path->string file)))
+    (set! file (finder:put-file)))
   (when file
+    (set-buffer-name! b (path->string file))
     (with-output-to-file file
       (λ () (for ([line (text-lines (buffer-text b))])
               (for ([s (line-strings line)])
