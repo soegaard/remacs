@@ -179,7 +179,9 @@
     (define c  (window-canvas w))
     (define dc (send c get-dc))
     ;; Canvas Dimensions
-    (define-values (xmin xmax ymin ymax) (canvas-dimensions c))  
+    (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
+    (define border-width 1)
+    (set! xmin (+ xmin border-width 1))
     (define num-lines-on-screen   (number-of-lines-on-screen w))
     ;; Font Dimensions
     (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
@@ -352,7 +354,9 @@
     (define c  (window-canvas w))
     (define dc (send c get-dc))
     ;; Canvas Dimensions
-    (define-values (xmin xmax ymin ymax) (canvas-dimensions c))  
+    (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
+    (define border-width 1)
+    (set! xmin (+ xmin border-width 1))
     ; (displayln (milliseconds-delta)) ; expect values around 100
     (define colors (current-point-color))
     (define points-pen (new pen% [color (car colors)]))
@@ -422,7 +426,6 @@
     (send dc draw-line 0 0 0 ymax)
     (set! xmin (+ xmin 1)))
   (send dc set-pen op)
-
   (send dc resume-flush))
 
 (current-render-window render-window)

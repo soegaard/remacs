@@ -7,7 +7,7 @@
 ;;; RACKET MODE
 ;;;
 
-(require racket/format
+(require racket/format racket/class
          syntax-color/racket-lexer
          "../buffer.rkt"
          "../buffer-locals.rkt"
@@ -127,7 +127,8 @@
          (define w  (list-next ws (current-window) eq?))
          (set-window-buffer! w b)
          (other-window)
-         (current-buffer b)]
+         (current-buffer b)
+         (send (window-canvas w) focus)]
         [else
          (define b user-buffer)
          (current-buffer b)])
