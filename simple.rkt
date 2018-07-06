@@ -622,33 +622,6 @@
   (set-major-mode! 'text)
   (set-mode-name!  "Text"))
 
-(define-interactive (racket-mode [b (current-buffer)])
-  (fundamental-mode b)       ; add all commands from fundamental mode
-  ; name
-  (set-major-mode! 'racket)
-  (set-mode-name!  "Racket")
-  ; (set-buffer-local! 'color-buffer  b)
-  ; keymap
-  ;   Demonstrates how to override a keymap
-  (local! local-keymap
-          (λ (prefix key)
-            (match prefix
-              [(list)
-               (match key
-                 ["M-left"    backward-sexp]
-                 ["M-right"   forward-sexp]
-                 ["M-S-right" forward-sexp/extend-region]
-                 ["M-S-left"  backward-sexp/extend-region]
-                 [_           #f])]
-              [_ #f]))
-          b)
-  (define ns (current-namespace))
-  (parameterize ([current-namespace (buffer-locals b)]
-                 [current-buffer    b])
-    (namespace-attach-module ns 'racket/gui/base)
-    (namespace-attach-module ns 'data/interval-map)
-    (namespace-require "racket-mode/racket-mode.rkt")))
-
 (define-interactive (test)
   (define b (current-buffer))
   (mark-whole-buffer b)
