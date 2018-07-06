@@ -6,7 +6,7 @@
          current-append-next-kill
          ; gui
          current-render-points-only?
-         current-show-points?
+         ; current-show-points?
          current-point-color
          current-rendering-suspended?
          current-rendering-needed?
@@ -55,7 +55,7 @@
 ;;;
 
 (define current-render-points-only?  (make-parameter #f))
-(define current-show-points?         (make-parameter #f))
+; (define current-show-points?         (make-parameter #f))
 (define current-point-color          (make-parameter #f)) ; circular list of colors
 (define current-rendering-suspended? (make-parameter #f))
 (define current-rendering-needed?    (make-parameter #f))

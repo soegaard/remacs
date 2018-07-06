@@ -26,7 +26,7 @@
 ;;;
 
 (define (indent-for-tab)
-  (insert "Racket!!!"))
+  (insert "    "))
 
 
 ;;;
@@ -108,41 +108,45 @@
 ;                       will be terminated)
 ; Note: A way to break and kill a user program thread is needed.
 
-(define user-running? #f)  ; is the program in the buffer running
-(define user-thread   #f)
-(define user-buffer   #f)
+(define user-running?  #f)  ; is the program in the buffer running
+(define user-thread    #f)
+(define user-buffer    #f)
+(define user-custodian #f)
 
 (define-interactive (racket-run)
   ; New output buffer
   ;   - only create new buffer, on first run
+  ; Switch to buffer if it is visible,
+  ; If not visible then ...
+
+  ;; Setup buffer and window
   (define first-run? (not user-buffer))
-  (define w (current-window))
-  (cond [first-run?
-         (set! first-run? #f)
-         (set! user-buffer
-               (new-buffer (new-text) #f (generate-new-buffer-name "*output*")))
-         (define b user-buffer)
-         (split-window-right)
-         (define ws (frame-window-tree (current-frame)))
-         (define w  (list-next ws (current-window) eq?))
-         (set-window-buffer! w b)
-         (other-window)
-         (current-buffer b)
-         (send (window-canvas w) focus)]
-        [else
-         (define b user-buffer)
-         (current-buffer b)])
-  (define b  user-buffer)
-  (define p  (make-output-buffer b))
-  ; Setup environment
-  (define ns   (make-base-empty-namespace))
-  (define cust (make-custodian (current-custodian)))
-  (parameterize ([current-buffer      b]
-                 [current-output-port p]
+  (define visible?   (and user-buffer (buffer-visible? user-buffer)))
+  (cond
+    [first-run? (set! first-run? #f)
+                (split-window-right)
+                (other-window)
+                (create-new-buffer "*output*")       ; creates new buffer and switches to it
+                (set! user-buffer (current-buffer))]
+    [visible?   (switch-to-buffer user-buffer)]
+    [else       (split-window-right)
+                (other-window)
+                (switch-to-buffer user-buffer)])
+  ;; Remove previous threads, ports etc.
+  (unless first-run?
+    (when (custodian? user-custodian)
+      (custodian-shutdown-all user-custodian)))
+  ;; Setup environment in which to run program
+  (define p   (make-output-buffer user-buffer))
+  (define ns  (make-base-empty-namespace))
+  (define c   (make-custodian (current-custodian)))
+  (parameterize ([current-output-port p]
                  [current-namespace   ns]
-                 [current-custodian   cust])
+                 [current-custodian   c])
     (set! user-running? #t)
-    (set! user-thread   (thread
-                         (λ ()
-                           (displayln (list 'racket-run "thread"))
-                           (namespace-require "fact.rkt"))))))
+    (set! user-custodian c)
+    (set! user-thread
+          (thread
+           (λ ()
+             (displayln (list 'racket-run "thread"))
+             (namespace-require "fact.rkt"))))))

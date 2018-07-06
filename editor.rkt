@@ -6,19 +6,27 @@
 ; In order to start remacs, open this file in DrRacket and run it.
 
 ;;; BUG  Blinking point must follow current-buffer.
+
+;;; PRIORITY: HIGH
+;;;   TODO collapse  (i.e. split window -> left/right/upper/lower window only)
+;;;   TODO buffer narrowing
+;;;   TODO indentation
+;;;   TODO The column position of the cursor when using down should stay the same
+;;;        even if one goes across short line.
+;;;   TODO Implement undo
+
+;;; PRIORITY: MEDIUM
+
+;;; TODO documentation
+;;; TODO brace matching
+;;; TODO recently opened files
+;;; TODO Render #\tab correctly
+;;; TODO Implement open-input-buffer (naive implementation already done)
+;;; TODO paragraphs
+
 ;;; TODO when normal-auto-fill needs to break the line, it shouldn't move the point
-;;; TODO The column position of the cursor when using down should stay the same
-;;;      even if one goes across short line.
 ;;; TODO run fundamental-mode in upstart
 ;;; TODO support .remacs files
-;;; TODO buffer narrowing
-;;; TODO Introduce double buffering to avoid any flicker? (Not a problem now)
-;;;      https://www.facebook.com/notes/daniel-colascione/buttery-smooth-emacs/10155313440066102/
-;;; TODO C-u <digit> ... now sets current-prefix-argument.
-;;;      but only self-insert-char actually uses the prefix argument.
-;;;      Use current-prefix-argument in other commands as well.
-;;; TODO Allow negative numeric prefix
-;;; TODO Holding M and typing a number should create a numeric prefix.
 
 ;;; TODO eval-buffer
 ;;;        ok use buffer-local namespace for evaluation
@@ -29,36 +37,40 @@
 ;;;        - on error: stop at first expression with error?
 ;;;        - output where? A new buffer?
 
-;;; TODO Render #\tab correctly
 ;;; TODO test with large file (words.txt)
 ;;;        ok  - open large file
 ;;;        ok  - end-of-buffer
 ;;;        fix - cursor movements at the end of a long file are *slow*
-;;; TODO [Sublime] If a selection is found elsewhere, they are boxed
-;;; TODO Hydra: https://github.com/abo-abo/hydra
-;;; TODO Implement undo
-;;; TODO Implement subtext
-;;; TODO Implement Move line/selection up   [Sublime]
-;;; TODO Implement Move line/selection down
 
-;;; TODO brace matching
-;;; TODO recently opened files
-;;; TODO indentation
-;;; TODO paragraphs
-;;; TODO documentation
-;;; TODO left and right needs to toggle transient-mode rather than deactivate the mark
-;;; TODO Introduce global that controls which key to use for meta
-;;; TODO Implement open-input-buffer
-;;; TODO Completions ala http://sublimetext.info/docs/en/extensibility/completions.html
-;;; TODO "Overlay" GUI Element as in Sublime Text
-;;; TODO Sidebar as in Visual Studio Code
-;;; TODO cursor blinking stops when menu bar is active ?!
+;;; PRIORITY LOW
+
+;;;   TODO Allow negative numeric prefix
+;;;   TODO Holding M and typing a number should create a numeric prefix.
+;;;   TODO [Sublime] If a selection is found elsewhere, they are boxed
+;;;   TODO Hydra: https://github.com/abo-abo/hydra
+;;;   TODO Implement subtext
+;;;   TODO Implement Move line/selection up   [Sublime]
+;;;   TODO Implement Move line/selection down
+
+;;;   TODO Introduce double buffering to avoid any flicker? (Not a problem now)
+;;;        https://www.facebook.com/notes/daniel-colascione/buttery-smooth-emacs/10155313440066102/
+;;;   TODO C-u <digit> ... now sets current-prefix-argument.
+;;;        but only self-insert-char actually uses the prefix argument.
+;;;        Use current-prefix-argument in other commands as well.
+
+;;;   TODO left and right needs to toggle transient-mode rather than deactivate the mark
+;;;   TODO Introduce global that controls which key to use for meta
+;;;   TODO Completions ala http://sublimetext.info/docs/en/extensibility/completions.html
+;;;   TODO "Overlay" GUI Element as in Sublime Text
+;;;   TODO Sidebar as in Visual Studio Code
+
+;;; BUGS
+;;;   TODO cursor blinking stops when menu bar is active ?!
 
 
 (module+ test (require rackunit))
 
 (require (for-syntax syntax/parse)
-         data/interval-map
          racket/gui/base
          framework
          "buffer.rkt"
@@ -66,6 +78,7 @@
          "canvas.rkt"
          "colors.rkt"
          "dlist.rkt"
+         "frame.rkt"
          "keymap.rkt"
          "killing.rkt"
          "mark.rkt"
@@ -75,6 +88,7 @@
          "render.rkt"
          "region.rkt"
          "representation.rkt"
+         "thread-safe-interval-maps.rkt"
          "simple.rkt"
          "status-line.rkt"
          "window.rkt")
@@ -110,7 +124,7 @@
 
 (define (render-buffer w)
   (define now (current-milliseconds))
-  (define (marks-between marks from to)
+   (define (marks-between marks from to)
     (for/list ([m marks] #:when (<= from (mark-position m) to))
       (mark-position m)))
   (define (line->screen-lines b l r k p other) ; l = line, r = row, p = position of line start
@@ -176,169 +190,170 @@
         s))
   (unless (current-rendering-suspended?)
     (define b  (window-buffer w))
-    (define c  (window-canvas w))
-    (define dc (send c get-dc))
-    ;; Canvas Dimensions
-    (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
-    (define border-width 1)
-    (set! xmin (+ xmin border-width 1))
-    (define num-lines-on-screen   (number-of-lines-on-screen w))
-    ;; Font Dimensions
-    (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
-    ;; Placement of point relative to lines on screen
-    (define-values (row col)           (mark-row+column (buffer-point  b)))
-    (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
-    (define num-lines-to-skip   start-row)
-    ;; Color area on screen (TODO: cache the coloring)
-    (when (local color-buffer)
-      (define from (or (position (window-start-mark w)) 0))
-      (define to   (or (position (window-end-mark w)) (buffer-length b)))
-      ; (displayln (list from to))
-      ((local color-buffer) b (max 0 from) (max 0 to)))
-    ;; Render
-    (unless (current-render-points-only?)
-      (when b
-        (define text-background-color (send dc get-text-background))
-        ;; Highlighting for line containing point
-        (define hl? (local hl-line-mode?))
-        (define hl-color (if hl? (local hl-line-mode-color) text-background-color))
-        (define (set-highlight-line-color) (send dc set-text-background hl-color))
-        ;; Highlighting for region between mark and point
-        (define (set-text-background-color highlight-region? highlight-line?)
-          (define background-color
-            (cond [highlight-region? (local region-highlighted-color)]
-                  [highlight-line?   hl-color]
-                  [else              text-background-color]))
-          (send dc set-text-background background-color))
-        ;; Placement of region
-        (define-values (reg-begin reg-end)
-          (if (use-region? b) (values (region-beginning b) (region-end b)) (values #f #f)))
-        ; (displayln (list 'first-line first-row-on-screen 'last-line last-row-on-screen))
-        (send dc suspend-flush)
-        ; draw-string : string real real -> real
-        ;   draw string t at (x,y), return point to draw next string
-        (define (draw-string t x y)
-          (define-values (w h _ __) (send dc get-text-extent t))
-          (send dc draw-text t x y)
-          (+ x w))
-        (define wrapped-line-indicator?          (ref-buffer-local 'wrapped-line-indicator? b #f))
-        (define wrapped-line-indicator  (let ([s (ref-buffer-local 'wrapped-line-indicator  b "↵")])
-                                          (or s (and (string? s) s) "↵")))
-        (define (render-screen-lines dc xmin y sls hl?)
-          (let loop ([y y] [cs (map screen-line-contents sls)])
-            (match cs
-              [(list)       y]
-              [(list c)           (render-screen-line dc xmin y c #f hl?)]
-              [(cons c cs)  (loop (render-screen-line dc xmin y c #t hl?) cs)])))
-        (define (render-screen-line dc xmin y contents wrapped-line-indicator? highlight-line?)
-          (define (col s)
-            (match s
-              ['yellow yellow]
-              ['orange orange]
-              ['blue   blue]
-              [_        s]))
-          (define hl? highlight-line?)
-          ;;; Overlays
-          (define the-overlays-ht (overlays-ht (buffer-overlays b)))
-          (define color-im        (hash-ref the-overlays-ht 'color  #f))
-          (define style-im        (hash-ref the-overlays-ht 'style  #f))
-          (define weight-im       (hash-ref the-overlays-ht 'weight #f))
-          (define default-color   (ref-buffer-local 'text-color  b))
-          (define default-style   (ref-buffer-local 'text-style  b))
-          (define default-weight  (ref-buffer-local 'text-weight b))
-          (define (make-getter im default) (λ (p) (if im (interval-map-ref im p default) default)))
-          (define get-text-color  (make-getter  color-im default-color))
-          (define get-style       (make-getter  style-im default-style))
-          (define get-weight      (make-getter weight-im default-weight))
-          (define cur-text-color  default-color)
-          (define-syntax (set-unless-same stx)
-            (syntax-parse stx
-              [(_set-unless-smae p msg cur get)
-               (syntax/loc stx
-                 (let ([t (get p)])
-                   (unless (equal? t cur)
-                     (when (is-a? t color%)
-                       (set! cur t)
-                       (send dc msg t)))))]))
-          ; contents = screen line = list of (list position string/properties)
-          (define xmax
-            (for/fold ([x xmin]) ([p+s contents])
-              (match-define (list p s) p+s)
-              ; background color
-              (set-text-background-color #f hl?)
-              (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t hl?))
-              (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f hl?))
-              ; foreground color
-              (set-unless-same p set-text-foreground cur-text-color  get-text-color)
-              ; pen
-              (font-style  (get-style  p))
-              (font-weight (get-weight p))
-              (set-font dc)
-              ; draw string
-              (match (second p+s)
-                [(? string?) (draw-string (remove-trailing-newline s) x y)]
-                [_ (void '(displayln (~a "Warning: Got " s)))
-                   x])))
-          (when wrapped-line-indicator?
-            (draw-string wrapped-line-indicator xmax (- y 2)))
-          (+ y (line-size)))
-        ; draw text:
-        ;   loop over text lines
-        ;   c screen column, ; p the position of start of line
-        (define (screen-lines->screen-line-positions xs)
-          (define (screen-line->start-position x)
-            (match x [(list* (cons p _) more) p] [(list) #f]))
-          (map screen-line->start-position xs))
-
-        ;
-        (define-values (_ __ ___ all-screen-lines)
-          ; render lines on screen
-          (for/fold ([y ymin] [p 0] [n 0] [screen-line-positions '()]) ; n = screen line number
-                    ([l (text-lines (buffer-text b))]
-                     [i (in-range (+ start-row num-lines-on-screen))])
-            (cond
-              [(< i num-lines-to-skip)
-               (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t #f))
-               (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f #f))
-               (values y (+ p (line-length l)) 0 '())]
-              [else
-               ; color the part of the buffer that is on screen
-               ; - but only before rendering the first line
-               ; render the current screen line to the canvas
-               (define highlight-this-line? (= i row))
-               (define region-positions
-                 (append (if reg-begin (list reg-begin) '())
-                         (if reg-end   (list reg-end)   '())))
-               (define-values (sls new-n) (line->screen-lines b l i n p region-positions))
-               (define new-y (render-screen-lines dc xmin y sls highlight-this-line?))
-               (values new-y (+ p (line-length l)) new-n
-                       (cons (list p sls)
-                             screen-line-positions))])))
-        (define (screen-lines->screen-line-positions-ranges xs)
-          (let loop ([rs '()] [xs xs])
-            (match xs
-              [(list* (list (cons p1 _) ...)
-                      (list (cons p2 _) ...)
-                      _)                          (loop (cons (list p1 p2) rs) (rest xs))]
-              [(list* (list (cons p1 _) ...)
-                      _)                          (reverse (cons (list p1 +inf.0) rs))])))
-        ; cache the positions of the visible screen lines,
-        ; this is used to render the points
-        (hash-set! cached-screen-lines-ht b (reverse all-screen-lines))
-        
-        ; get point and mark height
-        ;(define font-width  (send dc get-char-width))
-        ;(define font-height (send dc get-char-height))
-        ; (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
-        ; Note: The font-height is slightly larger than font-size
-        ; (displayln (list 'render-buffer 'font-height font-height 'font-size (font-size)))
-        ; resume flush
-        (send dc resume-flush)
-        (void)))
-    ; draw points
-    (render-points w start-row end-row)
-    (define later (current-milliseconds))
-    (status-line-render-time (- later now))))
+    (parameterize ([current-buffer b])
+      (define c  (window-canvas w))
+      (define dc (send c get-dc))
+      ;; Canvas Dimensions
+      (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
+      (define border-width 1)
+      (set! xmin (+ xmin border-width 1))
+      (define num-lines-on-screen   (number-of-lines-on-screen w))
+      ;; Font Dimensions
+      (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
+      ;; Placement of point relative to lines on screen
+      (define-values (row col)           (mark-row+column (buffer-point  b)))
+      (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
+      (define num-lines-to-skip   start-row)
+      ;; Color area on screen (TODO: cache the coloring)
+      (when (local color-buffer)
+        (define from (or (position (window-start-mark w)) 0))
+        (define to   (or (position (window-end-mark w)) (buffer-length b)))
+        ; (displayln (list from to))
+        ((local color-buffer) b (max 0 from) (max 0 to)))
+      ;; Render
+      (unless (current-render-points-only?)
+        (when b
+          (define text-background-color (send dc get-text-background))
+          ;; Highlighting for line containing point
+          (define hl? (local hl-line-mode?))
+          (define hl-color (if hl? (local hl-line-mode-color) text-background-color))
+          (define (set-highlight-line-color) (send dc set-text-background hl-color))
+          ;; Highlighting for region between mark and point
+          (define (set-text-background-color highlight-region? highlight-line?)
+            (define background-color
+              (cond [highlight-region? (local region-highlighted-color)]
+                    [highlight-line?   hl-color]
+                    [else              text-background-color]))
+            (send dc set-text-background background-color))
+          ;; Placement of region
+          (define-values (reg-begin reg-end)
+            (if (use-region? b) (values (region-beginning b) (region-end b)) (values #f #f)))
+          ; (displayln (list 'first-line first-row-on-screen 'last-line last-row-on-screen))
+          (send dc suspend-flush)
+          ; draw-string : string real real -> real
+          ;   draw string t at (x,y), return point to draw next string
+          (define (draw-string t x y)
+            (define-values (w h _ __) (send dc get-text-extent t))
+            (send dc draw-text t x y)
+            (+ x w))
+          (define wrapped-line-indicator?          (ref-buffer-local 'wrapped-line-indicator? b #f))
+          (define wrapped-line-indicator  (let ([s (ref-buffer-local 'wrapped-line-indicator  b "↵")])
+                                            (or s (and (string? s) s) "↵")))
+          (define (render-screen-lines dc xmin y sls hl?)
+            (let loop ([y y] [cs (map screen-line-contents sls)])
+              (match cs
+                [(list)       y]
+                [(list c)           (render-screen-line dc xmin y c #f hl?)]
+                [(cons c cs)  (loop (render-screen-line dc xmin y c #t hl?) cs)])))
+          (define (render-screen-line dc xmin y contents wrapped-line-indicator? highlight-line?)
+            (define (col s)
+              (match s
+                ['yellow yellow]
+                ['orange orange]
+                ['blue   blue]
+                [_        s]))
+            (define hl? highlight-line?)
+            ;;; Overlays
+            (define the-overlays-ht (overlays-ht (buffer-overlays b)))
+            (define color-im        (hash-ref the-overlays-ht 'color  #f))
+            (define style-im        (hash-ref the-overlays-ht 'style  #f))
+            (define weight-im       (hash-ref the-overlays-ht 'weight #f))
+            (define default-color   (ref-buffer-local 'text-color  b))
+            (define default-style   (ref-buffer-local 'text-style  b))
+            (define default-weight  (ref-buffer-local 'text-weight b))
+            (define (make-getter im default) (λ (p) (if im (safe-interval-map-ref im p default) default)))
+            (define get-text-color  (make-getter  color-im default-color))
+            (define get-style       (make-getter  style-im default-style))
+            (define get-weight      (make-getter weight-im default-weight))
+            (define cur-text-color  default-color)
+            (define-syntax (set-unless-same stx)
+              (syntax-parse stx
+                [(_set-unless-smae p msg cur get)
+                 (syntax/loc stx
+                   (let ([t (get p)])
+                     (unless (equal? t cur)
+                       (when (is-a? t color%)
+                         (set! cur t)
+                         (send dc msg t)))))]))
+            ; contents = screen line = list of (list position string/properties)
+            (define xmax
+              (for/fold ([x xmin]) ([p+s contents])
+                (match-define (list p s) p+s)
+                ; background color
+                (set-text-background-color #f hl?)
+                (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t hl?))
+                (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f hl?))
+                ; foreground color
+                (set-unless-same p set-text-foreground cur-text-color  get-text-color)
+                ; pen
+                (font-style  (get-style  p))
+                (font-weight (get-weight p))
+                (set-font dc)
+                ; draw string
+                (match (second p+s)
+                  [(? string?) (draw-string (remove-trailing-newline s) x y)]
+                  [_ (void '(displayln (~a "Warning: Got " s)))
+                     x])))
+            (when wrapped-line-indicator?
+              (draw-string wrapped-line-indicator xmax (- y 2)))
+            (+ y (line-size)))
+          ; draw text:
+          ;   loop over text lines
+          ;   c screen column, ; p the position of start of line
+          (define (screen-lines->screen-line-positions xs)
+            (define (screen-line->start-position x)
+              (match x [(list* (cons p _) more) p] [(list) #f]))
+            (map screen-line->start-position xs))
+          
+          ;
+          (define-values (_ __ ___ all-screen-lines)
+            ; render lines on screen
+            (for/fold ([y ymin] [p 0] [n 0] [screen-line-positions '()]) ; n = screen line number
+                      ([l (text-lines (buffer-text b))]
+                       [i (in-range (+ start-row num-lines-on-screen))])
+              (cond
+                [(< i num-lines-to-skip)
+                 (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t #f))
+                 (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f #f))
+                 (values y (+ p (line-length l)) 0 '())]
+                [else
+                 ; color the part of the buffer that is on screen
+                 ; - but only before rendering the first line
+                 ; render the current screen line to the canvas
+                 (define highlight-this-line? (= i row))
+                 (define region-positions
+                   (append (if reg-begin (list reg-begin) '())
+                           (if reg-end   (list reg-end)   '())))
+                 (define-values (sls new-n) (line->screen-lines b l i n p region-positions))
+                 (define new-y (render-screen-lines dc xmin y sls highlight-this-line?))
+                 (values new-y (+ p (line-length l)) new-n
+                         (cons (list p sls)
+                               screen-line-positions))])))
+          (define (screen-lines->screen-line-positions-ranges xs)
+            (let loop ([rs '()] [xs xs])
+              (match xs
+                [(list* (list (cons p1 _) ...)
+                        (list (cons p2 _) ...)
+                        _)                          (loop (cons (list p1 p2) rs) (rest xs))]
+                [(list* (list (cons p1 _) ...)
+                        _)                          (reverse (cons (list p1 +inf.0) rs))])))
+          ; cache the positions of the visible screen lines,
+          ; this is used to render the points
+          (hash-set! cached-screen-lines-ht b (reverse all-screen-lines))
+          
+          ; get point and mark height
+          ;(define font-width  (send dc get-char-width))
+          ;(define font-height (send dc get-char-height))
+          ; (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
+          ; Note: The font-height is slightly larger than font-size
+          ; (displayln (list 'render-buffer 'font-height font-height 'font-size (font-size)))
+          ; resume flush
+          (send dc resume-flush)
+          (void)))
+      ; draw points
+      (render-points w start-row end-row)
+      (define later (current-milliseconds))
+      (status-line-render-time (- later now)))))
 
 (define debug-buffer #f)
 (define debug-info #f)
@@ -370,7 +385,7 @@
       (define active? (send (window-canvas w) has-focus?))
       (define cached-info (hash-ref cached-screen-lines-ht b #f))
       (when (and active? cached-info)
-        (define on? (current-show-points?))
+        ; (define on? (current-show-points?))
         (for ([p (buffer-points b)])
           ; (define-values (r c) (mark-row+column p))
           (when #t #;(<= start-row r end-row)
@@ -390,44 +405,43 @@
               (define y (+ ymin (* r (line-size))))
               (when (and (<= xmin x xmax) (<= ymin y) (<= y (+ y font-height -1) ymax))
                 (define old-pen (send dc get-pen))
-                (send dc set-pen (if #t ;on? 
-                                     points-pen
-                                     points-off-pen))
+                (send dc set-pen points-pen)
                 (send dc draw-line x y x (min ymax (+ y font-height -1)))
                 (send dc set-pen old-pen)))))))))
   
 (define (render-window w)
-  (define c  (window-canvas w))
-  (define dc (send c get-dc))
-  (send dc suspend-flush)
+  (define b  (window-buffer w))
+  (when (buffer? b)
+    (define c  (window-canvas w))
+    (define dc (send c get-dc))
+    (send dc suspend-flush)
 
-  ;; sane defaults
-  (use-default-font-settings)
-  (send dc set-font (default-fixed-font))
-  (send dc set-text-mode 'solid) ; solid -> use text background color
-  (send dc set-background (local background-color))
-  (unless (current-render-points-only?)
-    (send dc clear))
-  
-  (send dc set-text-background (local background-color))
-  (send dc set-text-foreground (local text-color))
-  
-  ;; render buffer
-  (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
-  (render-buffer w)
-  ;; draw borders (draw borders last to avoid flickering)  
-  (define bs (window-borders w))
-  (define op (send dc get-pen))
-  (send dc set-pen border-pen)
-  (when (set-member? bs 'top)
-    (send dc draw-line 0 0 xmax 0)
-    (set! ymin (+ ymin 1)))
-  (when (set-member? bs 'left)
-    (send dc draw-line 0 0 0 ymax)
-    (set! xmin (+ xmin 1)))
-  (send dc set-pen op)
-  (send dc resume-flush))
-
+    ;; sane defaults
+    (use-default-font-settings)
+    (send dc set-font (default-fixed-font))
+    (send dc set-text-mode 'solid) ; solid -> use text background color
+    (send dc set-background (ref-buffer-local 'background-color b))
+    (unless (current-render-points-only?)
+      (send dc clear))
+    
+    (send dc set-text-background (ref-buffer-local 'background-color b))
+    (send dc set-text-foreground (ref-buffer-local 'text-color b))
+    
+    ;; render buffer
+    (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
+    (render-buffer w)
+    ;; draw borders (draw borders last to avoid flickering)  
+    (define bs (window-borders w))
+    (define op (send dc get-pen))
+    (send dc set-pen border-pen)
+    (when (set-member? bs 'top)
+      (send dc draw-line 0 0 xmax 0)
+      (set! ymin (+ ymin 1)))
+    (when (set-member? bs 'left)
+      (send dc draw-line 0 0 0 ymax)
+      (set! xmin (+ xmin 1)))
+    (send dc set-pen op)
+    (send dc resume-flush)))  
 (current-render-window render-window)
 
 (define (render-windows win)
@@ -442,15 +456,6 @@
      (render-window  win)]
     [_ (error 'render-window "got ~a" win)]))
 
-(define (frame->windows f)
-  (define (loop ws)
-    (match ws
-      [(vertical-split-window _ _ _ _ _ _ _ _ upper lower)
-       (append (loop upper) (loop lower))]
-      [(horizontal-split-window _ _ _ _ _ _ _ _ left right)
-       (append (loop left) (loop right))]
-      [w (list w)]))
-  (loop (frame-windows f)))
 
 (define (render-frame f)
   ;; show name of buffer with keyboard focus as frame title
@@ -460,9 +465,11 @@
                (and (send (window-canvas w) has-focus?)
                     w)))
   (when (window? w)
-    (define n (buffer-name (window-buffer w)))
-    (unless (equal? n (send f% get-label))
-      (send f% set-label n)))
+    (define b (window-buffer w))
+    (when (buffer? b)
+      (define n (buffer-name ))
+      (unless (equal? n (send f% get-label))
+        (send f% set-label n))))
   ;; render windows
   (render-windows (frame-windows f)))
 

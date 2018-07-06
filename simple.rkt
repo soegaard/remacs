@@ -51,18 +51,20 @@
 
 (define-interactive (beginning-of-line [b (current-buffer)])
   (buffer-move-point-to-beginning-of-line! b))
+
 (define-interactive (end-of-line [b (current-buffer)])
   (buffer-move-point-to-end-of-line! b))
 
-(define-interactive (move-to-column n)    (buffer-move-to-column! (current-buffer) n)) ; n=numprefix 
+(define-interactive (move-to-column n)
+  (buffer-move-to-column! (current-buffer) n)) ; n=numprefix 
 
-(define-interactive (backward-char)
-  (cond [(region-mark) => mark-deactivate!])
-  (buffer-move-point! (current-buffer) -1))
 (define-interactive (forward-char [b (current-buffer)])
   (cond [(region-mark) => mark-deactivate!])
   (buffer-move-point! b +1))
 
+(define-interactive (backward-char)
+  (cond [(region-mark) => mark-deactivate!])
+  (buffer-move-point! (current-buffer) -1))
 
 (define-interactive (forward-line)
   ; Move point an entire text-line (see next-line for moving a screen line).
@@ -76,11 +78,6 @@
   ; Moves point one text line up.
   (cond [(region-mark) => mark-deactivate!])  
   (buffer-move-point-up!   (current-buffer)))
-
-
-(define (display-point-line) ; for debug
-  (define point (buffer-point (current-buffer)))
-  (writeln (line->string (mark-line point))))
 
 (define-interactive (next-line)
   ; Moves point one screen line down. Attempts to keep the column.
@@ -153,6 +150,7 @@
   (mark-move-down! start-mark delta)
   (mark-move-down! end-mark   delta)
   (refresh-frame))
+
 (define-interactive (page-up [w (current-window)])
   (define point      (buffer-point (window-buffer w)))
   (define start-mark (window-start-mark w))
@@ -177,6 +175,7 @@
   (unless (get-mark) (new-mark (current-buffer) "*mark*")) ; TODO
   (buffer-exchange-point-and-mark! (current-buffer))
   (mark-activate! (get-mark)))
+
 (define-interactive (mark-word) ; Set mark after next word (doesn't move point)
   (define m (get-mark))
   (define swap exchange-point-and-mark)
@@ -225,9 +224,11 @@
   (prepare-extend-region)
   (end-of-line))
 
-(define-interactive (save-buffer)         (save-buffer!    (current-buffer)) (refresh-frame))
-(define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
-(define-interactive (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
+;;;
+;;; BUFFER
+;;; 
+
+;;; Buffer Movement
 (define-interactive (beginning-of-buffer [b (current-buffer)])
   (buffer-move-point-to-beginning-of-buffer b))
 (define-interactive (end-of-buffer       [b (current-buffer)])
@@ -238,6 +239,11 @@
 (define-interactive (beginning-of-buffer/extend-region)
   (prepare-extend-region)
   (beginning-of-buffer (current-buffer)))
+
+;;; Buffer Input and Output
+(define-interactive (save-buffer)         (save-buffer!    (current-buffer)) (refresh-frame))
+(define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
+(define-interactive (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
 
 (define-interactive (open-file-or-create [path (finder:get-file)])
   (when path ; #f = none selected
@@ -253,6 +259,7 @@
     (send (frame-status-line f) set-label (status-line-hook))
     (refresh-frame f)))
 
+;;; Buffer Navigation
 (define-interactive (next-buffer) ; show next buffer in current window
   (define w (current-window))
   (define b (get-next-buffer))
@@ -264,6 +271,19 @@
   (define b (get-previous-buffer))
   (set-window-buffer! w b)
   (current-buffer b))
+
+(define-interactive (switch-to-buffer buffer-or-name)
+  "Switch to the given buffer in the current window."
+  (define b buffer-or-name)
+  (when (string? buffer-or-name)
+    (set! b (get-buffer b)))
+  (when (buffer? b)
+    (set-window-buffer! (current-window) b)
+    (current-buffer b)))
+
+;;;
+;;; WINDOWS (27.2 Windows and Frames)
+;;; 
 
 (define-interactive (other-window) ; switch current window and buffer
   (define ws (frame-window-tree (current-frame)))
@@ -282,12 +302,41 @@
       (delete-window win)))
   (refresh-frame))
 
+(define (window-list [frame (current-frame)])
+  "Return list of windows in the frame.\n
+   If frame is #f or omitted the current frame is used."
+  (set! frame (or frame (current-frame)))
+  (frame->windows frame))
+
+; See window.rkt
+#;(define (get-buffer-window-list [buffer-or-name #f])
+  "Return list of all windows displaying the buffer."
+  (set! buffer-or-name (or buffer-or-name (current-buffer)))
+  (define this?
+    (cond [(buffer? buffer-or-name) (λ (b) (eq?                 b  buffer-or-name))]
+          [else                     (λ (b) (equal? (buffer-name b) buffer-or-name))]))
+  (for/list ([w (window-list)]
+             #:when (this? (window-buffer w)))
+    (window-buffer w)))
+
+(define (buffer-visible? [buffer-or-name #f])
+  "Is the buffer visible in the current frame?"
+  (not (empty? (get-buffer-window-list buffer-or-name))))
+         
+
+;;;
+;;; FRAME
+;;; 
+
 (define-interactive (maximize-frame [f (current-frame)]) ; maximize / demaximize frame
   (when (frame? f)
     (define f% (frame-frame% f))
     (when (is-a? f% frame%)
       (send f% maximize (not (send f% is-maximized?))))))
 
+;;;
+;;;
+;;;
 
 (define (position->index pos)
   (if (mark? pos) (mark-position pos) pos))
@@ -317,8 +366,8 @@
 
 ; create-new-buffer :  -> void
 ;   create new buffer and switch to it
-(define-interactive (create-new-buffer)
-  (define b (new-buffer (new-text) #f (generate-new-buffer-name "Untitled")))
+(define-interactive (create-new-buffer [title "Untitled"])
+  (define b (new-buffer (new-text) #f (generate-new-buffer-name title)))
   (set-window-buffer! (current-window) b)
   (current-buffer b)
   (refresh-frame (current-frame)))

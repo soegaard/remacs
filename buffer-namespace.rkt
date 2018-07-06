@@ -11,8 +11,17 @@
 (provide new-buffer-namespace    ; -> namespace
          new-default-namespace)  ; -> namespace
 
-(require "config.rkt"
+(require racket/runtime-path
+         ; these needs
+         "config.rkt"
+         "parameters.rkt"
+         ; "window.rkt"
          "parameters.rkt")
+
+(define-runtime-path parameters.rkt    "parameters.rkt")
+(define-runtime-path buffer-locals.rkt "buffer-locals.rkt")
+(define-runtime-path config.rkt        "config.rkt")
+(define-runtime-path buffer.rkt        "buffer.rkt")
 
 ;;; Namespace Creation
 
@@ -30,14 +39,16 @@
     ; Attach a module before requiring it.
     ; The module attachments are needed in order not to instantiate struct definitions multiple times.
 
-    (namespace-attach-module this-ns 'racket/base        ns)
+    (namespace-attach-module this-ns 'racket/base ns)
     (namespace-require 'racket/base)
 
-    (namespace-attach-module this-ns "parameters.rkt"    ns)
-    (namespace-require '"parameters.rkt")
+    (namespace-attach-module this-ns parameters.rkt ns)
+    (namespace-require parameters.rkt)
+    (namespace-attach-module this-ns buffer.rkt ns)
+    (namespace-require buffer.rkt)
 
-    (namespace-attach-module this-ns "buffer-locals.rkt" ns)
-    (namespace-require '"buffer-locals.rkt")
+    (namespace-attach-module this-ns buffer-locals.rkt ns)
+    (namespace-require buffer-locals.rkt)
   ns))
 
 ; new-default-namespace : -> namespace
@@ -52,12 +63,13 @@
     (namespace-attach-module this-ns 'racket/base        ns)
     (namespace-require 'racket/base)
 
-    (namespace-attach-module this-ns "parameters.rkt"    ns)
-    (namespace-require '"parameters.rkt")
+    (namespace-attach-module this-ns parameters.rkt    ns)
+    (namespace-require parameters.rkt)
+    ;(namespace-attach-module this-ns buffer.rkt ns)
+    ;(namespace-require buffer.rkt)
 
     ; All configuration of defaults are in "config.rkt"
     ; (dynamic-require "config.rkt" #f)
-    (namespace-attach-module this-ns "config.rkt"    ns)
-    (namespace-require '"config.rkt")
-    )
+    (namespace-attach-module this-ns config.rkt ns)
+    (namespace-require config.rkt))
   ns)

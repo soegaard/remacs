@@ -8,9 +8,11 @@
 
 (provide (all-defined-out))
 
-(require racket/set
+(require racket/set racket/runtime-path
          "colors.rkt"
          "parameters.rkt")
+
+(define-runtime-path simple.rkt "simple.rkt")
 
 ;;;
 ;;; MODES
@@ -29,7 +31,7 @@
 
 ; Note! Tabs aren't supported in rendering yet...
 (define indent-tab-mode #f) ; #t = use tabs for indent, #f = use spaces
-(define indent-for-tab (dynamic-require "simple.rkt" 'insert-tab-as-spaces))
+(define indent-for-tab (dynamic-require simple.rkt 'insert-tab-as-spaces))
 (define tab-width       4)
 (define tab-stop-list  #f)                                     ; every tab-width position
 ;(define tab-stop-list  (for/list ([i (in-range 7 200 8)]) i)) ; positions of tab stops

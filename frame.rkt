@@ -26,3 +26,12 @@
       [(window frame panel borders canvas parent buffer start end) (list w)]))
   (flatten (loop (frame-windows f))))
 
+(define (frame->windows f)
+  (define (loop ws)
+    (match ws
+      [(vertical-split-window _ _ _ _ _ _ _ _ upper lower)
+       (append (loop upper) (loop lower))]
+      [(horizontal-split-window _ _ _ _ _ _ _ _ left right)
+       (append (loop left) (loop right))]
+      [w (list w)]))
+  (loop (frame-windows f)))
