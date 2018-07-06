@@ -285,12 +285,15 @@
 ;;; WINDOWS (27.2 Windows and Frames)
 ;;; 
 
+(define (focus-window [w (current-window)])
+  (send (window-canvas w) focus))
+
 (define-interactive (other-window) ; switch current window and buffer
   (define ws (frame-window-tree (current-frame)))
   (define w (list-next ws (current-window) eq?))
   (current-window w)
   (current-buffer (window-buffer w))
-  (send (window-canvas w) focus))
+  (focus-window w))
 
 (define-interactive (delete-window [w (current-window)])
   (window-delete! w))

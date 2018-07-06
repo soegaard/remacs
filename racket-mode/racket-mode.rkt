@@ -82,8 +82,6 @@
                            (when (< end to)
                              (loop))])))
 
-; (local! color-buffer color-buffer)
-
 ;;;
 ;;; MOVEMENT
 ;;;
@@ -113,6 +111,8 @@
 (define user-buffer    #f)
 (define user-custodian #f)
 
+(define first-run?     #t)
+
 (define-interactive (racket-run)
   ; New output buffer
   ;   - only create new buffer, on first run
@@ -120,7 +120,8 @@
   ; If not visible then ...
 
   ;; Setup buffer and window
-  (define first-run? (not user-buffer))
+  (set! first-run? (not user-buffer))
+  (define was-first-run? first-run?)
   (define visible?   (and user-buffer (buffer-visible? user-buffer)))
   (cond
     [first-run? (set! first-run? #f)
@@ -128,10 +129,14 @@
                 (other-window)
                 (create-new-buffer "*output*")       ; creates new buffer and switches to it
                 (set! user-buffer (current-buffer))]
-    [visible?   (switch-to-buffer user-buffer)]
+    [visible?   (current-window (get-buffer-window user-buffer))
+                (focus-window)
+                (switch-to-buffer user-buffer)]
     [else       (split-window-right)
                 (other-window)
+                (focus-window)
                 (switch-to-buffer user-buffer)])
+  (end-of-buffer)
   ;; Remove previous threads, ports etc.
   (unless first-run?
     (when (custodian? user-custodian)
@@ -143,10 +148,10 @@
   (parameterize ([current-output-port p]
                  [current-namespace   ns]
                  [current-custodian   c])
-    (set! user-running? #t)
+    ;; Banner
+    (unless was-first-run? (displayln "---"))
+    (display (banner))
+    ;; Start user process
+    (set! user-running?  #t)
     (set! user-custodian c)
-    (set! user-thread
-          (thread
-           (λ ()
-             (displayln (list 'racket-run "thread"))
-             (namespace-require "fact.rkt"))))))
+    (set! user-thread    (thread (λ () (namespace-require "fact.rkt"))))))
