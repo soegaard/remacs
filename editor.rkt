@@ -8,9 +8,10 @@
 ;;; BUG  Blinking point must follow current-buffer.
 
 ;;; PRIORITY: HIGH
-;;;   TODO collapse  (i.e. split window -> left/right/upper/lower window only)
+
 ;;;   TODO buffer narrowing
 ;;;   TODO indentation
+;;;   TODO repl for racket-mode
 ;;;   TODO The column position of the cursor when using down should stay the same
 ;;;        even if one goes across short line.
 ;;;   TODO Implement undo
@@ -576,7 +577,7 @@
     ;; Mode Menu
     (define        mm (new menu% (label "Modes") (parent mb)))
     (new-menu-item mm "Fundamental" #f #f (wrap (fundamental-mode)))
-    (new-menu-item mm "Racket"      #f #f (wrap (racket-mode)))
+    ; (new-menu-item mm "Racket"      #f #f (wrap (racket-mode)))
     (new-menu-item mm "Text"        #f #f (wrap (text-mode)))
     ;; Help Menu
     (define hm (new menu% (label "Help") (parent mb)))
@@ -646,6 +647,8 @@
   (current-window w)
   (current-frame f)
 
-  (register-auto-mode "rkt" racket-mode)
+  #;(register-auto-mode "rkt" racket-mode)
   
   (send (window-canvas w) focus))
+
+(require "racket-mode/racket-mode.rkt")
