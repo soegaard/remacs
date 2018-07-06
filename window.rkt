@@ -33,6 +33,7 @@
 
 ; new-window : frame panel buffer -> window
 (define (new-window f panel b [parent #f] #:borders [borders #f])
+  (displayln 'new-window)
   ; parent is the parent window, #f means no parent parent window
   (define bs (or borders (seteq)))
   (define start (new-mark b "*start*"))
@@ -86,7 +87,7 @@
 ;   and add a new panel to the right for the new window.
 (define (split-window-right [w (current-window)])
   (define f (window-frame w))
-  ; the parent p of a window w might be a horizontal- or vertical window
+  ; the parent p of a window w might be a horizontal or vertical window
   (define b  (window-buffer w))
   (define bs (window-borders w))
   (define c  (window-canvas w))
@@ -244,18 +245,21 @@
   ;; send keyboard focus to other window
   (send (window-backend ow) focus))
 
-; create-window-canvas : window panel% -> canvas
+; window-install-canvas! : window panel% -> canvas
 ; this-window : the non-gui structure representing the window used to display a buffer.
-; f           : the non-gui structure representing the frame of the window
 ; panel       : the panel which the canvas has as parent
+(define debug-canvas-count 0)
 (define (window-install-canvas! this-window panel)
+  (set! debug-canvas-count (+ debug-canvas-count 1))
+  ; (displayln debug-canvas-count)
+  ; (displayln 'window-install-canvas!)
   (define f (window-frame this-window))
   ;;; PREFIX 
   ; keeps track of key pressed so far
   (define prefix '())
   (define (add-prefix! key) (set! prefix (append prefix (list key))))
   (define (clear-prefix!)   (set! prefix '()))
-
+  
   (define handle-mouse
     (let ([left-down? #f]
           [last-left-click-row #f] [last-left-click-col #f])
@@ -389,15 +393,18 @@
       (define (on-paint-points on?) ; render points only        
         (unless (current-rendering-suspended?)
           (parameterize ([current-render-points-only? #t]
-                         [current-show-points?        on?])
+                         ;[current-show-points?        on?]
+                         )
             ; (display-status-line (status-line-hook))
-            ((current-render-window) this-window))))
+            (define render (current-render-window))
+            (when (procedure? render)
+              (render this-window)))))
       (define/override (on-paint) ; render everything
         (when (current-rendering-suspended?)
           (debug-display "s"))
         (unless (current-rendering-suspended?)
           (debug-display ".")
-          (parameterize ([current-show-points? #t])
+          (parameterize (#;[current-show-points? #t])
             (display-status-line (status-line-hook))
             ((current-render-frame) f))))
       (super-new)))
@@ -407,8 +414,11 @@
   (send canvas min-client-height 20)
   ;;; blinking cursor / point
   ; start update-points thread
+  (displayln (list 'created debug-canvas-count))
   (thread (λ () (let loop ([on? #t])
-                  (sleep/yield 0.1)
+                  ; (display count)
+                  (set! on? #t)
+                  (sleep/yield 0.1)                  
                   (unless (current-rendering-suspended?)
                     (send canvas on-paint-points on?))
                   (loop (not on?)))))

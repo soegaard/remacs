@@ -1,6 +1,7 @@
 #lang racket/base
 (provide (except-out (all-defined-out) refresh-frame refresh-buffer))
 
+(displayln "BUFFER.RKT")
 ;;;
 ;;; BUFFER
 ;;;
@@ -34,6 +35,7 @@
 ;   associate (buffer-name b) to b in buffers-ht,
 ;   and put it all-buffers
 (define (register-buffer b [on-error #f])
+  (displayln (list 'register-buffer (buffer-name b)))
   (define name (buffer-name b))
   (if (hash-ref buffers-ht name #f)
       (cond 
@@ -535,7 +537,13 @@
 ; next-buffer : buffer -> buffer
 ;   all buffers are in all-buffers, return the one following b
 (define (get-next-buffer [b (current-buffer)])
-  (list-next all-buffers b eq?))
+  (define next (list-next all-buffers b eq?))
+  (unless (buffer? next)
+    (displayln 'get-next-buffer)
+    (displayln (list 'next next))
+    (displayln (list 'b    b))
+    (error))
+  next)
 
 (define (get-previous-buffer [b (current-buffer)])
   (list-next (reverse all-buffers) b eq?))
