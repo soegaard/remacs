@@ -1,7 +1,6 @@
 #lang racket/base
 (provide (except-out (all-defined-out) refresh-frame refresh-buffer))
 
-(displayln "BUFFER.RKT")
 ;;;
 ;;; BUFFER
 ;;;
@@ -35,7 +34,6 @@
 ;   associate (buffer-name b) to b in buffers-ht,
 ;   and put it all-buffers
 (define (register-buffer b [on-error #f])
-  (displayln (list 'register-buffer (buffer-name b)))
   (define name (buffer-name b))
   (if (hash-ref buffers-ht name #f)
       (cond 
@@ -193,7 +191,8 @@
   (unless file
     (set! file (finder:put-file)))
   (when file
-    (set-buffer-name! b (path->string file))
+    (set-buffer-path! b file)
+    (set-buffer-name! b (path->string file))    
     (with-output-to-file file
       (λ () (for ([line (text-lines (buffer-text b))])
               (for ([s (line-strings line)])
