@@ -15,21 +15,43 @@
          ; these needs
          "config.rkt"
          "parameters.rkt"
-         ; "window.rkt"
+         ;"window.rkt"
          "parameters.rkt")
 
-(define-runtime-path parameters.rkt    "parameters.rkt")
-(define-runtime-path buffer-locals.rkt "buffer-locals.rkt")
-(define-runtime-path config.rkt        "config.rkt")
+;;; Runtime paths
+
+; Modules that rely on global state (such as a registry of "all buffers")
+; must be instantiated only once - in order for the state to be shared.
+; Instances of the modules below are therefore attcahed to the buffer local
+; namespace. 
 (define-runtime-path buffer.rkt        "buffer.rkt")
+(define-runtime-path buffer-locals.rkt "buffer-locals.rkt")
+(define-runtime-path config.rkt        "config.rkt")         ; for default only
+(define-runtime-path parameters.rkt    "parameters.rkt")
+;(define-runtime-path window.rkt        "window.rkt")
+
+(define all-runtime-paths
+  (list 'racket/base buffer.rkt parameters.rkt buffer-locals.rkt))
+
+(define-namespace-anchor namespace-anchor)
+(define this-ns (namespace-anchor->namespace namespace-anchor))
+
+(define (namespace-attach-and-require rt-path ns)
+  (displayln rt-path)
+  (parameterize ([current-namespace ns])
+    (namespace-attach-module this-ns rt-path ns)
+    (namespace-require rt-path)))
+
+(define (namespace-attach-and-require-all ns)
+  (for ([rt-path all-runtime-paths])
+    (namespace-attach-and-require rt-path ns)))
+  
 
 ;;; Namespace Creation
 
 ; We need to get a reference to the modules instantiated here,
 ; so we can attach them the new namespace.
 
-(define-namespace-anchor namespace-anchor)
-(define this-ns (namespace-anchor->namespace namespace-anchor))
 
 ; new-buffer-namespace : -> namespace
 ;    Allocate a new namespace for a new buffer (see eval-buffer).
@@ -38,17 +60,8 @@
   (parameterize ([current-namespace ns])
     ; Attach a module before requiring it.
     ; The module attachments are needed in order not to instantiate struct definitions multiple times.
-
-    (namespace-attach-module this-ns 'racket/base ns)
-    (namespace-require 'racket/base)
-
-    (namespace-attach-module this-ns parameters.rkt ns)
-    (namespace-require parameters.rkt)
-    (namespace-attach-module this-ns buffer.rkt ns)
-    (namespace-require buffer.rkt)
-
-    (namespace-attach-module this-ns buffer-locals.rkt ns)
-    (namespace-require buffer-locals.rkt)
+    (namespace-attach-and-require-all ns)
+    (namespace-attach-and-require buffer.rkt ns)
   ns))
 
 ; new-default-namespace : -> namespace
@@ -59,17 +72,7 @@
   (parameterize ([current-namespace ns])
     ; Attach module before requiring it.
     ; The module attachments are needed in order not to instantiate struct definitions multiple times.
-    
-    (namespace-attach-module this-ns 'racket/base        ns)
-    (namespace-require 'racket/base)
-
-    (namespace-attach-module this-ns parameters.rkt    ns)
-    (namespace-require parameters.rkt)
-    ;(namespace-attach-module this-ns buffer.rkt ns)
-    ;(namespace-require buffer.rkt)
-
-    ; All configuration of defaults are in "config.rkt"
-    ; (dynamic-require "config.rkt" #f)
-    (namespace-attach-module this-ns config.rkt ns)
-    (namespace-require config.rkt))
+    ; (namespace-attach-and-require-all ns)
+    (for ([rt-path (list 'racket/base parameters.rkt config.rkt)])
+      (namespace-attach-and-require rt-path ns)))
   ns)

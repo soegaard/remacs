@@ -28,9 +28,7 @@
   ; name
   (set-major-mode! 'racket)
   (set-mode-name!  "Racket")
-  ; (set-buffer-local! 'color-buffer  b)
   ; keymap
-  ;   Demonstrates how to override a keymap
   (local! local-keymap
           (λ (prefix key)
             (match prefix
