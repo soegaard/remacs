@@ -46,6 +46,7 @@
                  [current-buffer    b])
     (namespace-attach-module ns 'racket/gui/base)
     (namespace-attach-module ns 'data/interval-map)
+    (namespace-attach-module ns "racket-mode/racket-mode.rkt")
     (namespace-require "racket-mode/racket-mode.rkt")))
 
 (register-auto-mode "rkt" racket-mode)
@@ -74,6 +75,7 @@
                  [current-buffer    b])
     (namespace-attach-module ns 'racket/gui/base)
     (namespace-attach-module ns 'data/interval-map)
+    (namespace-attach-module ns "racket-mode/racket-mode.rkt")
     (namespace-require "racket-mode/racket-mode.rkt")))
 
 
@@ -175,50 +177,52 @@
   ;   - only create new buffer, on first run
   ; Switch to buffer if it is visible,
   ; If not visible then ...
-
-  ;; Make sure buffer is saved to a file
-  (set! user-program-buffer (current-buffer))
-  (unless (buffer-path user-program-buffer)
-    (save-buffer))
-  (define program-path (buffer-path user-program-buffer))
-  (when program-path
-    ;; Setup buffer and window
-    (set! first-run? (not user-repl-buffer))
-    (define was-first-run? first-run?)
-    (define visible?   (and user-repl-buffer (buffer-visible? user-repl-buffer)))
-    (cond
-      [first-run? (set! first-run? #f)
-                  (split-window-right)
-                  (other-window)
-                  (create-new-buffer "*output*")       ; creates new buffer and switches to it
-                  (set! user-repl-buffer (current-buffer))
-                  (racket-repl-mode)]
-      [visible?   (current-window (get-buffer-window user-repl-buffer))
-                  (focus-window)
-                  (switch-to-buffer user-repl-buffer)]
-      [else       (split-window-right)
-                  (other-window)
-                  (focus-window)
-                  (switch-to-buffer user-repl-buffer)])
-    ; Note: The current-buffer is now the repl.
-    (end-of-buffer)
-    ;; Remove previous threads, ports etc.
-    (unless first-run?
-      (when (custodian? user-custodian)
-        (custodian-shutdown-all user-custodian)))
-    (when (buffer-path user-program-buffer)
-      ;; Setup environment in which to run program
-      (define p   (make-output-buffer user-repl-buffer))
-      (define ns  (make-base-empty-namespace))
-      (define c   (make-custodian (current-custodian)))
-      (parameterize ([current-output-port p]
-                     [current-namespace   ns]
-                     [current-custodian   c])
-        ;; Banner
-        (unless was-first-run? (displayln "---"))
-        (display (banner))
-        ;; Start user process
-        (set! user-running?  #t)
-        (set! user-custodian c)
-        (set! user-thread    (thread (λ () (namespace-require program-path))))))))
+  (when (eq? (get-major-mode) 'racket)
+    ;; Make sure buffer is saved to a file
+    (set! user-program-buffer (current-buffer))
+    (unless (buffer-path user-program-buffer)
+      (save-buffer))
+    (define program-path (buffer-path user-program-buffer))
+    (when program-path
+      ;; Setup buffer and window
+      (set! first-run? (not user-repl-buffer))
+      (define was-first-run? first-run?)
+      (define visible?   (and user-repl-buffer (buffer-visible? user-repl-buffer)))
+      (cond
+        [first-run? (set! first-run? #f)
+                    (split-window-right)
+                    (other-window)
+                    (create-new-buffer "*output*")       ; creates new buffer and switches to it
+                    (set! user-repl-buffer (current-buffer))
+                    (racket-repl-mode)]
+        [visible?   (current-window (get-buffer-window user-repl-buffer))
+                    (focus-window)
+                    (switch-to-buffer user-repl-buffer)]
+        [else       (displayln "not visible")
+                    (displayln (list (buffer-name user-repl-buffer)))
+                    (split-window-right)
+                    (other-window)
+                    (switch-to-buffer user-repl-buffer)
+                    (focus-window)])
+      ; Note: The current-buffer is now the repl.
+      (end-of-buffer)
+      ;; Remove previous threads, ports etc.
+      (unless first-run?
+        (when (custodian? user-custodian)
+          (custodian-shutdown-all user-custodian)))
+      (when (buffer-path user-program-buffer)
+        ;; Setup environment in which to run program
+        (define p   (make-output-buffer user-repl-buffer))
+        (define ns  (make-base-empty-namespace))
+        (define c   (make-custodian (current-custodian)))
+        (parameterize ([current-output-port p]
+                       [current-namespace   ns]
+                       [current-custodian   c])
+          ;; Banner
+          (unless was-first-run? (displayln "---"))
+          (display (banner))
+          ;; Start user process
+          (set! user-running?  #t)
+          (set! user-custodian c)
+          (set! user-thread    (thread (λ () (namespace-require program-path)))))))))
   

@@ -37,7 +37,6 @@
 (define this-ns (namespace-anchor->namespace namespace-anchor))
 
 (define (namespace-attach-and-require rt-path ns)
-  (displayln rt-path)
   (parameterize ([current-namespace ns])
     (namespace-attach-module this-ns rt-path ns)
     (namespace-require rt-path)))

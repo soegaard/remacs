@@ -635,7 +635,7 @@
 
 ; This starts the editor.
 
-(module+ main
+;(module+ main
   (current-buffer scratch-buffer)
   (define f  (frame #f #f #f #f #f))
   (frame-install-frame%! f) ; installs frame% and panel
@@ -649,6 +649,7 @@
 
   #;(register-auto-mode "rkt" racket-mode)
   
-  (send (window-canvas w) focus))
+  (send (window-canvas w) focus)
+;)
 
 (require "racket-mode/racket-mode.rkt")
