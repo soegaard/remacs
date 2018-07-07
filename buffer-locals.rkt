@@ -81,7 +81,7 @@
 
 (define-syntax (local stx)
   (syntax-parse stx
-    [(_local id:id on-error) (syntax/loc stx (ref-buffer-local 'id on-error))]
+    [(_local id:id on-error) (syntax/loc stx (ref-buffer-local 'id (current-buffer) on-error))]
     [(_local id:id)          (syntax/loc stx (ref-buffer-local 'id))]
     [_ (raise-syntax-error 'local "expected (local id) or (local id on-error)" stx)]))
 

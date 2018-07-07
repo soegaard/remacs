@@ -54,14 +54,13 @@
 
 
 ; new-buffer-namespace : -> namespace
-;    Allocate a new namespace for a new buffer (see eval-buffer).
+;    Allocate a new namespace for a new buffer (see buffer-locals.rkt).
 (define (new-buffer-namespace)  
   (define ns (make-base-empty-namespace))
   (parameterize ([current-namespace ns])
     ; Attach a module before requiring it.
     ; The module attachments are needed in order not to instantiate struct definitions multiple times.
     (namespace-attach-and-require-all ns)
-    (namespace-attach-and-require buffer.rkt ns)
   ns))
 
 ; new-default-namespace : -> namespace

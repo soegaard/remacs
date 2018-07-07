@@ -50,6 +50,33 @@
 
 (register-auto-mode "rkt" racket-mode)
 
+
+(define (racket-repl-mode [b (current-buffer)])
+  (fundamental-mode b)       ; add all commands from fundamental mode
+  ; name
+  (set-major-mode! 'racket-repl)
+  (set-mode-name!  "Racket Repl")
+  ; keymap
+  (local! local-keymap
+          (λ (prefix key)
+            (match prefix
+              [(list)
+               (match key
+                 ["M-left"    backward-sexp]
+                 ["M-right"   forward-sexp]
+                 ["M-S-right" forward-sexp/extend-region]
+                 ["M-S-left"  backward-sexp/extend-region]
+                 [_           #f])]
+              [_ #f]))
+          b)
+  (define ns (current-namespace))
+  (parameterize ([current-namespace (buffer-locals b)]
+                 [current-buffer    b])
+    (namespace-attach-module ns 'racket/gui/base)
+    (namespace-attach-module ns 'data/interval-map)
+    (namespace-require "racket-mode/racket-mode.rkt")))
+
+
 ;;;
 ;;; INDENTATION
 ;;;
@@ -164,7 +191,8 @@
                   (split-window-right)
                   (other-window)
                   (create-new-buffer "*output*")       ; creates new buffer and switches to it
-                  (set! user-repl-buffer (current-buffer))]
+                  (set! user-repl-buffer (current-buffer))
+                  (racket-repl-mode)]
       [visible?   (current-window (get-buffer-window user-repl-buffer))
                   (focus-window)
                   (switch-to-buffer user-repl-buffer)]
