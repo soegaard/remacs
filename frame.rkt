@@ -1,6 +1,6 @@
 #lang racket/base
 (provide (all-defined-out))
-
+(displayln "FRAME.RKT")
 ;;;
 ;;; FRAMES
 ;;;

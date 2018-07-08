@@ -125,7 +125,7 @@
 
 (define (render-buffer w)
   (define now (current-milliseconds))
-   (define (marks-between marks from to)
+  (define (marks-between marks from to)
     (for/list ([m marks] #:when (<= from (mark-position m) to))
       (mark-position m)))
   (define (line->screen-lines b l r k p other) ; l = line, r = row, p = position of line start
@@ -189,7 +189,7 @@
              (char=? (string-ref s (- (string-length s) 1)) #\newline)
              (substring s 0 (max 0 (- (string-length s) 1))))
         s))
-  (unless (current-rendering-suspended?)
+  (unless #f ; (current-rendering-suspended?)
     (define b  (window-buffer w))
     (parameterize ([current-buffer b])
       (define c  (window-canvas w))
@@ -262,7 +262,8 @@
             (define default-color   (ref-buffer-local 'text-color  b))
             (define default-style   (ref-buffer-local 'text-style  b))
             (define default-weight  (ref-buffer-local 'text-weight b))
-            (define (make-getter im default) (λ (p) (if im (safe-interval-map-ref im p default) default)))
+            (define (make-getter im default) (λ (p)
+                                               (if im (safe-interval-map-ref im p default) default)))
             (define get-text-color  (make-getter  color-im default-color))
             (define get-style       (make-getter  style-im default-style))
             (define get-weight      (make-getter weight-im default-weight))
@@ -282,8 +283,10 @@
                 (match-define (list p s) p+s)
                 ; background color
                 (set-text-background-color #f hl?)
-                (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t hl?))
-                (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f hl?))
+                (when (and reg-begin (<= reg-begin p) (< p reg-end))
+                  (set-text-background-color #t hl?))
+                (when (and reg-end   (<= reg-end   p))
+                  (set-text-background-color #f hl?))
                 ; foreground color
                 (set-unless-same p set-text-foreground cur-text-color  get-text-color)
                 ; pen
@@ -314,8 +317,10 @@
                        [i (in-range (+ start-row num-lines-on-screen))])
               (cond
                 [(< i num-lines-to-skip)
-                 (when (and reg-begin (<= reg-begin p) (< p reg-end)) (set-text-background-color #t #f))
-                 (when (and reg-end   (<= reg-end   p))               (set-text-background-color #f #f))
+                 (when (and reg-begin (<= reg-begin p) (< p reg-end))
+                   (set-text-background-color #t #f))
+                 (when (and reg-end   (<= reg-end   p))
+                   (set-text-background-color #f #f))
                  (values y (+ p (line-length l)) 0 '())]
                 [else
                  ; color the part of the buffer that is on screen
@@ -351,10 +356,10 @@
           ; resume flush
           (send dc resume-flush)
           (void)))
-      ; draw points
-      (render-points w start-row end-row)
-      (define later (current-milliseconds))
-      (status-line-render-time (- later now)))))
+    ; draw points
+    (render-points w start-row end-row)
+    (define later (current-milliseconds))
+    (status-line-render-time (- later now)))))
 
 (define debug-buffer #f)
 (define debug-info #f)
@@ -365,7 +370,7 @@
        (if (and (<= from p) (< p to)) index (find-index (rest positions) p (+ index 1)))]
       [(list from) (if (>= p from) index #f)]
       [(list) #f]))      
-  (unless (current-rendering-suspended?)
+  (unless #f ; (current-rendering-suspended?)
     (define b  (window-buffer w))
     (define c  (window-canvas w))
     (define dc (send c get-dc))
@@ -413,6 +418,7 @@
 (define (render-window w)
   (define b  (window-buffer w))
   (when (buffer? b)
+    ;(displayln (buffer-name b))
     (define c  (window-canvas w))
     (define dc (send c get-dc))
     (send dc suspend-flush)
@@ -442,7 +448,7 @@
       (send dc draw-line 0 0 0 ymax)
       (set! xmin (+ xmin 1)))
     (send dc set-pen op)
-    (send dc resume-flush)))  
+    (send dc resume-flush)))
 (current-render-window render-window)
 
 (define (render-windows win)
