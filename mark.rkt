@@ -100,7 +100,7 @@
 ;   adjust the position of the mark - an amount of a characters were inserted at position p
 (define (mark-adjust-insertion-after! m p a)
   (define mp (mark-position m))
-  (when (> mp p)
+  (when (>= mp p)
     ; the insertion was after the mark
     (mark-move! m a)))
 

@@ -242,7 +242,11 @@
   (open-input-string
    (text->string (buffer-text b))))
 
-(define (make-output-buffer b)
+; make-output-buffer : buffer -> output-buffer
+;   Return an output buffer. When written to the data is inserted into
+;   the buffer b at the position given by the mark. If the mark is #f
+;   then the data is inserted at the end of the buffer.
+(define (make-output-buffer b [m #f])
   ;(displayln (list 'make-output-buffer 'current-frame (refresh-frame)))
   ;; State
   (define count-lines? #f)
@@ -254,7 +258,12 @@
       ; write bytes from out-bytes from index start (inclusive) to index end (exclusive)
       (define the-bytes (subbytes out-bytes start end))
       (define as-string (bytes->string/utf-8 the-bytes))
-      (buffer-insert-string-before-point! b as-string)
+      (cond
+        [m (with-saved-point
+               (buffer-move-point-to-position! b (position m))
+               (buffer-insert-string-before-point! b as-string))
+           (mark-move! (get-point b) (string-length as-string))]
+        [else (buffer-insert-string-before-point! b as-string)])
       (buffer-dirty! b)
       (parameterize ([current-rendering-suspended? #f])
         (refresh-buffer name))     ; todo how to find the correct the frame?
@@ -396,22 +405,14 @@
   (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) 1)
   (buffer-move-point! b 1))
 
+; buffer-insert-string-before-point! : buffer string -> void
+;   insert string before point (and move point)
 (define (buffer-insert-string-before-point! b s)
   (define m (buffer-point b))
   (define n (string-length s))
   (buffer-insert-string! b s)
   (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) n)
   (buffer-move-point! b n))
-
-
-; buffer-insert-string-before-point! : buffer string -> void
-;   insert string before point (and move point)
-#;(define (buffer-insert-string-before-point! b s)
-  ; todo: rewrite to insert entire string in one go
-  (for ([c s])
-    (if (char=? c #\newline)
-        (buffer-break-line! b)
-        (buffer-insert-char-before-point! b c))))
 
 (define (buffer-adjust-marks-due-to-insertion-after! b n a)
   (for ([m (buffer-marks b)])

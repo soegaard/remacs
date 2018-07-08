@@ -563,7 +563,7 @@
     ; TODO: display this menu only in racket-mode
     (define rm (new menu% (label "Racket") (parent mb)))
     ; todo : let racket-mode add this to the menu
-    (new-menu-item rm "Run"                #\r #f (wrap ((local racket-run void))))
+    (new-menu-item rm "Run"                #\r #f (wrap ((local racket-run (λ () void)))))
     ;; Window Menu
     (define        wm (new menu% (label "Window") (parent mb)))
     (new-menu-item wm "C-x 0       Delete Window"        #f #f (wrap (delete-window)))

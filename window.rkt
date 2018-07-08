@@ -352,7 +352,6 @@
         (define/override (on-focus event)
           (define w this-window)
           (define b (window-buffer w))
-          (displayln (list 'on-focus (buffer-name b)))
           (current-buffer b)
           (current-window w))
         ;; Key Events

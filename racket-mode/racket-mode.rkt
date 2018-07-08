@@ -4,13 +4,14 @@
          racket-run
          racket-mode)
 
-(require racket/class racket/format racket/match
+(require racket/class racket/format racket/match racket/set
          syntax-color/racket-lexer
          "../buffer.rkt"
          "../buffer-locals.rkt"
          "../colors.rkt"
          "../commands.rkt"
          "../frame.rkt"
+         "../mark.rkt"
          "../mode.rkt"
          "../parameters.rkt"
          "../point.rkt"
@@ -47,7 +48,7 @@
     (namespace-attach-module ns 'racket/gui/base)
     (namespace-attach-module ns 'data/interval-map)
     (namespace-attach-module ns "racket-mode/racket-mode.rkt")
-    (namespace-require "racket-mode/racket-mode.rkt")))
+    (namespace-require          "racket-mode/racket-mode.rkt")))
 
 (register-auto-mode "rkt" racket-mode)
 
@@ -76,8 +77,24 @@
     (namespace-attach-module ns 'racket/gui/base)
     (namespace-attach-module ns 'data/interval-map)
     (namespace-attach-module ns "racket-mode/racket-mode.rkt")
-    (namespace-require "racket-mode/racket-mode.rkt")))
+    (namespace-require          "racket-mode/racket-mode.rkt")))
 
+#;(define-interactive (racket-repl-eval-or-newline-and-indent)
+  "If complete sexpr, eval in Racket. Else do `racket-newline-and-indent'."
+  (let ((proc (get-buffer-process (current-buffer))))
+    (cond ((not proc) (user-error "Current buffer has no process"))
+          ((not (eq "" (racket--get-old-input)))
+           (condition-case nil
+               (let* ((beg (marker-position (process-mark proc)))
+                      (end (save-excursion
+                             (goto-char beg)
+                             (forward-list) ;scan-error unless complete sexpr
+                             (point))))
+                 (comint-send-input)
+                 ;; Remove comint-highlight-input face applied to
+                 ;; input. I don't like how that looks.
+                 (remove-text-properties beg end '(font-lock-face comint-highlight-input)))
+             (scan-error (newline-and-indent)))))))
 
 ;;;
 ;;; INDENTATION
@@ -168,6 +185,7 @@
 (define user-thread          #f)
 (define user-program-buffer  #f)
 (define user-repl-buffer     #f)
+(define user-repl-port       #f)  ; output port used by user thread
 (define user-custodian       #f)
 
 (define first-run?           #t)
@@ -185,9 +203,9 @@
     (define program-path (buffer-path user-program-buffer))
     (when program-path
       ;; Setup buffer and window
-      (set! first-run? (not user-repl-buffer))
+      (set! first-run?       (not user-repl-buffer))
       (define was-first-run? first-run?)
-      (define visible?   (and user-repl-buffer (buffer-visible? user-repl-buffer)))
+      (define visible?       (and user-repl-buffer (buffer-visible? user-repl-buffer)))
       (cond
         [first-run? (set! first-run? #f)
                     (split-window-right)
@@ -204,25 +222,37 @@
                     (other-window)
                     (switch-to-buffer user-repl-buffer)
                     (focus-window)])
-      ; Note: The current-buffer is now the repl.
-      (end-of-buffer)
-      ;; Remove previous threads, ports etc.
-      (unless first-run?
-        (when (custodian? user-custodian)
-          (custodian-shutdown-all user-custodian)))
+      (define b user-repl-buffer)
+      (parameterize ([current-buffer user-repl-buffer])
+        (end-of-buffer)
+        ;; Remove previous threads, ports etc.
+        (unless was-first-run?
+          (when (custodian? user-custodian)
+            (custodian-shutdown-all user-custodian)))
+        (when was-first-run?
+          ;; Setup the output buffer used as the output port by the user program.
+          ;; The output buffer inserts data before the current prompt.
+          ;; Banner
+          (buffer-insert-string-before-point! b (banner))
+          ;; Insertion marker
+          (define before-prompt-mark (buffer-set-mark-to-point b))
+          (mark-deactivate! before-prompt-mark)
+          (define p (make-output-buffer b before-prompt-mark))
+          (set! user-repl-port p)
+          ;; Prompt
+          (insert "\n> ") ; after point
+          (mark-move! before-prompt-mark -3))
       (when (buffer-path user-program-buffer)
         ;; Setup environment in which to run program
-        (define p   (make-output-buffer user-repl-buffer))
+        ;; This is done on each run.
         (define ns  (make-base-empty-namespace))
         (define c   (make-custodian (current-custodian)))
-        (parameterize ([current-output-port p]
+        (parameterize ([current-output-port user-repl-port]
                        [current-namespace   ns]
                        [current-custodian   c])
-          ;; Banner
-          (unless was-first-run? (displayln "---"))
-          (display (banner))
           ;; Start user process
+          (unless was-first-run? (displayln "---" user-repl-port))
           (set! user-running?  #t)
           (set! user-custodian c)
-          (set! user-thread    (thread (λ () (namespace-require program-path)))))))))
+          (set! user-thread    (thread (λ () (namespace-require program-path))))))))))
   
