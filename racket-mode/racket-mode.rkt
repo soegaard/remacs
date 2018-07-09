@@ -62,6 +62,8 @@
                    ["M-right"   forward-sexp]
                    ["M-S-right" forward-sexp/extend-region]
                    ["M-S-left"  backward-sexp/extend-region]
+                   ["D-d"       hide-definitions]
+                   ;["D-e"       hide-interaction-window]
                    [_           #f])]
                 [_ #f]))
             b)
@@ -117,7 +119,21 @@
           #f                   ; thread               
           custodian
           namespace)))
-
+  
+(define-interactive (hide-definitions)
+  ; invoked from the buffer with racket-mode  
+  (define b (current-buffer))
+  (define definition-buffer? (hash-ref racket-mode-buffers-ht b #f))
+  (when (and definition-buffer? (buffer-visible? b))    
+    (define repl (get-repl b))
+    (define rb   (repl-buffer repl))
+    (cond
+      [(buffer-visible? rb) (define w (get-buffer-window rb))
+                            (current-window w)
+                            (focus-window w)
+                            (delete-other-windows)]
+      [(buffer-visible? b)  (switch-to-buffer rb)]
+      [else                 (error 'huh)])))
 
 
 (define (racket-repl-mode [b (current-buffer)])
