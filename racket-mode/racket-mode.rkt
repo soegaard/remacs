@@ -20,81 +20,149 @@
          "../window.rkt"
          "../text.rkt")
 
+;; Each buffer in racket-mode has a corresponding repl.
+;; We keep track of the repl in a hash table.
+
+; racket-mode-buffers-ht : buffer -> repl
+(define racket-mode-buffers-ht (make-hasheq))
+(define (register b repl) (hash-set! racket-mode-buffers-ht b repl))
+(define (get-repl b)      (hash-ref  racket-mode-buffers-ht b #f))
+
+;; The repl associated with a racket-mode buffer
+(struct repl (buffer                
+              port                  ; output buffer used by the user-thread
+              before-prompt-mark    ; insertion point of the output buffer
+              after-prompt-mark     ; beginning of user input
+              running?              ; user programming running?
+              thread                ; user thread
+              custodian             ; custodian controlling thread
+              namespace             ; namespace for user thread
+              )
+  #:transparent #:mutable
+  #:extra-name make-repl)
+
 ;;;
 ;;; RACKET MODE
 ;;;
 
 (define-interactive (racket-mode [b (current-buffer)])
-  (fundamental-mode b)       ; add all commands from fundamental mode
-  ; name
-  (set-major-mode! 'racket)
-  (set-mode-name!  "Racket")
-  ; keymap
-  (local! local-keymap
-          (λ (prefix key)
-            (match prefix
-              [(list)
-               (match key
-                 ["M-left"    backward-sexp]
-                 ["M-right"   forward-sexp]
-                 ["M-S-right" forward-sexp/extend-region]
-                 ["M-S-left"  backward-sexp/extend-region]
-                 [_           #f])]
-              [_ #f]))
-          b)
   (define ns (current-namespace))
-  (parameterize ([current-namespace (buffer-locals b)]
-                 [current-buffer    b])
-    (namespace-attach-module ns 'racket/gui/base)
-    (namespace-attach-module ns 'data/interval-map)
-    (namespace-attach-module ns "racket-mode/racket-mode.rkt")
-    (namespace-require          "racket-mode/racket-mode.rkt")))
+  (parameterize ([current-buffer b])
+    (fundamental-mode b)       ; add all commands from fundamental mode
+    ; name
+    (set-major-mode! 'racket)
+    (set-mode-name!  "Racket")
+    ; keymap
+    (local! local-keymap
+            (λ (prefix key)
+              (match prefix
+                [(list)
+                 (match key
+                   ["M-left"    backward-sexp]
+                   ["M-right"   forward-sexp]
+                   ["M-S-right" forward-sexp/extend-region]
+                   ["M-S-left"  backward-sexp/extend-region]
+                   [_           #f])]
+                [_ #f]))
+            b)
+    ; import racket-mode into buffer-locals
+    (parameterize ([current-namespace (buffer-locals b)])
+      (namespace-attach-module ns 'racket/gui/base)
+      (namespace-attach-module ns 'data/interval-map)
+      (namespace-attach-module ns "racket-mode/racket-mode.rkt")
+      (namespace-require          "racket-mode/racket-mode.rkt"))
+    ; create corresponding repl and register it
+    (if (get-repl b)
+        (void)                       ; this buffer has been in racket-mode before, reuse old repl
+        (register b (create-repl b)))))
 
+; use racket-mode automatically for all rkt files`
 (register-auto-mode "rkt" racket-mode)
+
+; create-repl : buffer -> repl
+;   Given a buffer in racket-mode, create a corresponding repl buffer
+(define (create-repl buffer-in-racket-mode)
+  ;;; Buffer and Port
+  ;; Setup the output buffer used as the output port by the user program.
+  ;; The output buffer inserts data before the current prompt.
+  (define buffer (new-buffer (new-text) #f (generate-new-buffer-name "*Racket Repl*")))
+  (parameterize ([current-buffer buffer])
+    (define b buffer)
+    ;; Mode
+    (racket-repl-mode b)
+    ;; Banner
+    (buffer-insert-string-before-point! b (banner))
+    ;; Marks before and after prompt
+    (define before-prompt-mark (buffer-set-mark-to-point b))
+    (define  after-prompt-mark (buffer-set-mark-to-point b))
+    (mark-deactivate! before-prompt-mark)
+    (mark-deactivate!  after-prompt-mark)
+    ;; Insertion into the buffer needs to be before the prompt
+    (define port (make-output-buffer b before-prompt-mark))
+    ;; Prompt
+    (define prompt-string "\n> ")
+    (define prompt-length (string-length prompt-string))
+    (insert prompt-string) ; after point
+    (mark-move! before-prompt-mark (- prompt-length))
+
+    ;;; Namespace and custodian
+    (define namespace (make-base-empty-namespace))
+    (define custodian (make-custodian (current-custodian)))
+
+    (repl buffer                
+          port                  
+          before-prompt-mark   
+          after-prompt-mark    
+          #f                   ; running?             
+          #f                   ; thread               
+          custodian
+          namespace)))
+
 
 
 (define (racket-repl-mode [b (current-buffer)])
-  (fundamental-mode b)       ; add all commands from fundamental mode
-  ; name
-  (set-major-mode! 'racket-repl)
-  (set-mode-name!  "Racket Repl")
-  ; keymap
-  (local! local-keymap
-          (λ (prefix key)
-            (match prefix
-              [(list)
-               (match key
-                 ["M-left"    backward-sexp]
-                 ["M-right"   forward-sexp]
-                 ["M-S-right" forward-sexp/extend-region]
-                 ["M-S-left"  backward-sexp/extend-region]
-                 [_           #f])]
-              [_ #f]))
-          b)
-  (define ns (current-namespace))
-  (parameterize ([current-namespace (buffer-locals b)]
-                 [current-buffer    b])
-    (namespace-attach-module ns 'racket/gui/base)
-    (namespace-attach-module ns 'data/interval-map)
-    (namespace-attach-module ns "racket-mode/racket-mode.rkt")
-    (namespace-require          "racket-mode/racket-mode.rkt")))
+  (define ns (current-namespace))  ; todo: problem getting random namespace here?
+  (parameterize ([current-buffer    b]
+                 [current-namespace (buffer-locals b)])
+    (fundamental-mode b)       ; add all commands from fundamental mode
+    ; name
+    (set-major-mode! 'racket-repl)
+    (set-mode-name!  "Racket Repl")
+    ; keymap
+    (local! local-keymap
+            (λ (prefix key)
+              (match prefix
+                [(list)
+                 (match key
+                   ["return"    racket-repl-eval-or-newline-and-indent]
+                   ["M-left"    backward-sexp]
+                   ["M-right"   forward-sexp]
+                   ["M-S-right" forward-sexp/extend-region]
+                   ["M-S-left"  backward-sexp/extend-region]
+                   [_           #f])]
+                [_ #f]))
+            b)
+    (parameterize ()
+      (namespace-attach-module ns 'racket/gui/base)
+      (namespace-attach-module ns 'data/interval-map)
+      (namespace-attach-module ns "racket-mode/racket-mode.rkt")
+      (namespace-require          "racket-mode/racket-mode.rkt"))))
 
-#;(define-interactive (racket-repl-eval-or-newline-and-indent)
-  "If complete sexpr, eval in Racket. Else do `racket-newline-and-indent'."
-  (let ((proc (get-buffer-process (current-buffer))))
-    (cond ((not proc) (user-error "Current buffer has no process"))
-          ((not (eq "" (racket--get-old-input)))
-           (condition-case nil
-               (let* ((beg (marker-position (process-mark proc)))
-                      (end (save-excursion
-                             (goto-char beg)
-                             (forward-list) ;scan-error unless complete sexpr
-                             (point))))
-                 (comint-send-input)
-                 ;; Remove comint-highlight-input face applied to
-                 ;; input. I don't like how that looks.
-                 (remove-text-properties beg end '(font-lock-face comint-highlight-input)))
-             (scan-error (newline-and-indent)))))))
+(define-interactive (racket-repl-eval-or-newline-and-indent)
+  "If there is a complete s-expression before point, then evaluate it."
+  "Otherwise use racket-newline-and-indent."
+  ; TODO: Check for existing
+  (define beg0 (with-saved-point (forward-whitespace) (point))) 
+  (define beg1 (with-saved-point (forward-whitespace) (forward-sexp) (backward-sexp) (point)))
+  (define end  (with-saved-point (forward-sexp) (point)))
+  (cond
+    ; complete s-expression?
+    [(and (= beg0 beg1) (= beg0 end))
+     (insert (~a (list 'empty beg0 beg1 end)) "\n")]
+    [(= beg0 beg1)
+     (insert (~a (list 'complete beg0 beg1 end)) "\n")]
+    [else
+     (insert (~a (list 'incomplete beg0 beg1 end)) "\n")]))
 
 ;;;
 ;;; INDENTATION
@@ -120,7 +188,7 @@
 
 (define color-ht  
   (hasheq 'error               red
-          'comment             base01 ; brown
+          'comment             orange ; brown
           'sexp-comment        base01 ; brown
           'white-space         #f
           'constant            green
@@ -130,7 +198,7 @@
           'hash-colon-keyword  blue
           'symbol              blue
           'eof                 #f
-          'other               black))
+          'other               cyan))
 
 (define (color-buffer [b (current-buffer)] [from 0] [to #f])
   ; (displayln (list "racket-mode.rkt" 'color-buffer 'from from 'to to))
@@ -181,78 +249,52 @@
 ;                       will be terminated)
 ; Note: A way to break and kill a user program thread is needed.
 
-(define user-running?        #f)  ; is the program in the buffer running
-(define user-thread          #f)
-(define user-program-buffer  #f)
-(define user-repl-buffer     #f)
-(define user-repl-port       #f)  ; output port used by user thread
-(define user-custodian       #f)
-
-(define first-run?           #t)
-
 (define-interactive (racket-run)
-  ; New output buffer
-  ;   - only create new buffer, on first run
-  ; Switch to buffer if it is visible,
-  ; If not visible then ...
   (when (eq? (get-major-mode) 'racket)
-    ;; Make sure buffer is saved to a file
-    (set! user-program-buffer (current-buffer))
+    (define user-program-buffer (current-buffer))
+    ;; Get repl (create repl if missing)
+    (define repl (get-repl user-program-buffer))
+    (unless repl
+      (set! repl (create-repl user-program-buffer))
+      (register user-program-buffer repl))
+    (match-define (make-repl repl-buffer port before-prompt-mark after-prompt-mark
+                             running? user-thread custodian namespace)
+      repl)
+    ;; Switch to repl window 
+    (define visible? (buffer-visible? repl-buffer))
+    (cond
+      ; if the repl is visible, we switch to it
+      [visible?   (current-window (get-buffer-window repl-buffer))
+                  (focus-window)
+                  (switch-to-buffer repl-buffer)]
+      ; otherwise, we need to split the current window first
+      [else       (split-window-right)
+                  (other-window)
+                  (switch-to-buffer repl-buffer)
+                  (focus-window)])    
+    ;; The buffer needs to be saved before we can run the program.
+    ; 1. Make sure there is a path
     (unless (buffer-path user-program-buffer)
-      (save-buffer))
+      (save-buffer user-program-buffer))
+    (unless (buffer-path user-program-buffer)
+      (error 'racket-run "save buffer to file before using racket-run"))
+    ; 2. Save the buffer if needed
+    (when (buffer-modified? user-program-buffer)
+      (save-buffer user-program-buffer))
     (define program-path (buffer-path user-program-buffer))
-    (when program-path
-      ;; Setup buffer and window
-      (set! first-run?       (not user-repl-buffer))
-      (define was-first-run? first-run?)
-      (define visible?       (and user-repl-buffer (buffer-visible? user-repl-buffer)))
-      (cond
-        [first-run? (set! first-run? #f)
-                    (split-window-right)
-                    (other-window)
-                    (create-new-buffer "*output*")       ; creates new buffer and switches to it
-                    (set! user-repl-buffer (current-buffer))
-                    (racket-repl-mode)]
-        [visible?   (current-window (get-buffer-window user-repl-buffer))
-                    (focus-window)
-                    (switch-to-buffer user-repl-buffer)]
-        [else       (displayln "not visible")
-                    (displayln (list (buffer-name user-repl-buffer)))
-                    (split-window-right)
-                    (other-window)
-                    (switch-to-buffer user-repl-buffer)
-                    (focus-window)])
-      (define b user-repl-buffer)
-      (parameterize ([current-buffer user-repl-buffer])
-        (end-of-buffer)
-        ;; Remove previous threads, ports etc.
-        (unless was-first-run?
-          (when (custodian? user-custodian)
-            (custodian-shutdown-all user-custodian)))
-        (when was-first-run?
-          ;; Setup the output buffer used as the output port by the user program.
-          ;; The output buffer inserts data before the current prompt.
-          ;; Banner
-          (buffer-insert-string-before-point! b (banner))
-          ;; Insertion marker
-          (define before-prompt-mark (buffer-set-mark-to-point b))
-          (mark-deactivate! before-prompt-mark)
-          (define p (make-output-buffer b before-prompt-mark))
-          (set! user-repl-port p)
-          ;; Prompt
-          (insert "\n> ") ; after point
-          (mark-move! before-prompt-mark -3))
-      (when (buffer-path user-program-buffer)
-        ;; Setup environment in which to run program
-        ;; This is done on each run.
-        (define ns  (make-base-empty-namespace))
-        (define c   (make-custodian (current-custodian)))
-        (parameterize ([current-output-port user-repl-port]
-                       [current-namespace   ns]
-                       [current-custodian   c])
-          ;; Start user process
-          (unless was-first-run? (displayln "---" user-repl-port))
-          (set! user-running?  #t)
-          (set! user-custodian c)
-          (set! user-thread    (thread (λ () (namespace-require program-path))))))))))
-  
+    ; 3. Shut down any old threads, ports etc.
+    (when (custodian? custodian)
+      (custodian-shutdown-all custodian))
+    ; 4. Create new custodian and namespace
+    (set! custodian (make-custodian (current-custodian)))
+    (set-repl-custodian! repl custodian)
+    (set! namespace (make-base-empty-namespace))
+    (set-repl-namespace! repl namespace)
+    ; 5. Evaluate the user program
+    (parameterize ([current-output-port port]
+                   [current-namespace   namespace]
+                   [current-custodian   custodian])
+      ;; Start user process
+      (when user-thread (displayln "\n---")) ; omit on first run
+      (set! user-thread (thread (λ () (namespace-require program-path))))
+      (set-repl-thread! repl user-thread))))

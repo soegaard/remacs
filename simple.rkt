@@ -241,9 +241,14 @@
   (beginning-of-buffer (current-buffer)))
 
 ;;; Buffer Input and Output
-(define-interactive (save-buffer)         (save-buffer!    (current-buffer)) (refresh-frame))
-(define-interactive (save-buffer-as)      (save-buffer-as! (current-buffer)) (refresh-frame))
-(define-interactive (save-some-buffers)   (save-buffer)) ; todo : ask in minibuffer
+(define-interactive (save-buffer [b (current-buffer)])
+  (save-buffer! b)
+  (refresh-frame))
+(define-interactive (save-buffer-as [b (current-buffer)])
+  (save-buffer-as! b)
+  (refresh-frame))
+(define-interactive (save-some-buffers  [b (current-buffer)])
+  (save-buffer b)) ; todo : ask in minibuffer
 
 (define-interactive (open-file-or-create [path (finder:get-file)])
   (when path ; #f = none selected

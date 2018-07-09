@@ -174,6 +174,8 @@
 
 
 (define (text-insert-string-at-mark! t m b s) ; ok
+  #;(displayln (list 'text-insert-string-at-mark! (mark-position m) (buffer-name b) s)
+               (current-error-port))
   (when (string-contains? s "\n")
     (error 'text-insert-string-at-mark! "got string containing newline, ~a" s))
   ; note: we assume there is no newlines in s
