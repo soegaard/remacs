@@ -9,6 +9,7 @@
 
 ;;; PRIORITY: HIGH
 
+;;;   TODO markers needs a sticky left or sticky right fields
 ;;;   TODO buffer narrowing
 ;;;   TODO indentation
 ;;;   TODO repl for racket-mode

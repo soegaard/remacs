@@ -59,7 +59,7 @@
   (define link (text-lines (buffer-text b)))
   (define m (mark b link 0 name fixed? active?))
   (set-linked-line-marks! link (set-add (linked-line-marks link) m))
-  mark-move-to-position!
+  (mark-move-to-position! m pos)
   m)
 
 ; copy-mark : mark -> mark

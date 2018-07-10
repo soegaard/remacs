@@ -1,5 +1,6 @@
 #lang racket/base
 (provide color-buffer
+         get-repl
          indent-for-tab
          racket-run
          racket-mode)
@@ -24,12 +25,18 @@
 ;; We keep track of the repl in a hash table.
 
 ; racket-mode-buffers-ht : buffer -> repl
-(define racket-mode-buffers-ht (make-hasheq))
-(define (register b repl) (hash-set! racket-mode-buffers-ht b repl))
-(define (get-repl b)      (hash-ref  racket-mode-buffers-ht b #f))
+(define racket-mode-buffers-ht      (make-hasheq))
+(define racket-repl-mode-buffers-ht (make-hasheq))
+(define (register b repl)
+  (hash-set! racket-mode-buffers-ht b repl)
+  (hash-set! racket-repl-mode-buffers-ht (repl-buffer repl) repl))
+(define (get-repl b)
+  (or (hash-ref racket-mode-buffers-ht      b #f)
+      (hash-ref racket-repl-mode-buffers-ht b #f)))
 
 ;; The repl associated with a racket-mode buffer
-(struct repl (buffer                
+(struct repl (buffer
+              definitions-buffer    
               port                  ; output buffer used by the user-thread
               before-prompt-mark    ; insertion point of the output buffer
               after-prompt-mark     ; beginning of user input
@@ -84,6 +91,7 @@
 ; create-repl : buffer -> repl
 ;   Given a buffer in racket-mode, create a corresponding repl buffer
 (define (create-repl buffer-in-racket-mode)
+  (define defn-buffer buffer-in-racket-mode)
   ;;; Buffer and Port
   ;; Setup the output buffer used as the output port by the user program.
   ;; The output buffer inserts data before the current prompt.
@@ -111,7 +119,8 @@
     (define namespace (make-base-empty-namespace))
     (define custodian (make-custodian (current-custodian)))
 
-    (repl buffer                
+    (repl buffer
+          defn-buffer
           port                  
           before-prompt-mark   
           after-prompt-mark    
@@ -119,6 +128,25 @@
           #f                   ; thread               
           custodian
           namespace)))
+
+(define-interactive (show-definitions)
+  (displayln show-definitions (current-error-port))
+  ; invoked from the buffer with racket-repl-mode
+  (define b (current-buffer))
+  (define repl-buffer? (hash-ref racket-repl-mode-buffers-ht b #f))
+  (when (and repl-buffer? (buffer-visible? b))
+    (define repl (get-repl b))
+    (define db   (repl-definitions-buffer repl))
+    (cond
+      [(buffer-visible? db) (define w (get-buffer-window db))
+                            (unless w (error 'here))
+                            (when w
+                              (current-window w)
+                              (focus-window w)
+                              (delete-other-windows))]
+      [(buffer-visible? b)  (switch-to-buffer db)]
+      [else                 (error 'huh)])))
+
   
 (define-interactive (hide-definitions)
   ; invoked from the buffer with racket-mode  
@@ -155,6 +183,7 @@
                    ["M-right"   forward-sexp]
                    ["M-S-right" forward-sexp/extend-region]
                    ["M-S-left"  backward-sexp/extend-region]
+                   ["D-e"       show-definitions]
                    [_           #f])]
                 [_ #f]))
             b)
@@ -273,8 +302,8 @@
     (unless repl
       (set! repl (create-repl user-program-buffer))
       (register user-program-buffer repl))
-    (match-define (make-repl repl-buffer port before-prompt-mark after-prompt-mark
-                             running? user-thread custodian namespace)
+    (match-define (make-repl repl-buffer defn-buffer port before-prompt-mark
+                             after-prompt-mark running? user-thread custodian namespace)
       repl)
     ;; Switch to repl window 
     (define visible? (buffer-visible? repl-buffer))

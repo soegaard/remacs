@@ -50,6 +50,7 @@
 ;   return first window in which buffer is displayed
 (define (get-buffer-window [buffer-or-name (current-buffer)])
   (define b (get-buffer buffer-or-name))
+  (displayln (list 'get-buffer-window (buffer-name b)))
   (for/first ([w all-windows]
               #:when (eq? (get-buffer (buffer-name (window-buffer w))) b))
     w))

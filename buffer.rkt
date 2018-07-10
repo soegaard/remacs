@@ -1,5 +1,9 @@
 #lang racket/base
-(provide (except-out (all-defined-out) refresh-frame refresh-buffer))
+(provide
+ (except-out (all-defined-out)
+             refresh-buffer
+             refresh-frame
+             buffer-insert-char!))
 
 ;;;
 ;;; BUFFER
@@ -508,7 +512,7 @@
   (define l (mark-link p))
   (define m (mark b l (mark-position p) name fixed? active?))
   (set-linked-line-marks! l (set-add (linked-line-marks l) m))
-  (set-buffer-marks! b (set-add (buffer-marks b) m))
+  (set-buffer-marks! b (cons m (buffer-marks b)))
   (mark-activate! m)
   m)
 
