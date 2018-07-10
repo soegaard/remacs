@@ -1,5 +1,15 @@
 #lang racket/base
 (provide (except-out (all-defined-out) position))
+;;;
+;;; MARKERS
+;;; 
+
+;; Markers are used to specify a position in the text.
+;; Inserting and deleting characters in the text adjust any markers in the text.
+;; In other words a mark stays between two characters.
+
+;; A special mark "the mark" is used together with the point to indicate a region.
+;; Only an active mark makes a region with point.
 
 (require racket/set racket/match racket/format
          data/interval-map
@@ -20,10 +30,12 @@
 ;;; MARKS
 ;;;
 
+; position : mark-or-integer -> integer
 (define (position mark-or-pos)
   (define pos mark-or-pos)
   (if (mark? pos) (mark-position pos) pos))
 
+; mark-column : mark -> integer
 (define (mark-column m)
   (define i   (position m))
   (define im  (text-positions (buffer-text (mark-buffer m))))
@@ -31,6 +43,7 @@
   (and d
        (- i start)))
 
+; mark-compare : mark mark comparator -> boolean
 (define (mark-compare m1 m2 cmp)
   (define (pos m) (if (mark? m) (mark-position m) m))
   (cmp (pos m1) (pos m2)))
@@ -44,8 +57,9 @@
 (define (new-mark b name [pos 0] [fixed? #f] #:active? [active? #f])
   ; (define link (text-lines (buffer-text b)))
   (define link (text-lines (buffer-text b)))
-  (define m (mark b link pos name fixed? active?))
+  (define m (mark b link 0 name fixed? active?))
   (set-linked-line-marks! link (set-add (linked-line-marks link) m))
+  mark-move-to-position!
   m)
 
 ; copy-mark : mark -> mark
@@ -58,6 +72,7 @@
 (define (mark-deactivate! m)
   (set-mark-active?! m #f))
 
+; mark-activate! mark -> void
 (define (mark-activate! m)
   (set-mark-active?! m #t))
 
@@ -382,6 +397,7 @@
       [else                     (mark-move-up! m)
                                 (loop (mark-link m))]))) ; TODO does up and down update the link ?!!>?
 
+; mark-line : mark -> line
 (define (mark-line m)
   (define l (mark-link m))
   (dfirst l))
