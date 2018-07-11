@@ -355,6 +355,7 @@
 
 (define-interactive (goto-char pos)
   (check-position 'goto-char pos)
+  ; (when (= pos 119) (error 'goto-char))
   ; todo: add narrowing
   (buffer-move-point-to-position! (current-buffer) (position->index pos)))
 
@@ -1207,18 +1208,14 @@
             (backward-sexp (- n)))]))
 
 (define-interactive (forward-sexp/extend-region)
-  ; TODO BUG forward-sexp will deactivate the region,
-  ;          find start and end first, then create region
-  (displayln 'forward-sexp/extend-region)
   (prepare-extend-region)
-  (forward-sexp))
+  (forward-sexp)
+  (mark-activate! (region-mark)))
 
 (define-interactive (backward-sexp/extend-region)
-  ; TODO BUG forward-sexp will deactivate the region,
-  ;          find start and end first, then create region
-  (displayln 'backward-sexp/extend-region)
   (prepare-extend-region)
-  (backward-sexp))
+  (backward-sexp)
+  (mark-activate! (region-mark)))
 
 #;(define-interactive (forward-sexp)
   "Move forward over a balanced expression."  
