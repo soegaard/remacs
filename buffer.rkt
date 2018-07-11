@@ -47,6 +47,9 @@
       (hash-set! buffers-ht name b))
   (set! all-buffers (cons b all-buffers)))
 
+(define (deregister-buffer b)
+  (hash-set! buffers-ht b #f))
+
 ; get-buffer : buffer-or-string -> buffer-or-#f
 ;   return buffer specified by buffer-or-name
 (define (get-buffer buffer-or-name)
@@ -166,7 +169,9 @@
   (unless (string? new-name) (error 'rename-buffer "string expected, got " new-name))
   ; todo: check that buffer-name is not in use, if it is signal error unless unique? is false
   ;       in that case generate new name and return it
+  (deregister-buffer b)
   (set-buffer-name! b new-name)
+  (register-buffer b)
   new-name)
 
 
@@ -196,7 +201,9 @@
     (set! file (finder:put-file)))
   (when file
     (set-buffer-path! b file)
-    (set-buffer-name! b (path->string file))    
+    (deregister-buffer (buffer-name b))       ; because name changes!
+    (set-buffer-name! b (path->string file))
+    (register-buffer b)    
     (with-output-to-file file
       (λ () (for ([line (text-lines (buffer-text b))])
               (for ([s (line-strings line)])
@@ -212,7 +219,9 @@
   (define file (finder:put-file))
   (when file
     (set-buffer-path! b file)
+    (deregister-buffer b)
     (set-buffer-name! b (path->string file))
+    (register-buffer b)
     (save-buffer! b)))
 
 (define (refresh-frame)

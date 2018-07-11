@@ -5,11 +5,10 @@
 
 ; In order to start remacs, open this file in DrRacket and run it.
 
-;;; BUG  Blinking point must follow current-buffer.
-
 ;;; PRIORITY: HIGH
 
 ;;;   TODO markers needs a sticky left or sticky right fields
+;;;   TODO point belongs to a window, not a buffer: example, two windows displaying same buffer
 ;;;   TODO buffer narrowing
 ;;;   TODO indentation
 ;;;   TODO repl for racket-mode
