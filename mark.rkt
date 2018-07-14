@@ -356,10 +356,16 @@
 (define (mark-move-to-position! m n)
   ; remove mark from its current line
   (define l (mark-link m))
-  (remove-mark-from-linked-line! m l)  
+  (remove-mark-from-linked-line! m l)
   ; find the new line
   (define t (buffer-text (mark-buffer m)))
-  (define d (interval-map-ref (text-positions t) (mark-position m)))
+  (define d (interval-map-ref (text-positions t) (mark-position m) #f))
+  (unless d ; for debug - remove when cause of error found
+    (displayln (~a (list 'mark-move-to-position (mark-name m)
+                         'text-length (text-length t)
+                         'n n))
+               (current-error-port))
+    (set! d (interval-map-ref (text-positions t) (- (text-length t) 1))))
   ; add mark to the new line
   (add-mark-to-linked-line! m d)  
   (set-mark-link! m d)

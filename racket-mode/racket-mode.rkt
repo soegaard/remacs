@@ -22,6 +22,24 @@
          "../text.rkt")
 
 ;; Each buffer in racket-mode has a corresponding repl.
+
+;; The repl associated with a racket-mode buffer
+(struct repl (buffer
+              definitions-buffer    
+              out-port              ; output buffer used by the user-thread
+              in-port               ; input port
+              before-prompt-mark    ; insertion point of the output buffer
+              after-prompt-mark     ; beginning of user input
+              running?              ; user programming running?
+              thread                ; user thread
+              custodian             ; custodian controlling thread
+              namespace             ; namespace for user thread
+              channel               ; used to send expressions to the evaluator
+              )
+  #:transparent #:mutable
+  #:extra-name make-repl)
+
+
 ;; We keep track of the repl in a hash table.
 
 ; racket-mode-buffers-ht : buffer -> repl
@@ -34,19 +52,6 @@
   (or (hash-ref racket-mode-buffers-ht      b #f)
       (hash-ref racket-repl-mode-buffers-ht b #f)))
 
-;; The repl associated with a racket-mode buffer
-(struct repl (buffer
-              definitions-buffer    
-              port                  ; output buffer used by the user-thread
-              before-prompt-mark    ; insertion point of the output buffer
-              after-prompt-mark     ; beginning of user input
-              running?              ; user programming running?
-              thread                ; user thread
-              custodian             ; custodian controlling thread
-              namespace             ; namespace for user thread
-              )
-  #:transparent #:mutable
-  #:extra-name make-repl)
 
 ;;;
 ;;; RACKET MODE
@@ -88,6 +93,18 @@
 ; use racket-mode automatically for all rkt files`
 (register-auto-mode "rkt" racket-mode)
 
+;;;
+;;; PROMPT
+;;;
+
+(define prompt-string "> ")
+(define prompt-length (string-length prompt-string))
+
+;;;
+;;;
+;;;
+
+
 ; create-repl : buffer -> repl
 ;   Given a buffer in racket-mode, create a corresponding repl buffer
 (define (create-repl buffer-in-racket-mode)
@@ -108,26 +125,29 @@
     (mark-deactivate! before-prompt-mark)
     (mark-deactivate!  after-prompt-mark)
     ;; Insertion into the buffer needs to be before the prompt
-    (define port (make-output-buffer b before-prompt-mark))
+    (define out-port (make-output-buffer b before-prompt-mark))
+    (define in-port  (open-input-string "42"))
     ;; Prompt
-    (define prompt-string "\n> ")
-    (define prompt-length (string-length prompt-string))
     (insert prompt-string) ; after point
     (mark-move! before-prompt-mark (- prompt-length))
 
     ;;; Namespace and custodian
     (define namespace (make-base-empty-namespace))
     (define custodian (make-custodian (current-custodian)))
+    ;;; Channel
+    (define channel   (make-channel))
 
     (repl buffer
           defn-buffer
-          port                  
+          out-port
+          in-port
           before-prompt-mark   
           after-prompt-mark    
           #f                   ; running?             
           #f                   ; thread               
           custodian
-          namespace)))
+          namespace
+          channel)))
 
 (define-interactive (show-definitions)
   (displayln show-definitions (current-error-port))
@@ -197,17 +217,30 @@
   "If there is a complete s-expression before point, then evaluate it."
   "Otherwise use racket-newline-and-indent."
   ; TODO: Check for existing
-  (define beg0 (with-saved-point (forward-whitespace) (point))) 
-  (define beg1 (with-saved-point (forward-whitespace) (forward-sexp) (backward-sexp) (point)))
-  (define end  (with-saved-point (forward-sexp) (point)))
+  (define b (current-buffer))
+  (define r (get-repl b))
+  (define m (repl-before-prompt-mark r))
+  (define (skip-prompt)       (forward-char prompt-length))
+  (define (goto-after-prompt) (goto-char m) (skip-prompt))
+  (define beg0 (with-saved-point (goto-after-prompt)
+                    (forward-whitespace) (point))) 
+  (define beg1 (with-saved-point (goto-after-prompt)
+                    (forward-whitespace) (forward-sexp) (backward-sexp) (point)))
+  (define end  (with-saved-point (goto-after-prompt)
+                    (forward-sexp) (point)))
+  (displayln (~a (list 'm (position m) 'beg0 beg0 'beg1 beg1 'end end))
+             (current-error-port))
   (cond
     ; complete s-expression?
-    [(and (= beg0 beg1) (= beg0 end))
-     (insert (~a (list 'empty beg0 beg1 end)) "\n")]
-    [(= beg0 beg1)
-     (insert (~a (list 'complete beg0 beg1 end)) "\n")]
-    [else
-     (insert (~a (list 'incomplete beg0 beg1 end)) "\n")]))
+    [(and (= beg0 beg1) (= beg0 end)) (break-line)]
+    [(= beg0 beg1)                    (racket-repl-eval r beg0 end)]
+    [else                             (break-line)]))
+
+(define (racket-repl-eval repl beg end)
+  (define b  (current-buffer))
+  (define ch (repl-channel repl))
+  (define s  (subtext->string (buffer-text b) beg end))
+  (channel-put ch (list beg end s)))
 
 ;;;
 ;;; INDENTATION
@@ -231,10 +264,11 @@
 ; The lexer returns token and the type of token.
 ; These colors are the standard colors used in DrRacket.
 
+; HASHEQ  color-ht : symbol -> color-or-false
 (define color-ht  
   (hasheq 'error               red
-          'comment             orange ; brown
-          'sexp-comment        base01 ; brown
+          'comment             orange  ; brown
+          'sexp-comment        base01  ; brown
           'white-space         #f
           'constant            green
           'string              green
@@ -245,19 +279,21 @@
           'eof                 #f
           'other               cyan))
 
+; color-buffer : buffer integer integer -> void
 (define (color-buffer [b (current-buffer)] [from 0] [to #f])
+  (log-warning (~a (list 'color-buffer (buffer-name b) from to)))
   ; (displayln (list "racket-mode.rkt" 'color-buffer 'from from 'to to))
   ; (displayln (list "racket-mode: color-buffer"))
   ;; set optional arguments
   (unless to (set! to (buffer-length b)))
   ;; turn buffer into input port
-  (define in   (open-input-buffer b))
+  (define in (open-input-buffer b))
   ;; backtrack to a known place outside strings, comments etc.
   (define safe-pos
     (with-saved-point
-        (goto-char from)
+      (goto-char from)
       (backward-to-open-parenthesis-on-beginning-of-line)
-      (position (point))))
+      (point)))
   (file-position in safe-pos)
   ;; call the lexer in a loop and use overlays to record the colors
   (let loop ()
@@ -302,8 +338,8 @@
     (unless repl
       (set! repl (create-repl user-program-buffer))
       (register user-program-buffer repl))
-    (match-define (make-repl repl-buffer defn-buffer port before-prompt-mark
-                             after-prompt-mark running? user-thread custodian namespace)
+    (match-define (make-repl repl-buffer defn-buffer out-port in-port before-prompt-mark
+                             after-prompt-mark running? user-thread custodian namespace channel)
       repl)
     ;; Switch to repl window 
     (define visible? (buffer-visible? repl-buffer))
@@ -333,13 +369,33 @@
     ; 4. Create new custodian and namespace
     (set! custodian (make-custodian (current-custodian)))
     (set-repl-custodian! repl custodian)
-    (set! namespace (make-base-empty-namespace))
+    (set! namespace (make-base-namespace))
     (set-repl-namespace! repl namespace)
     ; 5. Evaluate the user program
-    (parameterize ([current-output-port port]
+    (parameterize ([current-output-port out-port]
                    [current-namespace   namespace]
                    [current-custodian   custodian])
       ;; Start user process
       (when user-thread (displayln "\n---")) ; omit on first run
-      (set! user-thread (thread (λ () (namespace-require program-path))))
+      (set! user-thread
+            (thread
+             (λ ()
+               (namespace-require program-path)
+               (let loop ()
+                 (match-define (list beg end str) (channel-get channel))
+                 (displayln (list beg end str) (current-error-port))
+                 (displayln (list 'before (position before-prompt-mark) (point))
+                            (current-error-port)) 
+                 (goto-char end)
+                 (break-line)
+                 (insert prompt-string) ; after point
+                 (mark-move-to-position! before-prompt-mark (+ end 1))
+                 (displayln (list 'before (position before-prompt-mark) (point))
+                            (current-error-port))
+                 (define stx (read-syntax 'repl (open-input-string str)))
+                 (call-with-values
+                  (λ () (eval (with-syntax ([stx stx])
+                                (syntax/loc #'stx (#%top-interaction . stx)))))
+                  (λ vs (for ([v vs]) (print v) (newline))))
+                 (loop)))))
       (set-repl-thread! repl user-thread))))

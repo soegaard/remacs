@@ -124,10 +124,15 @@
 (define (screen-line-length) (ref-buffer-local 'screen-line-length))
 
 (define (render-buffer w)
+  (define b (window-buffer w))
   (define now (current-milliseconds))
   (define (marks-between marks from to)
     (for/list ([m marks] #:when (<= from (mark-position m) to))
       (mark-position m)))
+  ;; paren-mode
+  (define-values (show-paren-from-1 show-paren-to-1 show-paren-from-2 show-paren-to-2)
+    (show-paren-ranges b))
+  ;
   (define (line->screen-lines b l r k p other) ; l = line, r = row, p = position of line start
     ; k screen line number
     ; a text line can be longer that a screen, so we need to break the line into shorter pieces.
@@ -148,13 +153,17 @@
             (define (position-is-in-this-string? x) (and (<= p x) (< x (+ p sn))))
             (define positions-in-string ; find positions of points, marks and wrap posns in the string
               (sort-numbers
-               (append (filter position-is-in-this-string? other)
-                       (marks-between (buffer-marks b)  p (+ p sn))
-                       (marks-between (buffer-points b) p (+ p sn))
-                       (filter position-is-in-this-string? (buffer-overlay-positions b 'color))
-                       (filter position-is-in-this-string? (buffer-overlay-positions b 'style))
-                       (filter position-is-in-this-string? (buffer-overlay-positions b 'weight))
-                       (filter position-is-in-this-string? (range (+ start-pos len) (+ p sn) len)))))
+               (filter position-is-in-this-string?
+                       (append other
+                               (marks-between (buffer-marks b)  p (+ p sn))
+                               (marks-between (buffer-points b) p (+ p sn))
+                               (filter number?
+                                       (list show-paren-from-1 show-paren-to-1
+                                             show-paren-from-2 show-paren-to-2))
+                               (buffer-overlay-positions b 'color)
+                               (buffer-overlay-positions b 'style)
+                               (buffer-overlay-positions b 'weight)
+                               (range (+ start-pos len) (+ p sn) len)))))
             ; split the string at the mark positions (there might be a color change)
             (define start-positions (cons p positions-in-string))
             (define end-positions   (append positions-in-string (list (+ p sn))))
@@ -220,9 +229,10 @@
           (define hl-color (if hl? (local hl-line-mode-color) text-background-color))
           (define (set-highlight-line-color) (send dc set-text-background hl-color))
           ;; Highlighting for region between mark and point
-          (define (set-text-background-color highlight-region? highlight-line?)
+          (define (set-text-background-color highlight-region? highlight-line? highlight-paren?)
             (define background-color
-              (cond [highlight-region? (local region-highlighted-color)]
+              (cond [highlight-paren?  (local show-paren-color)]
+                    [highlight-region? (local region-highlighted-color)]                    
                     [highlight-line?   hl-color]
                     [else              text-background-color]))
             (send dc set-text-background background-color))
@@ -282,11 +292,18 @@
               (for/fold ([x xmin]) ([p+s contents])
                 (match-define (list p s) p+s)
                 ; background color
-                (set-text-background-color #f hl?)
+                (set-text-background-color #f hl? #f)
                 (when (and reg-begin (<= reg-begin p) (< p reg-end))
-                  (set-text-background-color #t hl?))
+                  (set-text-background-color #t hl? #f))
                 (when (and reg-end   (<= reg-end   p))
-                  (set-text-background-color #f hl?))
+                  (set-text-background-color #f hl? #f))
+                ; show-paren mode
+                (when (and     show-paren-from-1         show-paren-to-1
+                           (<= show-paren-from-1 p) (< p show-paren-to-1))
+                  (set-text-background-color #f #f #t))
+                (when (and     show-paren-from-2         show-paren-to-2
+                           (<= show-paren-from-2 p) (< p show-paren-to-2))
+                  (set-text-background-color #f #f #t))
                 ; foreground color
                 (set-unless-same p set-text-foreground cur-text-color  get-text-color)
                 ; pen
@@ -317,10 +334,18 @@
                        [i (in-range (+ start-row num-lines-on-screen))])
               (cond
                 [(< i num-lines-to-skip)
+                 ; show-paren mode
+                 (when (and     show-paren-from-1         show-paren-to-1
+                            (<= show-paren-from-1 p) (< p show-paren-to-1))
+                   (set-text-background-color #f #f #t))
+                 (when (and     show-paren-from-2         show-paren-to-2
+                            (<= show-paren-from-2 p) (< p show-paren-to-2))
+                   (set-text-background-color #f #f #t))
+                 ; region highlighting                 
                  (when (and reg-begin (<= reg-begin p) (< p reg-end))
-                   (set-text-background-color #t #f))
+                   (set-text-background-color #t #f #f))
                  (when (and reg-end   (<= reg-end   p))
-                   (set-text-background-color #f #f))
+                   (set-text-background-color #f #f #f))                 
                  (values y (+ p (line-length l)) 0 '())]
                 [else
                  ; color the part of the buffer that is on screen

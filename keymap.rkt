@@ -192,6 +192,8 @@
          ["M-S-@"         mark-word]
          ["M-left"        backward-word]
          ["M-right"       forward-word]
+         ["C-M-left"      backward-list] ; xxx
+         ["C-M-right"     forward-list]         
          ["M-S-left"      backward-word/extend-region]
          ["M-S-right"     forward-word/extend-region]
          ["f1"            test-buffer-output]
