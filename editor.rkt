@@ -11,7 +11,6 @@
 ;;;   TODO point belongs to a window, not a buffer: example, two windows displaying same buffer
 ;;;   TODO buffer narrowing
 ;;;   TODO indentation
-;;;   TODO repl for racket-mode
 ;;;   TODO The column position of the cursor when using down should stay the same
 ;;;        even if one goes across short line.
 ;;;   TODO Implement undo
@@ -19,11 +18,11 @@
 ;;; PRIORITY: MEDIUM
 
 ;;; TODO documentation
-;;; TODO brace matching
 ;;; TODO recently opened files
 ;;; TODO Render #\tab correctly
 ;;; TODO Implement open-input-buffer (naive implementation already done)
 ;;; TODO paragraphs
+;;; TODO gui: adjust size of buffers by dragging vertical line
 
 ;;; TODO when normal-auto-fill needs to break the line, it shouldn't move the point
 ;;; TODO run fundamental-mode in upstart
