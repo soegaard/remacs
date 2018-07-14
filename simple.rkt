@@ -58,9 +58,9 @@
 (define-interactive (move-to-column n)
   (buffer-move-to-column! (current-buffer) n)) ; n=numprefix 
 
-(define-interactive (forward-char [b (current-buffer)])
+(define-interactive (forward-char [n +1] [b (current-buffer)])
   (cond [(region-mark) => mark-deactivate!])
-  (buffer-move-point! b +1))
+  (buffer-move-point! b n))
 
 (define-interactive (backward-char)
   (cond [(region-mark) => mark-deactivate!])
@@ -537,10 +537,11 @@
 ; buffer-kill-whole-line : [buffer] -> void
 ;   kill whole line including its newline
 (define (buffer-kill-whole-line [b (current-buffer)])
-  (beginning-of-line b)
-  (buffer-kill-line b #t)  
-  (forward-char b)
-  (buffer-backward-delete-char! b))
+  (parameterize ([current-buffer b])
+    (beginning-of-line b)
+    (buffer-kill-line b #t)  
+    (forward-char)
+    (buffer-backward-delete-char! b)))
 
 ; buffer-kill-line-to-beginning : buffer -> void
 ;   Kill text from point to beginning of line.
@@ -1217,7 +1218,107 @@
   (backward-sexp)
   (mark-activate! (region-mark)))
 
-#;(define-interactive (forward-sexp)
+(define-interactive (forward-list)
+  "Move forward over a balanced expression.
+First move forward until first opener or end of buffer.
+If an opener is found, then move over to the end of a balanced expression.
+If the opener doesn't belong to a balanced expression, return false."
+  (define here (point)) ; return here on error
+  (define (on-error msg)
+    (when msg (message msg))
+    (goto-char here) #f)
+  (define (loop i depth seen)
+    (define j (+ i 1))
+    (define c (char-after-point))
+    (when c
+      (match depth
+        [0 (match (char-category c)
+             [(blank)             #f]
+             [(closer _)          #f]
+             [(comment-ender)     #f]
+             [(string-starter e)  #f]
+             [(opener cp)         (forward-char)
+                                  (loop j (+ depth 1) (cons cp seen))]             
+             [_                   #f])]
+        [d (match (char-category c)
+             [(opener cp)         (forward-char)
+                                  (loop j (+ depth 1) (cons cp seen))]
+             [(closer op)         (cond [(eqv? c (first seen)) (forward-char)
+                                                               (unless (= depth 1)
+                                                                 (loop j (- depth 1) (rest seen)))]
+                                        [else
+                                         (on-error (~a "forward-list: expected " (first seen)
+                                                       " at position " (point)))])]
+             [_                   (forward-char)
+                                  (loop j depth seen)])])))
+  (define (forward-non-opener)
+    (define c (char-after-point))
+    (cond
+      [(not c)         (void)] ; end of buffer
+      [(not (char? c)) (void)] ; surprise ?
+      [(char? c)
+       (match (char-category c)
+         [(opener cp) (void)]
+         [(closer op) (on-error (~a "containing expression ends prematurely at position " (point)))]
+         [_           (forward-char)
+                      (forward-non-opener)])]))
+(forward-non-opener)
+  (define c (char-after-point))
+  (cond
+    [(and c (opener? (char-category c)))  (loop 0 0 '())]
+    [else                                 #t]))
+
+(define-interactive (backward-list)
+  "Move backward over a balanced expression.
+First move backward until first opener or end of buffer.
+If an opener is found, then move over to the beginning of a balanced expression.
+If the closer doesn't belong to a balanced expression, return false."
+  (define here (point)) ; return here on error
+  (define (on-error msg)
+    (when msg (message msg))
+    (goto-char here) #f)
+  (define (loop i depth seen)
+    (define j (+ i 1))
+    (define c (char-before-point))
+    (when c
+      (match depth
+        [0 (match (char-category c)
+             [(blank)             #f]
+             [(comment-ender)     #f]
+             [(string-starter e)  #f]
+             [(opener _)          #f]
+             [(closer op)         (backward-char)
+                                  (loop j (+ depth 1) (cons op seen))]             
+             [_                   #f])]
+        [d (match (char-category c)
+             [(closer op)         (backward-char)
+                                  (loop j (+ depth 1) (cons op seen))]
+             [(opener cp)         (cond [(eqv? c (first seen)) (backward-char)
+                                                               (unless (= depth 1)
+                                                                 (loop j (- depth 1) (rest seen)))]
+                                        [else
+                                         (on-error (~a "backward-list: expected " (first seen)
+                                                       " at position " (point)))])]
+             [_                   (backward-char)
+                                  (loop j depth seen)])])))
+  (define (backward-non-opener)
+    (define c (char-before-point))
+    (cond
+      [(not c)         (void)] ; end of buffer
+      [(not (char? c)) (void)] ; surprise ?
+      [(char? c)
+       (match (char-category c)
+         [(closer op) (void)]
+         [(opener cp) (on-error (~a "containing expression ends prematurely at position " (point)))]
+         [_           (backward-char)
+                      (backward-non-opener)])]))
+  (backward-non-opener)
+  (define c (char-before-point))
+  (cond
+    [(and c (closer? (char-category c)))  (loop 0 0 '())]
+    [else                                 #t]))
+
+#;(define-interactive (forward-sexp) ; old simple version
   "Move forward over a balanced expression."  
   (define (loop i depth seen)
     (define j (+ i 1))
@@ -1249,7 +1350,7 @@
   (forward-whitespace/quotes)
   (loop 0 0 '()))
 
-#;(define-interactive (backward-sexp)
+#;(define-interactive (backward-sexp) ; old simple version
   "Move backward over a balanced expression."
   (define (loop depth seen)
     (define c (char-before-point))
