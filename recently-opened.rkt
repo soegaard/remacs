@@ -9,6 +9,7 @@
 
 (require (for-syntax racket/base)
          racket/file
+         racket/format
          racket/runtime-path
          "parameters.rkt")
 
@@ -34,10 +35,14 @@
       #:exists 'truncate/replace)))
 
 (define (add-recently-opened-file file)
+  (log-debug (~a `(add-recently-opened-file ,file)))
+  (when (path? file)
+    (set! file (path->string file)))
   (define c current-recently-opened-files)
   (when (and (or (string? file) (path? file)))
-    (c (cons file (c))))
-  (write-recently-opened-files))
+    (c (cons file (c))))  
+  (write-recently-opened-files)
+  ((current-update-recent-files-menu)))
 
 (define (reset-recently-opened-files)
   (parameterize ([current-recently-opened-files '()])

@@ -576,9 +576,16 @@
     (define rfm (new menu% (label "Open Recent") (parent fm)))
     (new-menu-item fm "Save"        #\s #f                (wrap (save-buffer)))    
     (new-menu-item fm "Save As..."  #\s (cons 'shift def) (wrap (save-buffer-as)))
-    ;; Open Recent File - Submenu    
-    (for ([f (current-recently-opened-files)])
-      (new-menu-item rfm f #f  #f (wrap (open-file-in-current-window f))))
+    ;; Open Recent File - Submenu
+    (current-update-recent-files-menu
+     (λ ()
+       ; delete old entries
+       (for ([item (send rfm get-items)])
+         (send item delete))
+       ; repopulate
+       (for ([f (current-recently-opened-files)])
+         (new-menu-item rfm f #f  #f (wrap (open-file-in-current-window f))))))
+    ((current-update-recent-files-menu))
     ;; Edit Menu
     (define em (new menu% (label "Edit") (parent mb)))
     (new-menu-item em "Select All" #\a #f (wrap (mark-whole-buffer)))

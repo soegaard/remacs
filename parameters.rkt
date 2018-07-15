@@ -27,7 +27,7 @@
          cached-screen-lines-ht
          current-auto-mode-ht
          current-recently-opened-files
-         )
+         current-update-recent-files-menu)
 
 (require (for-syntax racket/base syntax/parse))
 
@@ -51,7 +51,6 @@
 ;   see mode.rkt
 (define current-auto-mode-ht          (make-parameter (make-hash)))
 (define current-recently-opened-files (make-parameter '()))
-
 ;;;
 ;;;GUI PARAMETERS
 ;;;
@@ -64,6 +63,8 @@
 
 (define current-message              (make-parameter #f))
 (define current-global-keymap        (make-parameter #f))
+
+(define current-update-recent-files-menu (make-parameter void))
 
 ;;;
 ;;; COMPLETIONS

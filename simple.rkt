@@ -35,6 +35,7 @@
          "mode.rkt"
          "parameters.rkt"
          "point.rkt"
+         "recently-opened.rkt"
          "region.rkt"
          "representation.rkt"
          "region.rkt"
@@ -244,11 +245,14 @@
 ;;; Buffer Input and Output
 (define-interactive (save-buffer [b (current-buffer)])
   (save-buffer! b)
+  (add-recently-opened-file (buffer-path b))
   (refresh-frame))
 (define-interactive (save-buffer-as [b (current-buffer)])
   (save-buffer-as! b)
+  (add-recently-opened-file (buffer-path b))
   (refresh-frame))
 (define-interactive (save-some-buffers  [b (current-buffer)])
+  (add-recently-opened-file (buffer-path b))
   (save-buffer b)) ; todo : ask in minibuffer
 
 (define-interactive (open-file-or-create [path (finder:get-file)])
@@ -261,6 +265,8 @@
     (cond [(file-path->mode-function path) => (λ (mode) (mode))]
           [else                               (fundamental-mode)])
     (define f (current-frame))
+    ; update recent files
+    (add-recently-opened-file path)
     ; make sure a mode change is seen in the status line below
     (send (frame-status-line f) set-label (status-line-hook))
     (refresh-frame f)))
@@ -275,6 +281,8 @@
     (cond [(file-path->mode-function path) => (λ (mode) (mode))]
           [else                               (fundamental-mode)])
     (define f (current-frame))
+    ; update recent files
+    (add-recently-opened-file path)
     ; make sure a mode change is seen in the status line below
     (send (frame-status-line f) set-label (status-line-hook))
     (refresh-frame f)))
