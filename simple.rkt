@@ -1436,30 +1436,37 @@ If the closer doesn't belong to a balanced expression, return false."
         [else (void)]))
 
 (define (show-paren-ranges b)
-  (define before-from #f)
-  (define before-to   #f)
-  (define after-from  #f)
-  (define after-to    #f)  
+  (define before-from  #f)
+  (define before-to    #f)
+  (define after-from   #f)
+  (define after-to     #f)
+  (define before-error #f) ; true if matching paren not found
+  (define after-error  #f)
 
   (parameterize ([current-buffer b])
     ; before
     (define cb (char-before-point))
     (when (and (char? cb) (closer? (char-category cb)))
       (define to   (point))
-      (define from (begin (backward-list #f) (point)))
+      (define from (and (backward-list #f) (point)))
       (goto-char to)
-      (when from
-        (set! before-from from)
-        (set! before-to   to)))
+      (cond [from (set! before-from from)
+                  (set! before-to   to)]
+            [else (set! before-error #t)
+                  (set! before-from (- to 1))
+                  (set! before-to   to)]))
     ; after
     (define ca (char-after-point))
     (when (and (char? ca) (opener? (char-category ca)))
       (define from (point))
-      (define to   (begin (forward-list #f) (point)))      
+      (define to   (and (forward-list #f) (point)))
       (goto-char from)
-      (when to
-        (set! after-from from)
-        (set! after-to   to))))
-  (values before-from before-to
-          after-from  after-to))
+      (cond [to   (set! after-from from)
+                  (set! after-to   to)]
+            [else (set! after-error #t)
+                  (set! after-from from)
+                  (set! after-to   (+ from 1))]))
+  (values before-from  before-to
+          after-from   after-to
+          before-error after-error)))
 

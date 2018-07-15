@@ -130,7 +130,8 @@
     (for/list ([m marks] #:when (<= from (mark-position m) to))
       (mark-position m)))
   ;; paren-mode
-  (define-values (show-paren-from-1 show-paren-to-1 show-paren-from-2 show-paren-to-2)
+  (define-values (show-paren-from-1 show-paren-to-1 show-paren-from-2 show-paren-to-2
+                 show-paren-error-1 show-paren-error-2)
     (show-paren-ranges b))
   ;
   (define (line->screen-lines b l r k p other) ; l = line, r = row, p = position of line start
@@ -231,7 +232,9 @@
           ;; Highlighting for region between mark and point
           (define (set-text-background-color highlight-region? highlight-line? highlight-paren?)
             (define background-color
-              (cond [highlight-paren?  (local show-paren-color)]
+              (cond [highlight-paren?  (case highlight-paren?
+                                         [(error) (local show-paren-error-color)]
+                                         [else    (local show-paren-color)])]
                     [highlight-region? (local region-highlighted-color)]                    
                     [highlight-line?   hl-color]
                     [else              text-background-color]))
@@ -298,12 +301,15 @@
                 (when (and reg-end   (<= reg-end   p))
                   (set-text-background-color #f hl? #f))
                 ; show-paren mode
+                (define (indicator error-code) (if error-code 'error #t))
                 (when (and     show-paren-from-1         show-paren-to-1
                            (<= show-paren-from-1 p) (< p show-paren-to-1))
-                  (set-text-background-color #f #f #t))
+                  (define ind (indicator show-paren-error-1))
+                  (set-text-background-color #f #f ind))
                 (when (and     show-paren-from-2         show-paren-to-2
                            (<= show-paren-from-2 p) (< p show-paren-to-2))
-                  (set-text-background-color #f #f #t))
+                  (define ind (indicator show-paren-error-2))
+                  (set-text-background-color #f #f ind))
                 ; foreground color
                 (set-unless-same p set-text-foreground cur-text-color  get-text-color)
                 ; pen
@@ -335,12 +341,15 @@
               (cond
                 [(< i num-lines-to-skip)
                  ; show-paren mode
+                 (define (indicator error-code) (if error-code 'error #t))
                  (when (and     show-paren-from-1         show-paren-to-1
                             (<= show-paren-from-1 p) (< p show-paren-to-1))
-                   (set-text-background-color #f #f #t))
+                   (define ind (indicator show-paren-error-1))
+                   (set-text-background-color #f #f ind))
                  (when (and     show-paren-from-2         show-paren-to-2
                             (<= show-paren-from-2 p) (< p show-paren-to-2))
-                   (set-text-background-color #f #f #t))
+                   (define ind (indicator show-paren-error-2))
+                   (set-text-background-color #f #f ind))
                  ; region highlighting                 
                  (when (and reg-begin (<= reg-begin p) (< p reg-end))
                    (set-text-background-color #t #f #f))
