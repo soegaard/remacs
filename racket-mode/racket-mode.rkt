@@ -381,6 +381,7 @@
             (thread
              (λ ()
                (namespace-require program-path)
+               (parameterize ([current-namespace (module->namespace program-path)])
                (let loop ()
                  (match-define (list beg end str) (channel-get channel))
                  (goto-char end)
@@ -395,5 +396,5 @@
                           (unless (void? v)
                             (print v))
                           (newline))))
-                 (loop)))))
+                 (loop))))))
       (set-repl-thread! repl user-thread))))
