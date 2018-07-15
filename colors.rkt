@@ -65,8 +65,11 @@
   (new pen% [color base00] [width 1] [style 'solid] [cap 'butt] [join 'miter]))
 
 ; Note: point-colors starts with the brightest colors.
-(define point-colors (circular-list base3  base3  base2  base1 
-                                    base0  base00 base01 base02 base03 base03
-                                    base03 base03 base02 base01 base00
+(define point-colors (circular-list base3  base3
+                                    base3  base3
+                                    base2  base1 
+                                    base0  base00 base01 base02
+                                    ; base03 base03 base03 base03
+                                    base02 base01 base00
                                     base0  base1  base2))
 
