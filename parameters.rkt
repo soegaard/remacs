@@ -26,6 +26,7 @@
          ;;; Globals
          cached-screen-lines-ht
          current-auto-mode-ht
+         current-recently-opened-files
          )
 
 (require (for-syntax racket/base syntax/parse))
@@ -48,7 +49,8 @@
 
 ; current-auto-mode-ht : hashtable from string to mode function
 ;   see mode.rkt
-(define current-auto-mode-ht       (make-parameter (make-hash)))
+(define current-auto-mode-ht          (make-parameter (make-hash)))
+(define current-recently-opened-files (make-parameter '()))
 
 ;;;
 ;;;GUI PARAMETERS

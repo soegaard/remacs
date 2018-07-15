@@ -265,6 +265,20 @@
     (send (frame-status-line f) set-label (status-line-hook))
     (refresh-frame f)))
 
+(define (open-file-in-current-window path)
+  (when (file-exists? path)
+    ; open buffer and display it in window
+    (define b (buffer-open-file-or-create path))
+    (set-window-buffer! (current-window) b)
+    (current-buffer b)
+    ; set mode
+    (cond [(file-path->mode-function path) => (λ (mode) (mode))]
+          [else                               (fundamental-mode)])
+    (define f (current-frame))
+    ; make sure a mode change is seen in the status line below
+    (send (frame-status-line f) set-label (status-line-hook))
+    (refresh-frame f)))
+
 ;;; Buffer Navigation
 (define-interactive (next-buffer) ; show next buffer in current window
   (define w (current-window))
@@ -370,7 +384,7 @@
 
 
 (define-interactive (text-scale-adjust m)
-  (displayln `(text-scale-adjust ,m))
+  ; (displayln `(text-scale-adjust ,m))
   (font-size (min 40 (max 1 (+ (font-size) m)))))
 
 
@@ -388,7 +402,7 @@
 ;   Read and evaluate each s-expression in the current buffer one at a time.
 (define-interactive (eval-buffer)
   (define b  (current-buffer)) ; we get the buffer here
-  (displayln (list 'eval-buffer 'before: (current-buffer)))
+  ; (displayln (list 'eval-buffer 'before: (current-buffer)))
   (define t  (buffer-text b))
   (define s  (text->string t))
   (define in (open-input-string s))
@@ -1167,7 +1181,7 @@
 
 (define (backward-sexp)
   (define s (parse-state-at-point))
-  (display-state s)
+  ; (display-state s)
   (match-define (state depth inner-start last-complete
                        inside-string inside-comment after-quote comment-style
                        comment-start string-start seen inner-starts start-current)

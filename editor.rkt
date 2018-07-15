@@ -85,6 +85,7 @@
          "mode.rkt"
          "parameters.rkt"
          "point.rkt"
+         "recently-opened.rkt"
          "render.rkt"
          "region.rkt"
          "representation.rkt"
@@ -545,6 +546,8 @@
   (send msg min-width min-width)
   ;;; MENUBAR
   (define (create-menubar)
+    ; SYNTAX (new-menu-item parent label shortcut prefix callback)
+    ;   Create new menu item with the given parent.
     (define-syntax (new-menu-item stx)
       (syntax-parse stx  ; add menu item to menu
         [(_ par l sc scm cb) 
@@ -568,10 +571,14 @@
     (new-menu-item m "About   "   #f #f                  (wrap (about-remacs)))
     ;; File Menu
     (define fm (new menu% (label "File") (parent mb)))
-    (new-menu-item fm "New File"   #\n #f                (wrap (create-new-buffer)))
-    (new-menu-item fm "Open"       #\o #f                (wrap (open-file-or-create)))
-    (new-menu-item fm "Save"       #\s #f                (wrap (save-buffer)))    
-    (new-menu-item fm "Save As..." #\s (cons 'shift def) (wrap (save-buffer-as)))
+    (new-menu-item fm "New File"    #\n #f                (wrap (create-new-buffer)))
+    (new-menu-item fm "Open"        #\o #f                (wrap (open-file-or-create)))
+    (define rfm (new menu% (label "Open Recent") (parent fm)))
+    (new-menu-item fm "Save"        #\s #f                (wrap (save-buffer)))    
+    (new-menu-item fm "Save As..."  #\s (cons 'shift def) (wrap (save-buffer-as)))
+    ;; Open Recent File - Submenu    
+    (for ([f (current-recently-opened-files)])
+      (new-menu-item rfm f #f  #f (wrap (open-file-in-current-window f))))
     ;; Edit Menu
     (define em (new menu% (label "Edit") (parent mb)))
     (new-menu-item em "Select All" #\a #f (wrap (mark-whole-buffer)))
@@ -667,6 +674,7 @@
 
 ;(module+ main
   (current-buffer scratch-buffer)
+  (current-recently-opened-files (read-recently-opened-files))
   (define f  (frame #f #f #f #f #f))
   (frame-install-frame%! f) ; installs frame% and panel
   
