@@ -30,6 +30,7 @@
          "frame.rkt"
          "killing.rkt"
          "line.rkt"
+         "locals.rkt"
          "mark.rkt"
          "message.rkt"
          "mode.rkt"
@@ -287,6 +288,7 @@
     (send (frame-status-line f) set-label (status-line-hook))
     (refresh-frame f)))
 
+
 ;;; Buffer Navigation
 (define-interactive (next-buffer) ; show next buffer in current window
   (define w (current-window))
@@ -300,7 +302,7 @@
   (set-window-buffer! w b)
   (current-buffer b))
 
-(define-interactive (switch-to-buffer buffer-or-name)
+(define (switch-to-buffer buffer-or-name)
   "Switch to the given buffer in the current window."
   (define b buffer-or-name)
   (when (string? buffer-or-name)
@@ -433,8 +435,8 @@
      (for ([stx (in-port read1 in)])
        (displayln (eval-syntax stx ns))))
   
-  (parameterize ([current-namespace ns]
-                 [current-buffer    b])
+  (parameterize ([current-namespace ns])
+    (localize ([current-buffer    b])
      ; probably eof    
     (for ([stx (in-port read1 in)])
       (with-handlers
@@ -453,20 +455,20 @@
                         (display   "Stx:   ") (displayln stx)
                         (display   "Expr:  ") (displayln str))])
         (eval `(current-buffer ,b) ns)  ; sigh - the parameterize doesn't set current-buffer
-        (displayln (eval-syntax stx ns))))))
+        (displayln (eval-syntax stx ns)))))))
 
 (define-interactive (test-buffer-output)
   (define b (new-buffer (new-text) #f (generate-new-buffer-name "*output*")))
   (define p (make-output-buffer b))
   (set-window-buffer! (current-window) b)
-  (parameterize ([current-buffer      b]
-                 [current-output-port p])
-    (thread
-     (λ ()
-       (let loop ([n 0])
-         (displayln n)
-         (sleep 1.)
-         (loop (+ n 1)))))))
+  (parameterize ([current-output-port p])
+    (localize ([current-buffer      b])
+      (thread
+       (λ ()
+         (let loop ([n 0])
+           (displayln n)
+           (sleep 1.)
+           (loop (+ n 1))))))))
 
 ; (self-insert-command k) : -> void
 ;   insert character k and move point
@@ -542,7 +544,7 @@
 
 ; select all
 (define-interactive (mark-whole-buffer [b (current-buffer)])
-  (parameterize ([current-buffer b])
+  (localize ([current-buffer b])
     (end-of-buffer)
     (command-set-mark)
     (beginning-of-buffer)
@@ -560,7 +562,7 @@
 ; buffer-kill-whole-line : [buffer] -> void
 ;   kill whole line including its newline
 (define (buffer-kill-whole-line [b (current-buffer)])
-  (parameterize ([current-buffer b])
+  (localize ([current-buffer b])
     (beginning-of-line b)
     (buffer-kill-line b #t)  
     (forward-char)
@@ -883,25 +885,35 @@
   0)
 
 (define (end-of-buffer-position)
-  (max 0 (- (buffer-length (current-buffer)) 1)))
+  (max 0 (buffer-length (current-buffer))))
 
 ;;; Looking
 
 (define (char-before-point)
+  (displayln 'char-before-point (current-error-port))
   (define p (get-point))
   (define l (mark-line p))
   (define c (mark-column p))
   (cond [(= (position p) (start-of-buffer-position)) #f]
+        [(not c)                                     #f] ; ??
         [(= c 0)                                     #\newline]
         [else                                        (line-ref l (- c 1))]))
 
 (define (char-after-point)
+  (displayln 'char-after-point (current-error-port))
   (define p   (get-point))
   (define l   (mark-line p))
   (define c   (mark-column p))
   (cond [(= (position p) (end-of-buffer-position)) #f]
         [(not c)                                   #f]  ; empty line?
         [(= c (line-length l))                     #\newline]
+        [(> c (line-length l))
+         (displayln (~a "column: " c )             (current-error-port))
+         (displayln (~a "len: "   (line-length l)) (current-error-port))
+         (displayln (~a "line: " (line->string l)) (current-error-port))
+         (displayln (~a "point: "  (point))        (current-error-port))
+         (displayln p     (current-error-port))
+         (error 'char-after-point "internal error")]
         [else                                      (line-ref l c)]))
 
 ;;; Syntax Categories
@@ -1443,7 +1455,7 @@ If the closer doesn't belong to a balanced expression, return false."
   (define before-error #f) ; true if matching paren not found
   (define after-error  #f)
 
-  (parameterize ([current-buffer b])
+  (localize ([current-buffer b])
     ; before
     (define cb (char-before-point))
     (when (and (char? cb) (closer? (char-category cb)))

@@ -11,6 +11,7 @@
          "buffer-locals.rkt"
          "canvas.rkt"
          "colors.rkt"
+         "command-loop.rkt"
          "frame.rkt"
          "key-event.rkt"
          "mark.rkt"
@@ -254,11 +255,7 @@
 ; window-install-canvas! : window panel% -> canvas
 ; this-window : the non-gui structure representing the window used to display a buffer.
 ; panel       : the panel which the canvas has as parent
-(define debug-canvas-count 0)
 (define (window-install-canvas! this-window panel)
-  (define count debug-canvas-count)
-  (set! debug-canvas-count (+ debug-canvas-count 1))
-  (displayln (list 'window-install-canvas! debug-canvas-count))
   ;; Adjust eventspace.
   ; The parameter current-eventspace is normally used, but since it is a
   ; parameter, it might not be referring to the original namespace.
@@ -277,63 +274,68 @@
       (let ([left-down? #f]
             [last-left-click-row #f] [last-left-click-col #f])
         (λ (e type)
-          (unless (member type '(left-down left-up motion))
-            (error "expected 'left-down, 'left-up or 'motion got: ~a" type))
-          ; a left click will move the point to the location clicked
-          (define (exact r) (exact-floor r))
-          (define-values (x y) (values (exact (send e get-x)) (exact (send e get-y))))
-          (define c  (window-canvas this-window))
-          (define dc (send c get-dc))
-          ; Canvas Dimensions
-          (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
-          ;; Dimensions
-          (define width  (- xmax xmin))
-          (define height (- ymax ymin))
-          (define fs (exact (font-size)))
-          (define ls (exact (line-size)))
-          (define num-lines-on-screen   (max 0 (quotient height ls)))
-          (define n num-lines-on-screen)    
-          (define-values (w h _ __) (send dc get-text-extent "x")) ; font width and height
-          (set! h (exact h)) (set! w (exact w))
-          ; compute screen row and column
-          (define screen-row (quotient y ls))
-          (define screen-col (quotient x w))      
-          ; find first row displayed on screen
-          (define start-mark (window-start-mark this-window))
-          (define start-row  (mark-row start-mark))
-          ; Add start-row and row to get the buffer start row
-          (define b (window-buffer this-window))
-          (define-values (row col)
-            (screen-coordinates->text-coordinates start-row screen-row screen-col this-window b))
-          ; (define row (+ start-row screen-row))
-          ; (define col screen-col)  ; TODO: change this when wrapping of long lines gets support
-          (cond        
-            [(eq? type 'left-down)
-             ; register where left mouse clicked happened
-             ; wait for left-up or motion to do anythin         
-             (set! left-down? #t)
-             (set! last-left-click-row row)
-             (set! last-left-click-col col)]
-            [(or (eq? type 'left-up)
-                 (and (eq? type 'motion) left-down?))
-             ; register mouse up
-             (when (eq? type 'left-up) (set! left-down? #f))
-             ; for both up and motion, create region
-             (define m (get-mark))
-             (define b (window-buffer this-window))
-             (define p (buffer-point b))
-             (when (and m (mark-active? m)) (mark-deactivate! m))
-             (cond   ; no drag
-               [(and (equal? last-left-click-row row) (equal? last-left-click-col col)) 
-                (mark-move-to-row+column! p row col)]
-               [else ; mouse dragged
-                (mark-move-to-row+column! p row col)
-                (unless m (buffer-set-mark-to-point b) (set! m (get-mark)))
-                (when (and last-left-click-row last-left-click-col)
-                  (mark-move-to-row+column! m last-left-click-row last-left-click-col))
-                (mark-activate! m)])
-             (maybe-recenter-top-bottom #t this-window)
-             (refresh-frame)]))))
+          (send-command
+           (unless (member type '(left-down left-up motion))
+             (error "expected 'left-down, 'left-up or 'motion got: ~a" type))
+           ; a left click will move the point to the location clicked
+           (define (exact r) (exact-floor r))
+           (define-values (x y) (values (exact (send e get-x)) (exact (send e get-y))))
+           (define c  (window-canvas this-window))
+           (define dc (send c get-dc))
+           ; Canvas Dimensions
+           (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
+           ;; Dimensions
+           (define width  (- xmax xmin))
+           (define height (- ymax ymin))
+           (define fs (exact (font-size)))
+           (define ls (exact (line-size)))
+           (define num-lines-on-screen   (max 0 (quotient height ls)))
+           (define n num-lines-on-screen)    
+           (define-values (w h _ __) (send dc get-text-extent "x")) ; font width and height
+           (set! h (exact h)) (set! w (exact w))
+           ; compute screen row and column
+           (define screen-row (quotient y ls))
+           (define screen-col (quotient x w))      
+           ; find first row displayed on screen
+           (define start-mark (window-start-mark this-window))
+           (define start-row  (mark-row start-mark))
+           ; Add start-row and row to get the buffer start row
+           (define b (window-buffer this-window))
+           (define-values (row col)
+             (screen-coordinates->text-coordinates start-row screen-row screen-col this-window b))
+           ; (define row (+ start-row screen-row))
+           ; (define col screen-col)  ; TODO: change this when wrapping of long lines gets support
+           (cond        
+             [(eq? type 'left-down)
+              ; register where left mouse clicked happened
+              ; wait for left-up or motion to do anything
+              (set! left-down? #t)
+              (set! last-left-click-row row)
+              (set! last-left-click-col col)]
+             [(or (eq? type 'left-up)
+                  (and (eq? type 'motion) left-down?))
+              ; register mouse up
+              (when (eq? type 'left-up) (set! left-down? #f))
+              ; for both up and motion, create region
+              (define m (get-mark))
+              (unless m ; no mark so far, make one
+                (push-mark)
+                (set! m (get-mark)))
+              (define b (window-buffer this-window))
+              (define p (buffer-point b))
+              (when (and m (mark-active? m))
+                (mark-deactivate! m))
+              (cond   ; no drag
+                [(and (equal? last-left-click-row row) (equal? last-left-click-col col)) 
+                 (mark-move-to-row+column! p row col)]
+                [else ; mouse dragged
+                 (mark-move-to-row+column! p row col)
+                 (unless m (buffer-set-mark-to-point b) (set! m (get-mark)))
+                 (when (and last-left-click-row last-left-click-col)
+                   (mark-move-to-row+column! m last-left-click-row last-left-click-col))
+                 (mark-activate! m)])
+              (maybe-recenter-top-bottom #t this-window)
+              (refresh-frame)])))))
   
     (define window-canvas%
       (class canvas%
@@ -344,58 +346,61 @@
         (define (get-buffer b) the-buffer)
         ;;; Focus Events
         (define/override (on-event e) ; mouse events
-          (define type (send e get-event-type))
-          ;(displayln type)
-          (case type
-            [(left-down) (handle-mouse e 'left-down)]
-            [(left-up)   (handle-mouse e 'left-up)]
-            [(motion)    (handle-mouse e 'motion)]))
+          (send-command
+           (define type (send e get-event-type))
+           ;(displayln type)
+           (case type
+             [(left-down) (handle-mouse e 'left-down)]
+             [(left-up)   (handle-mouse e 'left-up)]
+             [(motion)    (handle-mouse e 'motion)])))
         (define/override (on-focus event)
-          (define w this-window)
-          (define b (window-buffer w))
-          (current-buffer b)
-          (current-window w))
+          (raw-send-command
+           (define w this-window)
+           (define b (window-buffer w))
+           (current-buffer b)
+           (current-window w)))
         ;; Key Events
         (define/override (on-char event)
-          ; NOTE: Menu shorts cuts are intercepted and on-char is never called.
-          (current-point-color point-colors) ; make points visible when keyboard is active
-          ; TODO syntax  (with-temp-buffer body ...)
-          (define key-code (send event get-key-code))
-          (unless (equal? key-code 'release)
-            (define key (key-event->key event))
-            (message (~a "key: " key))
-            (unless (member key '(control rcontrol))
-              (define local-keymap (buffer-local-keymap (current-buffer)))
-              (define binding      (or (and local-keymap (local-keymap prefix key))
-                                       ((current-global-keymap) prefix key)
-                                       ; If A-<key> is unbound, then use the character as-is.
-                                       ; This makes A-a insert å.
-                                       (and (char? key-code)
-                                            ; make sure C-[a-z] doesn't produce a character if
-                                            ; the key combination is unbound
-                                            (not (regexp-match "([a-z]|[0-9])" (string key-code)))
-                                            ((current-global-keymap) prefix key-code))))
-              (with-suspended-rendering
-                  (match binding
-                    [(? procedure? thunk)  (clear-prefix!)
-                                           (define now (current-milliseconds))
-                                           (thunk)
-                                           (define later (current-milliseconds))
-                                           (status-line-time (- later now))
-                                           (current-prefix-argument #f)]
-                    [(list 'replace pre)   (set! prefix pre)]
-                    ['prefix               (add-prefix! key)]
-                    ['clear-prefix         (clear-prefix!)]
-                    ['ignore               (void)]
-                    ['exit                ; (save-buffer! (current-buffer))
-                     ; TODO : Ask how to handle unsaved buffers
-                     (send (frame-frame% f) on-exit)]
-                    ['release             (void)]
-                    [_                    (unless (equal? (send event get-key-code) 'release)
-                                            (when (and (empty? prefix) key)
-                                              (message (~a "<" key "> undefined")))
-                                            (clear-prefix!))])))
-            (send this refresh-now)))
+          (send-command
+           ; NOTE: Menu shorts cuts are intercepted and on-char is never called.
+           (current-point-color point-colors) ; make points visible when keyboard is active
+           ; TODO syntax  (with-temp-buffer body ...)
+           (define key-code (send event get-key-code))
+           (unless (equal? key-code 'release)
+             (define key (key-event->key event))
+             (message (~a "key: " key))
+             (unless (member key '(control rcontrol))
+               (define local-keymap (buffer-local-keymap (current-buffer)))
+               (define binding      (or (and local-keymap (local-keymap prefix key))
+                                        ((current-global-keymap) prefix key)
+                                        ; If A-<key> is unbound, then use the character as-is.
+                                        ; This makes A-a insert å.
+                                        (and (char? key-code)
+                                             ; make sure C-[a-z] doesn't produce a character if
+                                             ; the key combination is unbound
+                                             (not (regexp-match "([a-z]|[0-9])" (string key-code)))
+                                             ((current-global-keymap) prefix key-code))))
+               (with-suspended-rendering
+                   (match binding
+                     [(? procedure? thunk)  (clear-prefix!)
+                                            (define now (current-milliseconds))
+                                            (thunk)
+                                            (define later (current-milliseconds))
+                                            (status-line-time (- later now))
+                                            (current-prefix-argument #f)]
+                     [(list 'replace pre)   (set! prefix pre)]
+                     ['prefix               (add-prefix! key)]
+                     ['clear-prefix         (clear-prefix!)]
+                     ['ignore               (void)]
+                     ['exit                ; (save-buffer! (current-buffer))
+                      ; TODO : Ask how to handle unsaved buffers
+                      (send (frame-frame% f) on-exit)]
+                     ['release             (void)]
+                     [_                    (unless (equal? (send event get-key-code) 'release)
+                                             (when (and (empty? prefix) key)
+                                               (message (~a "<" key "> undefined")))
+                                             (clear-prefix!))])))
+             (send this refresh-now))))
         ;; Rendering
         (public on-paint-points)
         (define (display-status-line s)
@@ -405,24 +410,26 @@
         (define (on-paint-points on?) ; render points only
           ; (log-info (~a (list 'on-paint-points count 'suspended? (current-rendering-suspended?))))
           ;(display (list count))
-          (unless #f ; (current-rendering-suspended?)
-            (parameterize ([current-render-points-only? #t]
-                           ;[current-show-points?        on?]
-                           )
-              ; (display-status-line (status-line-hook))
-              (define render (current-render-window))
-              (unless (procedure? render)
-                (error 'huh))              
-              (when (procedure? render)
-                (render this-window)))))
+          (send-command
+           (unless #f ; (current-rendering-suspended?)
+             (parameterize ([current-render-points-only? #t]
+                            ;[current-show-points?        on?]
+                            )
+               ; (display-status-line (status-line-hook))
+               (define render (current-render-window))
+               (unless (procedure? render)
+                 (error 'huh))              
+               (when (procedure? render)
+                 (render this-window))))))
         (define/override (on-paint) ; render everything
-          (when (current-rendering-suspended?)
-            (debug-display "s"))
-          (unless (current-rendering-suspended?)
-            (debug-display ".")
-            (parameterize (#;[current-show-points? #t])
-              (display-status-line (status-line-hook))
-              ((current-render-frame) f))))
+          (send-command
+           (when (current-rendering-suspended?)
+             (debug-display "s"))
+           (unless (current-rendering-suspended?)
+             (debug-display ".")
+             (parameterize (#;[current-show-points? #t])
+               (display-status-line (status-line-hook))
+               ((current-render-frame) f)))))
         (super-new)))
     (define canvas (new window-canvas% [parent panel] [style '(no-autoclear)]))
     (set-window-canvas! this-window canvas)
@@ -448,6 +455,7 @@
   (define end-mark         (window-end-mark w))
   (define start-row        (mark-row start-mark))
   (define end-row          (mark-row end-mark))
+  ; xxx todo remove uncommenting
   (when (or force?
             (not (and (<= start-row row) (< row (+ start-row n)))))
     ;(define n num-lines-on-screen)

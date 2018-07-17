@@ -77,10 +77,12 @@
          "buffer-locals.rkt"
          "canvas.rkt"
          "colors.rkt"
+         "command-loop.rkt"
          "dlist.rkt"
          "frame.rkt"
          "keymap.rkt"
          "killing.rkt"
+         "locals.rkt"
          "mark.rkt"
          "mode.rkt"
          "parameters.rkt"
@@ -95,6 +97,7 @@
          "window.rkt")
 
 (current-global-keymap global-keymap)
+
 
 ;;;
 ;;; GUI
@@ -132,7 +135,9 @@
   ;; paren-mode
   (define-values (show-paren-from-1 show-paren-to-1 show-paren-from-2 show-paren-to-2
                  show-paren-error-1 show-paren-error-2)
-    (show-paren-ranges b))
+    (if #f
+        (show-paren-ranges b)
+        (values #f #f #f #f #f #f)))
   ;
   (define (line->screen-lines b l r k p other) ; l = line, r = row, p = position of line start
     ; k screen line number
@@ -201,7 +206,7 @@
         s))
   (unless #f ; (current-rendering-suspended?)
     (define b  (window-buffer w))
-    (parameterize ([current-buffer b])
+    (localize ([current-buffer b])
       (define c  (window-canvas w))
       (define dc (send c get-dc))
       ;; Canvas Dimensions
@@ -216,11 +221,11 @@
       (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
       (define num-lines-to-skip   start-row)
       ;; Color area on screen (TODO: cache the coloring)
-      (when (local color-buffer)
+      #;(when (local color-buffer)
         (define from (or (position (window-start-mark w)) 0))
         (define to   (or (position (window-end-mark w)) (buffer-length b)))
         ; (displayln (list from to))
-        ((local color-buffer) b (max 0 from) (max 0 to)))
+        ((local color-buffer) b (max 0 from) (max 0 to))) ; xxx
       ;; Render
       (unless (current-render-points-only?)
         (when b
@@ -301,15 +306,16 @@
                 (when (and reg-end   (<= reg-end   p))
                   (set-text-background-color #f hl? #f))
                 ; show-paren mode
-                (define (indicator error-code) (if error-code 'error #t))
-                (when (and     show-paren-from-1         show-paren-to-1
-                           (<= show-paren-from-1 p) (< p show-paren-to-1))
-                  (define ind (indicator show-paren-error-1))
-                  (set-text-background-color #f #f ind))
-                (when (and     show-paren-from-2         show-paren-to-2
-                           (<= show-paren-from-2 p) (< p show-paren-to-2))
-                  (define ind (indicator show-paren-error-2))
-                  (set-text-background-color #f #f ind))
+                (when #f
+                  (define (indicator error-code) (if error-code 'error #t))
+                  (when (and     show-paren-from-1         show-paren-to-1
+                                 (<= show-paren-from-1 p) (< p show-paren-to-1))
+                    (define ind (indicator show-paren-error-1))
+                    (set-text-background-color #f #f ind))
+                  (when (and     show-paren-from-2         show-paren-to-2
+                                 (<= show-paren-from-2 p) (< p show-paren-to-2))
+                    (define ind (indicator show-paren-error-2))
+                    (set-text-background-color #f #f ind)))
                 ; foreground color
                 (set-unless-same p set-text-foreground cur-text-color  get-text-color)
                 ; pen
@@ -341,15 +347,16 @@
               (cond
                 [(< i num-lines-to-skip)
                  ; show-paren mode
-                 (define (indicator error-code) (if error-code 'error #t))
-                 (when (and     show-paren-from-1         show-paren-to-1
-                            (<= show-paren-from-1 p) (< p show-paren-to-1))
-                   (define ind (indicator show-paren-error-1))
-                   (set-text-background-color #f #f ind))
-                 (when (and     show-paren-from-2         show-paren-to-2
-                            (<= show-paren-from-2 p) (< p show-paren-to-2))
-                   (define ind (indicator show-paren-error-2))
-                   (set-text-background-color #f #f ind))
+                 (when #f
+                   (define (indicator error-code) (if error-code 'error #t))
+                   (when (and     show-paren-from-1         show-paren-to-1
+                                  (<= show-paren-from-1 p) (< p show-paren-to-1))
+                     (define ind (indicator show-paren-error-1))
+                     (set-text-background-color #f #f ind))
+                   (when (and     show-paren-from-2         show-paren-to-2
+                                  (<= show-paren-from-2 p) (< p show-paren-to-2))
+                     (define ind (indicator show-paren-error-2))
+                     (set-text-background-color #f #f ind)))
                  ; region highlighting                 
                  (when (and reg-begin (<= reg-begin p) (< p reg-end))
                    (set-text-background-color #t #f #f))
@@ -573,15 +580,25 @@
       (syntax-parse stx
         [(_wrap expr:expr ...)
          (syntax/loc stx
-           (λ (_ e) (with-suspended-rendering expr ...)
-             ((current-render-frame) (current-frame))))]))
+           (λ (_ e)
+             (send-command
+              (with-suspended-rendering expr ...)
+              ((current-render-frame) (current-frame)))))]))
+    (define-syntax (raw-wrap stx) ; no parameters saved
+      (syntax-parse stx
+        [(_wrap expr:expr ...)
+         (syntax/loc stx
+           (λ (_ e)
+             (raw-send-command
+              (with-suspended-rendering expr ...)
+              ((current-render-frame) (current-frame)))))]))
     ;; Remacs Menu
     (define m (new menu% (label "Remacs") (parent mb)))
-    (new-menu-item m "About   "   #f #f                  (wrap (about-remacs)))
+    (new-menu-item m "About   "   #f #f                   (wrap (about-remacs)))
     ;; File Menu
     (define fm (new menu% (label "File") (parent mb)))
     (new-menu-item fm "New File"    #\n #f                (wrap (create-new-buffer)))
-    (new-menu-item fm "Open"        #\o #f                (wrap (open-file-or-create)))
+    (new-menu-item fm "Open"        #\o #f  (wrap (open-file-or-create)))
     (define rfm (new menu% (label "Open Recent") (parent fm)))
     (new-menu-item fm "Save"        #\s #f                (wrap (save-buffer)))    
     (new-menu-item fm "Save As..."  #\s (cons 'shift def) (wrap (save-buffer-as)))
@@ -632,6 +649,19 @@
     (new-menu-item mm "Fundamental" #f #f (wrap (fundamental-mode)))
     ; (new-menu-item mm "Racket"      #f #f (wrap (racket-mode)))
     (new-menu-item mm "Text"        #f #f (wrap (text-mode)))
+    ;; Buffers
+    (define        bsm (new menu% (label "Buffers") (parent mb)))
+    (current-update-buffers-menu
+     (λ ()
+       ; delete old entries
+       (for ([item (send bsm get-items)])
+         (send item delete))
+       ; repopulate
+       (for ([buf all-buffers])
+         (define name (buffer-name buf))
+         (new-menu-item bsm name #f  #f (wrap (switch-to-buffer buf))))))
+    ((current-update-buffers-menu))
+    
     ;; Help Menu
     (define hm (new menu% (label "Help") (parent mb)))
     (new-menu-item hm "Test"        #f #f (wrap (test))))
@@ -689,21 +719,24 @@
 ; This starts the editor.
 
 ;(module+ main
-  (current-buffer scratch-buffer)
-  (current-recently-opened-files (read-recently-opened-files))
-  (define f  (frame #f #f #f #f #f))
-  (frame-install-frame%! f) ; installs frame% and panel
-  
-  (define p (frame-panel f))
-  (define w (new-window f p scratch-buffer 'root))
-  
-  (set-frame-windows! f w)
-  (current-window w)
-  (current-frame f)
+(current-buffer scratch-buffer)
+(current-recently-opened-files (read-recently-opened-files))
+(define f  (frame #f #f #f #f #f))
+(frame-install-frame%! f) ; installs frame% and panel
 
-  #;(register-auto-mode "rkt" racket-mode)
+(define p (frame-panel f))
+(define w (new-window f p scratch-buffer 'root))
   
-  (send (window-canvas w) focus)
+(set-frame-windows! f w)
+(current-window w)
+(current-frame f)
+
+#;(register-auto-mode "rkt" racket-mode)
+
+(send (window-canvas w) focus)
 ;)
 
 (require "racket-mode/racket-mode.rkt")
+
+(start-command-loop)
+

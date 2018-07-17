@@ -18,6 +18,17 @@
          "dlist.rkt"
          "line.rkt"
          "text.rkt")
+
+(define (check-mark m)
+  (when m
+    (void)
+    (define l   (mark-line m))
+    (define i   (position m))
+    (define im  (text-positions (buffer-text (mark-buffer m))))
+    (define-values (start end d) (interval-map-ref/bounds im i #f))
+    (unless (and d (eq? l (dfirst d)))
+      (error 'check-mark "internal error"))))
+
 ;;;
 ;;; WORDS
 ;;;
@@ -35,13 +46,19 @@
   (define pos mark-or-pos)
   (if (mark? pos) (mark-position pos) pos))
 
+
 ; mark-column : mark -> integer
 (define (mark-column m)
+  (check-mark m)
   (define i   (position m))
   (define im  (text-positions (buffer-text (mark-buffer m))))
   (define-values (start end d) (interval-map-ref/bounds im i #f))
-  (and d
-       (- i start)))
+  (define c  (and d
+                  (- i start)))
+  (when (and c (> c (line-length (dfirst d))))
+    (error 'mark-column "internal error"))
+  c)
+
 
 ; mark-compare : mark mark comparator -> boolean
 (define (mark-compare m1 m2 cmp)
@@ -64,31 +81,37 @@
 
 ; copy-mark : mark -> mark
 (define (copy-mark m)
+  (check-mark m)
   (match m
     [(mark buffer link position name fixed? active?)
      (mark buffer link position name fixed? active?)]))
 
 ; mark-deactivate! mark -> void
 (define (mark-deactivate! m)
+  (check-mark m)
   (set-mark-active?! m #f))
 
 ; mark-activate! mark -> void
 (define (mark-activate! m)
+  (check-mark m)
   (set-mark-active?! m #t))
 
 ; delete-mark! : mark -> void
 ;   remove the mark from the line it belongs to
 (define (delete-mark! m)
+  (check-mark m)
   ; remove mark from line
   (define link (mark-link m))
   (define b (mark-buffer m))
   (set-linked-line-marks! link (set-remove (linked-line-marks link) m))
   ; remove mark from buffer
-  (set-buffer-marks! b (filter (λ(x) (not (eq? x m))) (buffer-marks b))))
+  (set-buffer-marks! b (filter (λ(x) (not (eq? x m))) (buffer-marks b)))
+  (set-mark-link! m #f)) ; xxx
 
 ; mark-move! : mark integer -> void
 ;  move the mark n characters
 (define (mark-move! m n)
+  ; (display (~a `(mm ,(mark-name m) ,n) " ") (current-error-port))
   (define b    (mark-buffer m))
   (define t    (buffer-text b))
   (define im   (text-positions t))
@@ -101,7 +124,7 @@
                 (min (+ p n) (max 0 (- (buffer-length b) 1)))
                 (max (+ p n) 0)))
   (set-mark-position! m q)
-  (define new-link (interval-map-ref im q))
+  (define new-link (interval-map-ref im q))  
   (unless (eq? link new-link) ; same line?
     ; remove mark from old line    
     (set-linked-line-marks! link (set-remove (linked-line-marks link) m))
@@ -109,15 +132,28 @@
     ; the mark must point to the new line
     (set-mark-link! m new-link)
     ; (displayln new-link)
-    (set-linked-line-marks! new-link (set-add (linked-line-marks new-link) m))))
+    (set-linked-line-marks! new-link (set-add (linked-line-marks new-link) m)))
+  (void))
 
+(define (mark-adjust! m a)
+  ; note: This function is used when the surrounding lines have changed.
+  ;       It is not possible to use the link. Use the interval map instead.
+  (define b      (mark-buffer m))
+  (define t      (buffer-text b))
+  (define im     (text-positions t))
+  (define p      (position m))
+  (define i      (+ p a))   ; new pos
+  (define-values (start end d) (interval-map-ref/bounds im i #f))
+  (set-mark-link!     m d)
+  (set-mark-position! m i))
+  
 ; mark-adjust-insertion-after! : mark integer natural -> void
 ;   adjust the position of the mark - an amount of a characters were inserted at position p
 (define (mark-adjust-insertion-after! m p a)
   (define mp (mark-position m))
   (when (>= mp p)
     ; the insertion was after the mark
-    (mark-move! m a)))
+    (mark-adjust! m a)))
 
 ; mark-adjust-insertion-before! : mark integer natural -> void
 ;   adjust the position of the mark - an amount of a characters were inserted at position p
@@ -125,7 +161,7 @@
   (define mp (mark-position m))
   (when (>= mp p)
     ; the insertion was before the mark
-    (mark-move! m a)))
+    (mark-adjust! m a)))
 
 ; mark-adjust-deletion-before! : mark integer natural -> void
 ;   adjust the position of the mark - an amount of a characters were deleted before position p
@@ -133,11 +169,11 @@
   (define mp (mark-position m))
   (cond 
     ; the entire deletion was before the mark
-    [(<= p mp)      (mark-move! m (- a))]
+    [(<= p mp)      (mark-adjust! m (- a))]
     ; the entire deletion was after the mark
     [(< mp (- p a)) (void)]
     ; overlap
-    [else           (mark-move! m (- a (- p mp)))]))
+    [else           (mark-adjust! m (- a (- p mp)))]))
 
 ; mark-adjust-deletion-after! : mark integer natural -> void
 ;   adjust the position of the mark - an amount of a characters were after before position p
@@ -147,9 +183,9 @@
     ; the entire deletion was after the mark
     [(<= mp p)       (void)]
     ; the entire deletion was before the mark
-    [(<= (+ p a) mp) (mark-move! m (- a))]
+    [(<= (+ p a) mp) (mark-adjust! m (- a))]
     ; overlap
-    [else            (mark-move! m (- mp p))]))
+    [else            (mark-adjust! m (- mp p))]))
 
 ; clamp : number number number -> number
 ;   if minimum <= x <= maximum, return x
@@ -161,8 +197,11 @@
 ; mark-move-to-column! : mark integer -> void
 ;   move mark to column n (stay at text line)
 (define (mark-move-to-column! m n)
+  (check-mark m)
   (define c   (mark-column m))
   (define len (line-length (mark-line m)))
+  (unless (< c len)
+    (error 'mark-move-to-column "internal error"))
   (unless (= n c)
     (let ([n (clamp 0 n (- len 1))]) ; stay on same line
       (set-mark-position! m (+ (mark-position m) (- n c))))))
@@ -180,7 +219,8 @@
 ; mark-move-beginning-of-line! : mark -> void
 ;   move the mark to the beginning of its line
 (define (mark-move-beginning-of-line! m)
-  (define p (mark-position m))
+  (check-mark m)
+  (define p   (mark-position m))
   (define col (mark-column m))
   (when (and p col)
     (set-mark-position! m (- p col))))
@@ -241,14 +281,18 @@
 ; mark-move-end-of-line! : mark -> void
 ;   move the mark to the end of its line
 (define (mark-move-end-of-line! m)
-  (set-mark-position! m (position-of-end-of-line m)))
+  (check-mark m)
+  (set-mark-position! m (position-of-end-of-line m))
+  (check-mark m))
 
 ; mark-move-up! : mark -> void
 ;   move mark up one line
 (define (mark-move-up! m [n 1])
+  (check-mark m)
   ; todo : go from mark to line rather than use dlist-move
   (define (move-one!)
-    (define p    (mark-position m))
+    (define p (mark-position m))
+    (unless p (error 'mark-move-up))
     (when p
       (define col  (mark-column m))
       (define im   (text-positions (buffer-text (mark-buffer m))))
@@ -272,6 +316,7 @@
 ; mark-move-down! : mark -> void
 ;  move mark down one text line, stay at same column
 (define (mark-move-down! m [n 1])
+  (check-mark m)
   (define (move-one!)
     (define p   (mark-position m))
     (define col (mark-column m))
@@ -289,10 +334,12 @@
         (define d+ (dlist-move d 1))
         (set-linked-line-marks! d+ (set-add (linked-line-marks d+) m))
         (set-mark-link! m d+))))
-  (cond
-    [(< n 0) (mark-move-up! m (- n))]
-    [else    (for ([i (in-range n)])
-               (move-one!))]))
+  (begin0
+    (cond
+      [(< n 0) (mark-move-up! m (- n))]
+      [else    (for ([i (in-range n)])
+                 (move-one!))])
+    (check-mark m)))
 
 ; mark-backward-word! : mark -> void
 ;   move mark backward until a word separator is found
@@ -354,17 +401,18 @@
   (set-linked-line-marks! d (set-add (linked-line-marks d) m)))
 
 (define (mark-move-to-position! m n)
+  (check-mark m)
   ; remove mark from its current line
   (define l (mark-link m))
   (remove-mark-from-linked-line! m l)
   ; find the new line
   (define t (buffer-text (mark-buffer m)))
   (define d (interval-map-ref (text-positions t) (mark-position m) #f))
-  (unless d ; for debug - remove when cause of error found
-    (displayln (~a (list 'mark-move-to-position (mark-name m)
-                         'text-length (text-length t)
-                         'n n))
-               (current-error-port))
+  #;(unless d ; for debug - remove when cause of error found
+      (displayln (~a (list 'mark-move-to-position (mark-name m)
+                           'text-length (text-length t)
+                           'n n))
+                 (current-error-port))
     (set! d (interval-map-ref (text-positions t) (- (text-length t) 1))))
   ; add mark to the new line
   (add-mark-to-linked-line! m d)  

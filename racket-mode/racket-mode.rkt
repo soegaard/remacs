@@ -12,6 +12,7 @@
          "../colors.rkt"
          "../commands.rkt"
          "../frame.rkt"
+         "../locals.rkt"
          "../mark.rkt"
          "../mode.rkt"
          "../parameters.rkt"
@@ -59,7 +60,7 @@
 
 (define-interactive (racket-mode [b (current-buffer)])
   (define ns (current-namespace))
-  (parameterize ([current-buffer b])
+  (localize ([current-buffer b])
     (fundamental-mode b)       ; add all commands from fundamental mode
     ; name
     (set-major-mode! 'racket)
@@ -113,7 +114,7 @@
   ;; Setup the output buffer used as the output port by the user program.
   ;; The output buffer inserts data before the current prompt.
   (define buffer (new-buffer (new-text) #f (generate-new-buffer-name "*Racket Repl*")))
-  (parameterize ([current-buffer buffer])
+  (localize ([current-buffer buffer])
     (define b buffer)
     ;; Mode
     (racket-repl-mode b)
@@ -186,32 +187,32 @@
 
 (define (racket-repl-mode [b (current-buffer)])
   (define ns (current-namespace))  ; todo: problem getting random namespace here?
-  (parameterize ([current-buffer    b]
-                 [current-namespace (buffer-locals b)])
-    (fundamental-mode b)       ; add all commands from fundamental mode
-    ; name
-    (set-major-mode! 'racket-repl)
-    (set-mode-name!  "Racket Repl")
-    ; keymap
-    (local! local-keymap
-            (λ (prefix key)
-              (match prefix
-                [(list)
-                 (match key
-                   ["return"    racket-repl-eval-or-newline-and-indent]
-                   ["M-left"    backward-sexp]
-                   ["M-right"   forward-sexp]
-                   ["M-S-right" forward-sexp/extend-region]
-                   ["M-S-left"  backward-sexp/extend-region]
-                   ["D-e"       show-definitions]
-                   [_           #f])]
-                [_ #f]))
-            b)
-    (parameterize ()
-      (namespace-attach-module ns 'racket/gui/base)
-      (namespace-attach-module ns 'data/interval-map)
-      (namespace-attach-module ns "racket-mode/racket-mode.rkt")
-      (namespace-require          "racket-mode/racket-mode.rkt"))))
+  (parameterize ([current-namespace (buffer-locals b)])
+    (localize ([current-buffer b])
+      (fundamental-mode b)       ; add all commands from fundamental mode
+      ; name
+      (set-major-mode! 'racket-repl)
+      (set-mode-name!  "Racket Repl")
+      ; keymap
+      (local! local-keymap
+              (λ (prefix key)
+                (match prefix
+                  [(list)
+                   (match key
+                     ["return"    racket-repl-eval-or-newline-and-indent]
+                     ["M-left"    backward-sexp]
+                     ["M-right"   forward-sexp]
+                     ["M-S-right" forward-sexp/extend-region]
+                     ["M-S-left"  backward-sexp/extend-region]
+                     ["D-e"       show-definitions]
+                     [_           #f])]
+                  [_ #f]))
+              b)
+      (parameterize ()
+        (namespace-attach-module ns 'racket/gui/base)
+        (namespace-attach-module ns 'data/interval-map)
+        (namespace-attach-module ns "racket-mode/racket-mode.rkt")
+        (namespace-require          "racket-mode/racket-mode.rkt")))))
 
 (define-interactive (racket-repl-eval-or-newline-and-indent)
   "If there is a complete s-expression before point, then evaluate it."
@@ -281,7 +282,7 @@
 
 ; color-buffer : buffer integer integer -> void
 (define (color-buffer [b (current-buffer)] [from 0] [to #f])
-  (log-warning (~a (list 'color-buffer (buffer-name b) from to)))
+  ; (log-warning (~a (list 'color-buffer (buffer-name b) from to)))
   ; (displayln (list "racket-mode.rkt" 'color-buffer 'from from 'to to))
   ; (displayln (list "racket-mode: color-buffer"))
   ;; set optional arguments

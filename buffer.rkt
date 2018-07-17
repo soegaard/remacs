@@ -106,7 +106,9 @@
   (define ps (buffer-points b))
   (define p  (first ps))
   (define ms (buffer-marks b))
-  (define m  (first ms))
+  (define m (cond [(empty? ms) (push-mark 0 b)
+                               (first (buffer-marks b))]
+                  [else        (first ms)]))
   (set-buffer-marks!  b (cons p (rest ms)))
   (set-buffer-points! b (cons m (rest ps))))
 
@@ -451,7 +453,7 @@
 (define (buffer-break-line! b)
   (define m (buffer-point b))
   (text-break-line! (buffer-text b) m)
-  (mark-move! m 1)
+  (mark-move! m 1) ; xxx
   (buffer-dirty! b))
 
 ; buffer-delete-backward-char! : buffer [natural] -> void
@@ -461,10 +463,11 @@
   (define t (buffer-text b))
   (define p (position m))
   (buffer-contract-overlays b p count)
-  (for ([i count]) ; TODO improve efficiency!
+  (check-mark m)
+  (for ([i (max 0 (min p count))]) ; TODO improve efficiency!    
     (text-delete-backward-char! t m)
     (buffer-adjust-marks-due-to-deletion-before! b (mark-position m) 1)
-    (mark-move! m -1) ; point
+    (mark-adjust! m -1) ; point
     (buffer-dirty! b)))
 
 (define (buffer-adjust-marks-due-to-deletion-before! b p a)

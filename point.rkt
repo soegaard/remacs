@@ -36,5 +36,5 @@
               [new-point (copy-mark old-point)])
          (set-point! new-point b)
          (begin0 (begin body ...)
-                 (delete-mark! new-point) ; xxx
+                 ; (delete-mark! new-point) ; xxx
                  (set-point! old-point b))))]))

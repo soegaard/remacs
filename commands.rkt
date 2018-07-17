@@ -43,6 +43,7 @@
        (begin
          (add-name-to-completions 'name)
          (define (name . args)
+           (displayln 'name (current-error-port))
            (with-suspended-rendering               
                expr ...))
          (add-interactive-command 'name name)))]
