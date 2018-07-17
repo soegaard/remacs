@@ -221,7 +221,7 @@
       (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
       (define num-lines-to-skip   start-row)
       ;; Color area on screen (TODO: cache the coloring)
-      #;(when (local color-buffer)
+      (when (local color-buffer)
         (define from (or (position (window-start-mark w)) 0))
         (define to   (or (position (window-end-mark w)) (buffer-length b)))
         ; (displayln (list from to))

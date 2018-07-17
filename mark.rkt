@@ -27,7 +27,13 @@
     (define im  (text-positions (buffer-text (mark-buffer m))))
     (define-values (start end d) (interval-map-ref/bounds im i #f))
     (unless (and d (eq? l (dfirst d)))
-      (error 'check-mark "internal error"))))
+      (error 'check-mark (~a "internal error: " (mark-name m)
+                             " pos: " (mark-position m)
+                             " line: " start " " end
+                             " line-lengh: " (line-length l))))))
+
+
+             
 
 ;;;
 ;;; WORDS
@@ -407,18 +413,13 @@
   (remove-mark-from-linked-line! m l)
   ; find the new line
   (define t (buffer-text (mark-buffer m)))
-  (define d (interval-map-ref (text-positions t) (mark-position m) #f))
-  #;(unless d ; for debug - remove when cause of error found
-      (displayln (~a (list 'mark-move-to-position (mark-name m)
-                           'text-length (text-length t)
-                           'n n))
-                 (current-error-port))
-    (set! d (interval-map-ref (text-positions t) (- (text-length t) 1))))
+  (define d (interval-map-ref (text-positions t) n #f))
   ; add mark to the new line
   (add-mark-to-linked-line! m d)  
   (set-mark-link! m d)
   ; store the new position
-  (set-mark-position! m n))
+  (set-mark-position! m n)
+  (check-mark m))
 
 (define (mark-move-to-row+column! m r c)
   ; get the number of lines in the text
