@@ -378,11 +378,13 @@
   (unless (or (number? what) (mark? what))
     (error who "expected a position (index or mark), got ~a" what)))
 
-(define-interactive (goto-char pos)
+(define-interactive (goto-char pos [m #f])
   (check-position 'goto-char pos)
   ; (when (= pos 119) (error 'goto-char))
   ; todo: add narrowing
-  (buffer-move-point-to-position! (current-buffer) (position->index pos)))
+  (cond
+    [m    (buffer-move-mark-to-position! m (position->index pos))]
+    [else (buffer-move-point-to-position! (current-buffer) (position->index pos))]))
 
 (define-interactive (set-mark pos)
   (check-position 'set-mark pos)

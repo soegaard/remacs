@@ -509,6 +509,9 @@
 (define (buffer-move-point-to-position! b n)
   (mark-move-to-position! (buffer-point b) n))
 
+(define (buffer-move-mark-to-position! m n)
+  (mark-move-to-position! m n))
+
 (define (buffer-move-point-to-end-of-buffer b)
   (mark-move-end-of-buffer! (buffer-point b)))
 

@@ -388,7 +388,7 @@
                  (goto-char end)
                  (break-line)
                  (insert prompt-string) ; after point
-                 (mark-move-to-position! before-prompt-mark (+ end 1))
+                 (goto-char (+ end 1) before-prompt-mark)
                  (define stx (read-syntax 'repl (open-input-string str)))
                  (call-with-values
                   (λ () (eval (with-syntax ([stx stx])
