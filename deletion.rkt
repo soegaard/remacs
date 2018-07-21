@@ -18,19 +18,15 @@
 (define (region-delete-between! beg end [b (current-buffer)])
   (cond    
     [(mark< beg end) (buffer-dirty! b)
-                     (define n (- (mark-position end) (mark-position beg)))
+                     (define from (position beg))
+                     (define to   (position end))
+                     (define n    (abs (- to from)))
                      (define end-is-a-mark? (member end (buffer-marks b) eq?))
-                     ; buffer-delete-backward-char! will update the positions
-                     ; of all marks in buffer-marks, so if end is a mark (not the point)
-                     ; we need to temporarily remove it.
                      (when end-is-a-mark?
-                       (set-buffer-marks! b (remove end (buffer-marks b) eq?)))
-                     (with-saved-point
-                         (begin                           
-                           (set-point! end b)
-                           (buffer-delete-backward-char! b n)))
-                     (when end-is-a-mark?
-                       (set-buffer-marks! b (cons end (buffer-marks b))))]
+                       (buffer-move-mark-to-position!  end from)
+                       (buffer-move-point-to-position! b   to))
+                     (buffer-delete-backward-char! b n)
+                     (buffer-move-point-to-position! b from)]
     [(mark< end beg) (region-delete-between! end beg b)]
     [else            (void)]))
 
