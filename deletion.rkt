@@ -14,7 +14,7 @@
          "representation.rkt")
 
 ; region-delete-between! : [buffer] -> void
-;   Delete all characters in region.
+;   Delete all characters between positions beg and end.
 (define (region-delete-between! beg end [b (current-buffer)])
   (cond    
     [(mark< beg end) (buffer-dirty! b)
