@@ -26,7 +26,7 @@
 ; SYNTAX   (with-saved-point body ...)
 ;   Save position of point before evaluating body ...
 ;   After evalation of body restore the saved position.
-(define-syntax (with-saved-point stx)
+#;(define-syntax (with-saved-point stx)
   (syntax-parse stx
     [(_with-saved-point body ...)
      (syntax/loc stx
@@ -34,7 +34,9 @@
               [points    (buffer-points b)]
               [old-point (first points)]
               [new-point (copy-mark old-point)])
-         (set-point! new-point b)
-         (begin0 (begin body ...)
-                 (delete-mark! new-point) ; xxx point not mark! ?
-                 (set-point! old-point b))))]))
+         (dynamic-wind
+          (λ () (set-point! new-point b))
+          (λ () (begin0 (begin body ...)
+                        (delete-mark! new-point))) ; xxx point not mark! ?
+          (λ () (set-point! old-point b)))))]))
+

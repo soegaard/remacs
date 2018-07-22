@@ -421,6 +421,21 @@
   (set-mark-position! m n)
   (check-mark m))
 
+(define (point-move-to-position! m n)
+  #;(check-mark m)
+  ; remove mark from its current line
+  ; (define l (mark-link m))
+  ; (remove-mark-from-linked-line! m l)
+  ; find the new line
+  ;(define t (buffer-text (mark-buffer m)))
+  ;(define d (interval-map-ref (text-positions t) n #f))
+  ; add mark to the new line
+  ;(add-mark-to-linked-line! m d)  
+  ;(set-mark-link! m d)
+  ; store the new position
+  (set-mark-position! m n)
+  #;(check-mark m))
+
 (define (mark-move-to-row+column! m r c)
   ; get the number of lines in the text
   (define b  (mark-buffer m))

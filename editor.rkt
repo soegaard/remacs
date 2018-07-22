@@ -126,7 +126,11 @@
 
 (define (screen-line-length) (ref-buffer-local 'screen-line-length))
 
+(define sema-render-buffer (make-semaphore 1))
+
 (define (render-buffer w)
+  (semaphore-wait sema-render-buffer)
+  (display "(" (current-error-port))
   (define b (window-buffer w))
   (define now (current-milliseconds))
   (define (marks-between marks from to)
@@ -204,7 +208,7 @@
              (char=? (string-ref s (- (string-length s) 1)) #\newline)
              (substring s 0 (max 0 (- (string-length s) 1))))
         s))
-  (unless #f ; (current-rendering-suspended?)
+  (unless (current-rendering-suspended?)
     (define b  (window-buffer w))
     (localize ([current-buffer b])
       (define c  (window-canvas w))
@@ -221,12 +225,12 @@
       (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
       (define num-lines-to-skip   start-row)
       ;; Color area on screen (TODO: cache the coloring)
-      (send-command
-       (when (local color-buffer)
-         (define from (or (position (window-start-mark w)) 0))
-         (define to   (or (position (window-end-mark w)) (buffer-length b)))
-         ; (displayln (list from to))
-         ((local color-buffer) b (max 0 from) (max 0 to)))) ; xxx
+      #;(when (local color-buffer)
+        (display "c" (current-error-port))
+        (define from (or (position (window-start-mark w)) 0))
+        (define to   (or (position (window-end-mark w)) (buffer-length b)))
+        ; (displayln (list from to))
+        ((local color-buffer) b (max 0 from) (max 0 to))) ; xxx
       ;; Render
       (unless (current-render-points-only?)
         (when b
@@ -401,7 +405,9 @@
     ; draw points
     (render-points w start-row end-row)
     (define later (current-milliseconds))
-    (status-line-render-time (- later now)))))
+      (status-line-render-time (- later now))))
+  (display ")" (current-error-port))
+  (semaphore-post sema-render-buffer))
 
 (define debug-buffer #f)
 (define debug-info #f)

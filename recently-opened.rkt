@@ -40,7 +40,7 @@
     (set! file (path->string file)))
   (define c current-recently-opened-files)
   (when (and (or (string? file) (path? file)))
-    (c (cons file (c))))  
+    (c (cons file (remove* (list file) (c)))))
   (write-recently-opened-files)
   ((current-update-recent-files-menu)))
 

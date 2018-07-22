@@ -261,7 +261,7 @@
     ; open buffer and display it in window
     (define b (buffer-open-file-or-create path))
     (set-window-buffer! (current-window) b)
-    (current-buffer b)
+    (current-buffer b)    
     ; set mode
     (cond [(file-path->mode-function path) => (λ (mode) (mode))]
           [else                               (fundamental-mode)])
@@ -892,7 +892,7 @@
 ;;; Looking
 
 (define (char-before-point)
-  (displayln 'char-before-point (current-error-port))
+  ;(displayln 'char-before-point (current-error-port))
   (define p (get-point))
   (define l (mark-line p))
   (define c (mark-column p))
@@ -902,7 +902,7 @@
         [else                                        (line-ref l (- c 1))]))
 
 (define (char-after-point)
-  (displayln 'char-after-point (current-error-port))
+  ; (displayln 'char-after-point (current-error-port))
   (define p   (get-point))
   (define l   (mark-line p))
   (define c   (mark-column p))
@@ -1483,4 +1483,5 @@ If the closer doesn't belong to a balanced expression, return false."
   (values before-from  before-to
           after-from   after-to
           before-error after-error)))
+
 

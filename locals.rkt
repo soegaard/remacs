@@ -24,13 +24,16 @@
 (define-syntax (localize stx)
   (syntax-parse stx
     [(_localize ([local:id e:expr] ...) body ...)
-     (with-syntax ([(t ...) (generate-temporaries #'(local ...))])
+     (with-syntax ([(t-old ...) (generate-temporaries #'(local ...))]
+                   [(t-new ...) (generate-temporaries #'(local ...))])
        (syntax/loc stx
-         (let ([t (local)] ...)
-           (local e) ...
-           (begin0
-             (let () body ...)
-             (local t) ...))))]))
+         (let ([t-old #f] ...
+               [t-new e]  ...)
+           (set! t-old (local)) ...
+           (dynamic-wind
+            (λ () (local t-new) ...)              
+            (λ ()  body ...)
+            (λ () (local t-old) ...)))))]))
 
 #;(test 
    (define x (make-local 42))

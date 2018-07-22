@@ -25,8 +25,8 @@
 ;; Each buffer in racket-mode has a corresponding repl.
 
 ;; The repl associated with a racket-mode buffer
-(struct repl (buffer
-              definitions-buffer    
+(struct repl (buffer                ; contains the repl input and output text
+              definitions-buffer    ; contains the program
               out-port              ; output buffer used by the user-thread
               in-port               ; input port
               before-prompt-mark    ; insertion point of the output buffer
@@ -61,7 +61,8 @@
 (define-interactive (racket-mode [b (current-buffer)])
   (define ns (current-namespace))
   (localize ([current-buffer b])
-    (fundamental-mode b)       ; add all commands from fundamental mode
+    ; add all commands from fundamental mode
+    (fundamental-mode b)
     ; name
     (set-major-mode! 'racket)
     (set-mode-name!  "Racket")
@@ -151,7 +152,7 @@
           channel)))
 
 (define-interactive (show-definitions)
-  (displayln show-definitions (current-error-port))
+  ; (displayln show-definitions (current-error-port))
   ; invoked from the buffer with racket-repl-mode
   (define b (current-buffer))
   (define repl-buffer? (hash-ref racket-repl-mode-buffers-ht b #f))
@@ -219,29 +220,34 @@
   "Otherwise use racket-newline-and-indent."
   ; TODO: Check for existing
   (define b (current-buffer))
-  (define r (get-repl b))
-  (define m (repl-before-prompt-mark r))
-  (define (skip-prompt)       (forward-char prompt-length))
-  (define (goto-after-prompt) (goto-char m) (skip-prompt))
-  (define beg0 (with-saved-point (goto-after-prompt)
-                    (forward-whitespace) (point))) 
-  (define beg1 (with-saved-point (goto-after-prompt)
-                    (forward-whitespace) (forward-sexp) (backward-sexp) (point)))
-  (define end  (with-saved-point (goto-after-prompt)
-                    (forward-sexp) (point)))
-  (displayln (~a (list 'm (position m) 'beg0 beg0 'beg1 beg1 'end end))
-             (current-error-port))
-  (cond
-    ; complete s-expression?
-    [(and (= beg0 beg1) (= beg0 end)) (break-line)]
-    [(= beg0 beg1)                    (racket-repl-eval r beg0 end)]
-    [else                             (break-line)]))
+  (localize ([current-buffer b])
+    (define r (get-repl b))
+    (define m (repl-before-prompt-mark r))
+    (define (skip-prompt)       (forward-char prompt-length))
+    (define (goto-after-prompt) (goto-char m) (skip-prompt))
+    (define beg0 (with-saved-point (goto-after-prompt)
+                                   (forward-whitespace)
+                                   (point))) 
+    (define beg1 (with-saved-point (goto-after-prompt)
+                                   (forward-whitespace)
+                                   (forward-sexp)
+                                   (backward-sexp)
+                                   (point)))
+    (define end  (with-saved-point (goto-after-prompt)
+                                   (forward-sexp) (point)))
+    ; (log-debug (~a (list 'm (position m) 'beg0 beg0 'beg1 beg1 'end end)))
+    (cond
+      ; complete s-expression?
+      [(and (= beg0 beg1) (= beg0 end)) (break-line)]
+      [(= beg0 beg1)                    (racket-repl-eval r beg0 end)]
+      [else                             (break-line)])))
 
 (define (racket-repl-eval repl beg end)
   (define b  (current-buffer))
-  (define ch (repl-channel repl))
-  (define s  (subtext->string (buffer-text b) beg end))
-  (channel-put ch (list beg end s)))
+  (localize ([current-buffer b])
+    (define ch (repl-channel repl))
+    (define s  (subtext->string (buffer-text b) beg end))
+    (channel-put ch (list beg end s))))
 
 ;;;
 ;;; INDENTATION
@@ -286,26 +292,27 @@
   ; (displayln (list "racket-mode.rkt" 'color-buffer 'from from 'to to))
   ; (displayln (list "racket-mode: color-buffer"))
   ;; set optional arguments
-  (unless to (set! to (buffer-length b)))
-  ;; turn buffer into input port
-  (define in (open-input-buffer b))
-  ;; backtrack to a known place outside strings, comments etc.
-  (define safe-pos
-    (with-saved-point
-      (goto-char from)
-      (backward-to-open-parenthesis-on-beginning-of-line)
-      (point)))
-  (file-position in safe-pos)
-  ;; call the lexer in a loop and use overlays to record the colors
-  (let loop ()
-    (define-values (token style paren start end) (racket-lexer in))
-    (cond
-      [(eof-object? token) (void)]
-      [else                ; (writeln (list token style (~a paren) (list start end)))
-       (define color (hash-ref color-ht style grey))
-       (overlay-set (- start 1) (- end 1) 'color color b)
-       (when (< end to)
-         (loop))])))
+  (localize ([current-buffer b])
+    (unless to (set! to (buffer-length b)))
+    ;; turn buffer into input port
+    (define in (open-input-buffer b))
+    ;; backtrack to a known place outside strings, comments etc.
+    (define safe-pos
+      (with-saved-point
+        (goto-char from)
+        (backward-to-open-parenthesis-on-beginning-of-line)
+        (point)))
+    (file-position in safe-pos)
+    ;; call the lexer in a loop and use overlays to record the colors
+    (let loop ()
+      (define-values (token style paren start end) (racket-lexer in))
+      (cond
+        [(eof-object? token) (void)]
+        [else                ; (writeln (list token style (~a paren) (list start end)))
+         (define color (hash-ref color-ht style grey))
+         (overlay-set (- start 1) (- end 1) 'color color b)
+         (when (< end to)
+           (loop))]))))
 
 ;;;
 ;;; MOVEMENT
@@ -383,19 +390,27 @@
              (λ ()
                (namespace-require program-path)
                (parameterize ([current-namespace (module->namespace program-path)])
-               (let loop ()
-                 (match-define (list beg end str) (channel-get channel))
-                 (goto-char end)
-                 (break-line)
-                 (insert prompt-string) ; after point
-                 (goto-char (+ end 1) before-prompt-mark)
-                 (define stx (read-syntax 'repl (open-input-string str)))
-                 (call-with-values
-                  (λ () (eval (with-syntax ([stx stx])
-                                (syntax/loc #'stx (#%top-interaction . stx)))))
-                  (λ vs (for ([v vs])
-                          (unless (void? v)
-                            (print v))
-                          (newline))))
-                 (loop))))))
+                 (let loop ()
+                   (display "1" (current-error-port))
+                   (match-define (list beg end str) (channel-get channel))
+                   (display "2" (current-error-port))
+                   (goto-char end)
+                   (display "3" (current-error-port))
+                   (break-line)
+                   (display "4" (current-error-port))
+                   (insert prompt-string) ; after point
+                   (display "5" (current-error-port))
+                   (goto-char (+ end 1) before-prompt-mark)
+                   (display "6" (current-error-port))
+                   (define stx (read-syntax 'repl (open-input-string str)))
+                   (display "7" (current-error-port))
+                   (call-with-values
+                    (λ () (eval (with-syntax ([stx stx])
+                                  (syntax/loc #'stx (#%top-interaction . stx)))))
+                    (λ vs (for ([v vs])
+                            (unless (void? v)
+                              (print v))
+                            (newline))))
+                   (display "8" (current-error-port))
+                   (loop))))))
       (set-repl-thread! repl user-thread))))

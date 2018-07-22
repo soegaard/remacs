@@ -34,10 +34,10 @@
          "locals.rkt")
 
 ;;;
-;;; localS
+;;; GLOBALS
 ;;;
 
-(define current-prefix-argument (make-local #f)) ; set by C-u
+(define current-prefix-argument    (make-local #f)) ; set by C-u
 
 (define current-buffer             (make-local #f))
 (define current-refresh-frame      (make-local void)) 
@@ -54,7 +54,7 @@
 (define current-auto-mode-ht          (make-local (make-hash)))
 (define current-recently-opened-files (make-local '()))
 ;;;
-;;;GUI localS
+;;;GUI locals
 ;;;
 
 (define current-render-points-only?  (make-parameter #f))

@@ -274,10 +274,10 @@
       (define the-bytes (subbytes out-bytes start end))
       (define as-string (bytes->string/utf-8 the-bytes))
       (cond
-        [m (with-saved-point
-               (buffer-move-point-to-position! b (position m))
-               (buffer-insert-string-before-point! b as-string))
-           (mark-move! (get-point b) (string-length as-string))]
+        [m    (with-saved-point
+                (buffer-move-point-to-position! b (position m))
+                (buffer-insert-string-before-point! b as-string))
+              (mark-move! (get-point b) (string-length as-string))]
         [else (buffer-insert-string-before-point! b as-string)])
       (buffer-dirty! b)
       (parameterize ([current-rendering-suspended? #f])
@@ -439,7 +439,7 @@
 
 ; buffer-move-point-to-beginning-of-line! : buffer -> void
 ;   move the point to the beginning of the line
-(define (buffer-move-point-to-beginning-of-line! b)
+(define (buffer-move-point-to-beginning-of-line! b)  
   (mark-move-beginning-of-line! (buffer-point b)))
 
 ; buffer-move-point-to-end-of-line! : buffer -> void
@@ -507,7 +507,8 @@
      (buffer-insert-property-at-point! b sym val)]))
 
 (define (buffer-move-point-to-position! b n)
-  (mark-move-to-position! (buffer-point b) n))
+  (set-mark-position! (buffer-point b) n)
+  #;(mark-move-to-position! (buffer-point b) n))
 
 (define (buffer-move-mark-to-position! m n)
   (mark-move-to-position! m n))
@@ -628,3 +629,26 @@
 (define (buffer-overlay-positions b sym)
   (define os (buffer-overlays b))
   (overlays-positions os sym))
+
+;;;
+;;;;
+
+(define (buffer-goto-char pos [m #f])
+  ; (when (= pos 119) (error 'goto-char))
+  ; todo: add narrowing
+  (cond
+    [m    (buffer-move-mark-to-position! m (position pos))]
+    [else (buffer-move-point-to-position! (current-buffer) (position pos))]))
+
+(define-syntax (with-saved-point stx)
+  (syntax-parse stx
+    [(_with-saved-point body ...)
+     (syntax/loc stx
+       (let* ([old-point (point)]
+              [our-point (point)])
+         (dynamic-wind
+          (λ () (buffer-goto-char our-point))
+          (λ ()  body ...)
+          (λ () (begin
+                  (set! our-point (point))
+                  (buffer-goto-char old-point))))))]))

@@ -14,6 +14,7 @@
          "command-loop.rkt"
          "frame.rkt"
          "key-event.rkt"
+         "locals.rkt"
          "mark.rkt"
          "message.rkt"
          "parameters.rkt"
@@ -336,71 +337,85 @@
                  (mark-activate! m)])
               (maybe-recenter-top-bottom #t this-window)
               (refresh-frame)])))))
-  
+    
     (define window-canvas%
       (class canvas%
         (inherit has-focus?)
         ;; Buffer
-        (define the-buffer #f)
-        (define (set-buffer b) (set! the-buffer b))
-        (define (get-buffer b) the-buffer)
+        ;(define the-buffer #f)
+        ;(define (set-buffer b) (set! the-buffer b))
+        ;(define (get-buffer b) the-buffer)
         ;;; Focus Events
         (define/override (on-event e) ; mouse events
+          (define b (current-buffer))
+          (define w this-window)
+          (define f (current-frame))
           (send-command
-           (define type (send e get-event-type))
-           ;(displayln type)
-           (case type
-             [(left-down) (handle-mouse e 'left-down)]
-             [(left-up)   (handle-mouse e 'left-up)]
-             [(motion)    (handle-mouse e 'motion)])))
-        (define/override (on-focus event)
-          (raw-send-command
-           (define w this-window)
-           (define b (window-buffer w))
-           (current-buffer b)
-           (current-window w)))
+           (localize ([current-buffer b]
+                      [current-window w]
+                      [current-frame  f])
+             (define type (send e get-event-type))
+             ;(displayln type)
+             (case type
+               [(left-down) (handle-mouse e 'left-down)]
+               [(left-up)   (handle-mouse e 'left-up)]
+               [(motion)    (handle-mouse e 'motion)]))))
+        (define/override (on-focus on?)
+          (unless (boolean? on?) (error 'on-focus "sigh"))
+          (send-command
+           (when on?
+             (define w this-window)
+             (define b (window-buffer w))
+             (current-buffer b)
+             (current-window w))))
         ;; Key Events
         (define/override (on-char event)
+          ; (define b (current-buffer))
+          ; (define w this-window)
+          ; (define f (current-frame))
           (send-command
-           ; NOTE: Menu shorts cuts are intercepted and on-char is never called.
-           (current-point-color point-colors) ; make points visible when keyboard is active
-           ; TODO syntax  (with-temp-buffer body ...)
-           (define key-code (send event get-key-code))
-           (unless (equal? key-code 'release)
-             (define key (key-event->key event))
-             (message (~a "key: " key))
-             (unless (member key '(control rcontrol))
-               (define local-keymap (buffer-local-keymap (current-buffer)))
-               (define binding      (or (and local-keymap (local-keymap prefix key))
-                                        ((current-global-keymap) prefix key)
-                                        ; If A-<key> is unbound, then use the character as-is.
-                                        ; This makes A-a insert å.
-                                        (and (char? key-code)
-                                             ; make sure C-[a-z] doesn't produce a character if
-                                             ; the key combination is unbound
-                                             (not (regexp-match "([a-z]|[0-9])" (string key-code)))
-                                             ((current-global-keymap) prefix key-code))))
-               (with-suspended-rendering
-                   (match binding
-                     [(? procedure? thunk)  (clear-prefix!)
-                                            (define now (current-milliseconds))
-                                            (thunk)
-                                            (define later (current-milliseconds))
-                                            (status-line-time (- later now))
-                                            (current-prefix-argument #f)]
-                     [(list 'replace pre)   (set! prefix pre)]
-                     ['prefix               (add-prefix! key)]
-                     ['clear-prefix         (clear-prefix!)]
-                     ['ignore               (void)]
-                     ['exit                ; (save-buffer! (current-buffer))
-                      ; TODO : Ask how to handle unsaved buffers
-                      (send (frame-frame% f) on-exit)]
-                     ['release             (void)]
-                     [_                    (unless (equal? (send event get-key-code) 'release)
-                                             (when (and (empty? prefix) key)
-                                               (message (~a "<" key "> undefined")))
-                                             (clear-prefix!))])))
-             (send this refresh-now))))
+           (begin ; [current-buffer b]
+             ; [current-window w]
+             ; [current-frame  f]
+             ; NOTE: Menu shorts cuts are intercepted and on-char is never called.
+             (current-point-color point-colors) ; make points visible when keyboard is active
+             ; TODO syntax  (with-temp-buffer body ...)
+             (define key-code (send event get-key-code))
+             (unless (equal? key-code 'release)
+               (define key (key-event->key event))
+               (message (~a "key: " key))
+               (unless (member key '(control rcontrol))
+                 (define local-keymap (buffer-local-keymap (current-buffer)))
+                 (define binding      (or (and local-keymap (local-keymap prefix key))
+                                          ((current-global-keymap) prefix key)
+                                          ; If A-<key> is unbound, then use the character as-is.
+                                          ; This makes A-a insert å.
+                                          (and (char? key-code)
+                                               ; make sure C-[a-z] doesn't produce a character if
+                                               ; the key combination is unbound
+                                               (not (regexp-match "([a-z]|[0-9])" (string key-code)))
+                                               ((current-global-keymap) prefix key-code))))
+                 (with-suspended-rendering
+                     (match binding
+                       [(? procedure? thunk)  (clear-prefix!)
+                                              (define now (current-milliseconds))
+                                              (thunk)
+                                              (define later (current-milliseconds))
+                                              (status-line-time (- later now))
+                                              (current-prefix-argument #f)]
+                       [(list 'replace pre)   (set! prefix pre)]
+                       ['prefix               (add-prefix! key)]
+                       ['clear-prefix         (clear-prefix!)]
+                       ['ignore               (void)]
+                       ['exit                ; (save-buffer! (current-buffer))
+                        ; TODO : Ask how to handle unsaved buffers
+                        (send (frame-frame% f) on-exit)]
+                       ['release             (void)]
+                       [_                    (unless (equal? (send event get-key-code) 'release)
+                                               (when (and (empty? prefix) key)
+                                                 (message (~a "<" key "> undefined")))
+                                               (clear-prefix!))])))
+               (send this refresh-now)))))
         ;; Rendering
         (public on-paint-points)
         (define (display-status-line s)
@@ -420,13 +435,10 @@
                (unless (procedure? render)
                  (error 'huh))              
                (when (procedure? render)
-                 (render this-window))))))
+                 (render (current-window)))))))
         (define/override (on-paint) ; render everything
           (send-command
-           (when (current-rendering-suspended?)
-             (debug-display "s"))
            (unless (current-rendering-suspended?)
-             (debug-display ".")
              (parameterize (#;[current-show-points? #t])
                (display-status-line (status-line-hook))
                ((current-render-frame) f)))))
@@ -437,10 +449,10 @@
     (send canvas min-client-height 20)
     ;;; blinking cursor / point
     ; start update-points thread
-    (thread (λ () (let loop ([on? #t])
+    #;(thread (λ () (let loop ([on? #t])
                     ; (log-info (~a (list 'thread count 'suspended? (current-rendering-suspended?))))
                     (set! on? #t)
-                    (sleep/yield 0.1)
+                    (sleep/yield 1.0)
                     (unless #f #;(current-rendering-suspended?)
                       (send canvas on-paint-points on?))
                     (loop (not on?)))))
@@ -456,16 +468,16 @@
   (define start-row        (mark-row start-mark))
   (define end-row          (mark-row end-mark))
   ; xxx todo remove uncommenting
-  (when (or force?
-            (not (and (<= start-row row) (< row (+ start-row n)))))
-    ;(define n num-lines-on-screen)
-    (define n/2 (quotient n 2))
-    (define new-start-row (max (- row n/2) 0))
-    (define new-end-row   (+ new-start-row n))
-    (mark-move-up! start-mark (- start-row new-start-row))
-    (mark-move-up! end-mark   (-   end-row  new-end-row))
-    (set! start-row new-start-row)
-    (set! end-row   new-end-row))
+  #;(when (or force?
+              (not (and (<= start-row row) (< row (+ start-row n)))))
+      ;(define n num-lines-on-screen)
+      (define n/2 (quotient n 2))
+      (define new-start-row (max (- row n/2) 0))
+      (define new-end-row   (+ new-start-row n))
+      (mark-move-up! start-mark (- start-row new-start-row))
+      (mark-move-up! end-mark   (-   end-row  new-end-row))
+      (set! start-row new-start-row)
+      (set! end-row   new-end-row))
   (values start-row end-row))
 
 
