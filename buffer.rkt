@@ -551,12 +551,6 @@
 (define (get-previous-buffer [b (current-buffer)])
   (list-next (reverse all-buffers) b eq?))
 
-; buffer-point-marker! : buffer -> mark
-;   set new mark at point (i.e. "copy point")
-#;(define (buffer-point-marker! b)
-    (define p (buffer-point b))
-    ...)
-
 (define (buffer-substring b from to)
   (subtext->string (buffer-text b) from to))
 
@@ -614,10 +608,9 @@
   (overlays-positions os sym))
 
 ;;;
-;;;;
+;;;
 
 (define (buffer-goto-char pos [m #f])
-  ; (when (= pos 119) (error 'goto-char))
   ; todo: add narrowing
   (cond
     [m    (buffer-move-mark-to-position! m (position pos))]
