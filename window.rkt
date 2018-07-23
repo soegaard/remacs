@@ -37,7 +37,6 @@
 
 ; new-window : frame panel buffer -> window
 (define (new-window f panel b [parent #f] #:borders [borders #f])
-  (displayln 'new-window)
   ; parent is the parent window, #f means no parent parent window
   (define bs (or borders (seteq)))
   (define start (new-mark b "*start*"))
@@ -52,7 +51,6 @@
 ;   return first window in which buffer is displayed
 (define (get-buffer-window [buffer-or-name (current-buffer)])
   (define b (get-buffer buffer-or-name))
-  (displayln (list 'get-buffer-window (buffer-name b)))
   (for/first ([w all-windows]
               #:when (eq? (get-buffer (buffer-name (window-buffer w))) b))
     w))
@@ -520,7 +518,7 @@
     [else       (define info* (linearize-cached-screen-info info))
                 (define m (length info*))
                 (cond
-                  [(< screen-row m)                
+                  [(and (<= 0 screen-row) (< screen-row m))
                    (match (list-ref info* screen-row)
                      [(list pos i sl)  ; sl is the i'th screen line of the text line
                       (define row (screen-line-row sl))
