@@ -27,8 +27,9 @@
 
 (module+ test (require rackunit))
 
-
+;;;
 ;;; Buffer Registry
+;;;
 
 ; all buffers are registered in buffers-ht
 (define buffers-ht (make-hash))  ; string -> buffer
@@ -47,8 +48,12 @@
       (hash-set! buffers-ht name b))
   (set! all-buffers (cons b all-buffers)))
 
+; deregister-buffer : buffer -> void
+;   remove buffer from buffers-ht and all-buffers
 (define (deregister-buffer b)
-  (hash-set! buffers-ht b #f))
+  (define name (buffer-name b))
+  (hash-set! buffers-ht name #f)
+  (set! all-buffers (remove b all-buffers)))
 
 ; get-buffer : buffer-or-string -> buffer-or-#f
 ;   return buffer specified by buffer-or-name
