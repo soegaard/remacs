@@ -12,7 +12,8 @@
 ;; A special mark "the mark" is used together with the point to indicate a region.
 ;; Only an active mark makes a region with point.
 
-(require racket/set racket/match racket/format
+(require (for-syntax racket/base syntax/parse)
+         racket/set racket/match racket/format
          data/interval-map
          "representation.rkt"
          "parameters.rkt"
@@ -46,7 +47,7 @@
 ; When the mark belongs to a buffer, the position of the mark
 ; must point to a position in the line given by the link.
 
-(define (check-mark m)
+(define (check-mark m [who #f])
   (when (and m (mark-buffer m))
     ; find line using the link
     (define l1   (mark-line m))  ; = (dfirst (mark-link m))
@@ -57,10 +58,25 @@
     (define l2  (and d (dfirst d)))
     ; check that l1 and l2 are the same line
     (unless (and d (eq? l1 l2))
-      (error 'check-mark (~a "internal error: " (mark-name m)
-                             " pos: " (mark-position m)
-                             " line: " start " " end
-                             " line-lengh: " (line-length l1))))))
+      (define msg (~a "internal error: " (mark-name m)
+                      " pos: " (mark-position m)
+                      " line: " start " " end
+                      " line-lengh: " (line-length l1)))
+      (newline     (current-error-port))
+      (displayln m (current-error-port))
+      (if who
+          (raise-syntax-error 'check-mark msg who)
+          (error              'check-mark msg)))))
+
+#;(define-syntax (check-mark stx)
+  (syntax-parse stx
+    [(_check-mark m)
+     (syntax/loc stx
+       (do-check-mark m #'_check-mark))]
+    [(_check-mark m who)
+     (syntax/loc stx
+       (do-check-mark m #'who))]))
+
 
 ;;;
 ;;; WORDS
@@ -81,15 +97,21 @@
 
 
 ; mark-column : mark -> integer
+;   Return the column of the mark relative to the line of which the mark belongs.
 (define (mark-column m)
+  (unless (mark-buffer m)
+    (error 'mark-column "the mark does not belong to a buffer, ~a" m))
   (check-mark m)
+  ; Get the start position of the line from the interval map
   (define i   (position m))
   (define im  (text-positions (buffer-text (mark-buffer m))))
   (define-values (start end d) (interval-map-ref/bounds im i #f))
-  (define c  (and d
-                  (- i start)))
+  ; The column is the difference between the mark postion and the start position.
+  (define c (and d (- i start)))
+  ; Sanity check: a column number must be smaller than the line length.
   (when (and c (> c (line-length (dfirst d))))
     (error 'mark-column "internal error"))
+  ; Done
   c)
 
 
@@ -97,18 +119,21 @@
 (define (mark-compare m1 m2 cmp)
   (define (pos m) (if (mark? m) (mark-position m) m))
   (cmp (pos m1) (pos m2)))
+
 (define (mark<  m1 m2) (mark-compare m1 m2 <))
 (define (mark=  m1 m2) (mark-compare m1 m2 =))
 (define (mark>  m1 m2) (mark-compare m1 m2 >))
 (define (mark<= m1 m2) (mark-compare m1 m2 <=))
 (define (mark>= m1 m2) (mark-compare m1 m2 >=))
 
+
 ; new-mark : buffer string integer boolean -> mark
 (define (new-mark b name [pos 0] [fixed? #f] #:active? [active? #f])
-  ; (define link (text-lines (buffer-text b)))
+  ; Make a mark with position 0 and link to the first line
   (define link (text-lines (buffer-text b)))
   (define m (mark b link 0 name fixed? active?))
   (set-linked-line-marks! link (set-add (linked-line-marks link) m))
+  ; Move the mark to the given position.
   (mark-move-to-position! m pos)
   m)
 
@@ -132,53 +157,66 @@
 ; delete-mark! : mark -> void
 ;   remove the mark from the line it belongs to
 (define (delete-mark! m)
+  (unless (mark-buffer m)
+    (error 'delete-mark! "the mark does not belong to a buffer, ~a" m))
   (check-mark m)
   ; remove mark from line
   (define link (mark-link m))
-  (define b (mark-buffer m))
+  (define b    (mark-buffer m))
   (set-linked-line-marks! link (set-remove (linked-line-marks link) m))
   ; remove mark from buffer
   (set-buffer-marks! b (filter (λ(x) (not (eq? x m))) (buffer-marks b)))
-  (set-mark-link! m #f)) ; xxx
+  (set-mark-link! m #f))
 
 ; mark-move! : mark integer -> void
-;  move the mark n characters
+;  move the mark n characters forward
 (define (mark-move! m n)
-  ; (display (~a `(mm ,(mark-name m) ,n) " ") (current-error-port))
-  (define b    (mark-buffer m))
-  (define t    (buffer-text b))
-  (define im   (text-positions t))
-  (define p    (position m))
-  (define link (mark-link m))
-  (define l    (dfirst link))
-  (define ln   (line-length l))
-  ; new position
-  (define q (if (> n 0)
-                (min (+ p n) (max 0 (- (buffer-length b) 1)))
-                (max (+ p n) 0)))
-  (set-mark-position! m q)
-  (define new-link (interval-map-ref im q))  
-  (unless (eq? link new-link) ; same line?
-    ; remove mark from old line    
-    (set-linked-line-marks! link (set-remove (linked-line-marks link) m))
-    ; insert mark in new line
-    ; the mark must point to the new line
-    (set-mark-link! m new-link)
-    ; (displayln new-link)
-    (set-linked-line-marks! new-link (set-add (linked-line-marks new-link) m)))
-  (void))
+  (check-mark m)
+  (cond
+    ; The mark does not belong to a buffer
+    [(not (mark-buffer m))
+     (set-mark-position! m (+ (mark-position m)))]
+    ; The mark does belong to a buffer
+    [else     
+     (define b    (mark-buffer m))
+     (define t    (buffer-text b))
+     (define im   (text-positions t))
+     (define p    (position m))
+     (define link (mark-link m))
+     ; find and set new position
+     (define q (if (> n 0)
+                   (min (+ p n) (max 0 (- (buffer-length b) 1)))
+                   (max (+ p n) 0)))
+     (set-mark-position! m q)
+     ; find and set new link
+     (define new-link (interval-map-ref im q))  
+     (unless (eq? link new-link) ; same line?
+       ; remove mark from old line
+       (remove-mark-from-linked-line! m link)       
+       ; insert mark in new line
+       ; the mark must point to the new line
+       (set-mark-link! m new-link)
+       ; (displayln new-link)
+       (add-mark-to-linked-line! m new-link))
+     (void)]))
 
 (define (mark-adjust! m a)
-  ; note: This function is used when the surrounding lines have changed.
+  ; Note: This function is used when the surrounding lines have changed.
   ;       It is not possible to use the link. Use the interval map instead.
-  (define b      (mark-buffer m))
-  (define t      (buffer-text b))
-  (define im     (text-positions t))
-  (define p      (position m))
-  (define i      (+ p a))   ; new pos
-  (define-values (start end d) (interval-map-ref/bounds im i #f))
-  (set-mark-link!     m d)
-  (set-mark-position! m i))
+  ; Note: Don't use check-mark to test here.
+  (define b (mark-buffer m))
+  (define p (position m))
+  (define i (+ p a))   ; new pos
+  (cond
+    ; mark does not belong to a buffer:
+    [(not b) (set-mark-position! m i)]
+    ; mark belongs to a buffer:
+    [else    (define t      (buffer-text b))
+             (define im     (text-positions t))                           
+             (define-values (start end d) (interval-map-ref/bounds im i #f))
+             (set-mark-link!     m d)
+             (set-mark-position! m i)])
+  (check-mark m))
   
 ; mark-adjust-insertion-after! : mark integer natural -> void
 ;   adjust the position of the mark - an amount of a characters were inserted at position p
@@ -230,6 +268,8 @@
 ; mark-move-to-column! : mark integer -> void
 ;   move mark to column n (stay at text line)
 (define (mark-move-to-column! m n)
+  (unless (mark-buffer m)
+    (error 'mark-move-to-column! "mark does not belong to a buffer: ~a" m))
   (check-mark m)
   (define c   (mark-column m))
   (define len (line-length (mark-line m)))
@@ -252,6 +292,8 @@
 ; mark-move-beginning-of-line! : mark -> void
 ;   move the mark to the beginning of its line
 (define (mark-move-beginning-of-line! m)
+  (unless (mark-buffer m)
+    (error 'mark-move-beginning-of-line! "mark does not belong to a buffer: ~a" m))
   (check-mark m)
   (define p   (mark-position m))
   (define col (mark-column m))
@@ -265,7 +307,10 @@
               [(mark?   b-or-m) b-or-m]
               [(buffer? b-or-m) (buffer-point b-or-m)]
               [else (error 'position-of-end-line (~a "expected mark or buffer, got " b-or-m))]))
-  (define b (mark-buffer m))
+  (define b (or (and (buffer? b-or-m) b-or-m)
+                (mark-buffer m)))
+  (unless (buffer? b)
+    (error 'position-of-end-of-line "the given mark does not belong to a buffer: ~a" m))  
   (define c (mark-column m))
   (define p (mark-position m))
   (define l (dfirst (interval-map-ref (text-positions (buffer-text b)) p)))
@@ -349,7 +394,7 @@
 ; mark-move-down! : mark -> void
 ;  move mark down one text line, stay at same column
 (define (mark-move-down! m [n 1])
-  (check-mark m)
+  (check-mark m #'here0)
   (define (move-one!)
     (define p   (mark-position m))
     (define col (mark-column m))
@@ -372,7 +417,7 @@
       [(< n 0) (mark-move-up! m (- n))]
       [else    (for ([i (in-range n)])
                  (move-one!))])
-    (check-mark m)))
+    (check-mark m #'here1)))
 
 ; mark-backward-word! : mark -> void
 ;   move mark backward until a word separator is found
@@ -433,37 +478,29 @@
   (define d link)
   (set-linked-line-marks! d (set-add (linked-line-marks d) m)))
 
-(define (mark-move-to-position! m n)
+(define (mark-move-to-position! m n)  
   (check-mark m)
-  ; remove mark from its current line
-  (define l (mark-link m))
-  (remove-mark-from-linked-line! m l)
-  ; find the new line
-  (define t (buffer-text (mark-buffer m)))
-  (define d (interval-map-ref (text-positions t) n #f))
-  ; add mark to the new line
-  (add-mark-to-linked-line! m d)  
-  (set-mark-link! m d)
-  ; store the new position
-  (set-mark-position! m n)
+  (define b (mark-buffer m))
+  (cond
+    [(not b) (set-mark-position! m n)]
+    [else
+     ; remove mark from its current line
+     (define l (mark-link m))
+     (remove-mark-from-linked-line! m l)
+     ; find the new line
+     (define t (buffer-text (mark-buffer m)))
+     (define d (interval-map-ref (text-positions t) n #f))
+     ; add mark to the new line
+     (add-mark-to-linked-line! m d)  
+     (set-mark-link! m d)
+     ; store the new position
+     (set-mark-position! m n)])
   (check-mark m))
 
-(define (point-move-to-position! m n)
-  #;(check-mark m)
-  ; remove mark from its current line
-  ; (define l (mark-link m))
-  ; (remove-mark-from-linked-line! m l)
-  ; find the new line
-  ;(define t (buffer-text (mark-buffer m)))
-  ;(define d (interval-map-ref (text-positions t) n #f))
-  ; add mark to the new line
-  ;(add-mark-to-linked-line! m d)  
-  ;(set-mark-link! m d)
-  ; store the new position
-  (set-mark-position! m n)
-  #;(check-mark m))
-
 (define (mark-move-to-row+column! m r c)
+  (unless (mark-buffer m)
+    (error 'mark-move-to-row+column!
+           "the given mark does not belong to a buffer: ~a" m))
   ; get the number of lines in the text
   (define b  (mark-buffer m))
   (define t  (buffer-text b))
@@ -496,5 +533,7 @@
 
 ; mark-line : mark -> line
 (define (mark-line m)
+  (unless (mark-buffer m)
+    (error 'mark-line "given mark does not belong to a buffer: ~a" m))
   (define l (mark-link m))
   (dfirst l))
