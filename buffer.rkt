@@ -12,6 +12,7 @@
 (require (for-syntax racket/base syntax/parse)
          racket/format racket/list racket/match racket/string
          racket/set
+         framework
          "buffer-locals.rkt"
          "buffer-namespace.rkt"
          "default.rkt"
@@ -69,8 +70,9 @@
               #:unless (get-buffer (name i)))
     (name i)))
 
-
+;;;
 ;;; Buffer Creation
+;;;
 
 ; new-buffer : -> buffer
 ;   create fresh buffer without an associated file
@@ -146,30 +148,6 @@
 
 (define scratch-buffer (new-buffer (new-text (list->lines scratch-text)) #f "*scratch*"))
 (current-buffer scratch-buffer)
-; (define current-buffer (make-parameter scratch-buffer))
-
-
-; syntax: (save-current-buffer body ...)
-;   store current-buffer while evaluating body ...
-;   the return value is the result from the last body
-(define-syntax (save-current-buffer stx)
-  (syntax-parse stx
-    [(s-c-b body ...)
-     #'(let ([b (current-buffer)])
-         (begin0 (begin body ...)
-                 (current-buffer b)))]))
-
-; syntax (with-current-buffer buffer-or-name body ...)
-;   use buffer-or-name while evaluating body ...,
-;   restore current buffer afterwards
-(define-syntax (with-current-buffer stx)
-  (syntax-parse stx
-    [(w-c-b buffer-or-name body ...)
-     #'(parameterize ([current-buffer buffer-or-name])
-         ; (todo "lookup buffer if it is a name")
-         body ...)]))
-
-; TODO syntax  (with-temp-buffer body ...)
 
 ; rename-buffer! : string -> string
 (define (rename-buffer! new-name [b (current-buffer)] [unique? #t])
@@ -201,7 +179,6 @@
 ; save-buffer : buffer -> void
 ;   save contents of buffer to associated file
 ;   do nothing if no file is associated
-(require framework)
 (define (save-buffer! b)
   (define file (buffer-path b))
   (unless file
@@ -313,12 +290,13 @@
 
 ; read-buffer : buffer -> void
 ;   replace text of buffer with file contents
-(define (read-buffer! b)
+; BUG this doesn't handle points and marks
+#;(define (read-buffer! b)
   (define path (buffer-path b))
   (unless path (error 'read-buffer "no associated file: ~a" b))
   (define text (path->text path))
   (define stats (text-stats text))
-  (set-buffer-text! b text)
+  (set-buffer-text! b text)  
   (set-buffer-num-lines! b (stats-num-lines stats))
   (set-buffer-num-chars! b (stats-num-chars stats))
   (set-buffer-modified?! b #f)
@@ -327,7 +305,8 @@
 
 ; append-to-buffer-from-file : buffer path -> void
 ;   append contents of file given by the path p to the text of the buffer b
-(define (append-to-buffer-from-file b p)
+; BUG this doesn't handle points and marks
+#;(define (append-to-buffer-from-file b p)
   (define text-to-append (path->text p))
   (define stats (text-stats text-to-append))
   (set-buffer-text! b (text-append! (buffer-text b) text-to-append))
@@ -335,7 +314,6 @@
   (set-buffer-num-chars! b (+ (buffer-num-chars b) (stats-num-chars stats)))
   (set-buffer-modified?! b #t)
   (buffer-dirty! b))
-
 
 
 ; buffer-point-set! : buffer mark -> void
@@ -364,18 +342,19 @@
   (mark-forward-word! (buffer-point b)))
 
 
-(define (buffer-display b)
-  (define (line-display l)
-    (write l) (newline)
-    #;(display (~a "|" (regexp-replace #rx"\n$" (line->string l) "") "|\n")))
-  (define (text-display t)
-    (for ([l (text-lines t)])
-      (line-display l)))
-  (define (status-display)
-    (displayln (~a "--- buffer: " (buffer-name b) "    " (if (buffer-modified? b) "*" "saved") 
-                   " ---")))
-  (text-display (buffer-text b))
-  (status-display))
+(define (buffer-display b port)
+  (parameterize ([current-output-port port])
+    (define (line-display l)
+      (write l) (newline)
+      #;(display (~a "|" (regexp-replace #rx"\n$" (line->string l) "") "|\n")))
+    (define (text-display t)
+      (for ([l (text-lines t)])
+        (line-display l)))
+    (define (status-display)
+      (displayln (~a "--- buffer: " (buffer-name b) "    " (if (buffer-modified? b) "*" "saved") 
+                     " ---")))
+    (text-display (buffer-text b))
+    (status-display)))
 
 (module+ test
   #;(buffer-display illead-buffer))
@@ -512,8 +491,7 @@
      (buffer-insert-property-at-point! b sym val)]))
 
 (define (buffer-move-point-to-position! b n)
-  (set-mark-position! (buffer-point b) n)
-  #;(mark-move-to-position! (buffer-point b) n))
+  (mark-move-to-position! (buffer-point b) n)) ; xxxx
 
 (define (buffer-move-mark-to-position! m n)
   (mark-move-to-position! m n))
