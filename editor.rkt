@@ -139,7 +139,7 @@
   ;; paren-mode
   (define-values (show-paren-from-1 show-paren-to-1 show-paren-from-2 show-paren-to-2
                  show-paren-error-1 show-paren-error-2)
-    (if #f
+    (if #t
         (show-paren-ranges b)
         (values #f #f #f #f #f #f)))
   ;
@@ -225,8 +225,8 @@
       (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
       (define num-lines-to-skip   start-row)
       ;; Color area on screen (TODO: cache the coloring)
-      #;(when (local color-buffer)
-        (display "c" (current-error-port))
+      (when (local color-buffer)
+        (display (~a "c" (buffer-name b)) (current-error-port))
         (define from (or (position (window-start-mark w)) 0))
         (define to   (or (position (window-end-mark w)) (buffer-length b)))
         ; (displayln (list from to))
@@ -311,14 +311,14 @@
                 (when (and reg-end   (<= reg-end   p))
                   (set-text-background-color #f hl? #f))
                 ; show-paren mode
-                (when #f
+                (when #t ; show-paren
                   (define (indicator error-code) (if error-code 'error #t))
                   (when (and     show-paren-from-1         show-paren-to-1
-                                 (<= show-paren-from-1 p) (< p show-paren-to-1))
+                             (<= show-paren-from-1 p) (< p show-paren-to-1))
                     (define ind (indicator show-paren-error-1))
                     (set-text-background-color #f #f ind))
                   (when (and     show-paren-from-2         show-paren-to-2
-                                 (<= show-paren-from-2 p) (< p show-paren-to-2))
+                             (<= show-paren-from-2 p) (< p show-paren-to-2))
                     (define ind (indicator show-paren-error-2))
                     (set-text-background-color #f #f ind)))
                 ; foreground color
@@ -466,7 +466,7 @@
 (define (render-window w)
   (define b  (window-buffer w))
   (when (buffer? b)
-    ;(displayln (buffer-name b))
+    (display (~a "[w: " (buffer-name b)) (current-error-port))
     (define c  (window-canvas w))
     (define dc (send c get-dc))
     (send dc suspend-flush)
@@ -496,7 +496,8 @@
       (send dc draw-line 0 0 0 ymax)
       (set! xmin (+ xmin 1)))
     (send dc set-pen op)
-    (send dc resume-flush)))
+    (send dc resume-flush)
+    (display "]" (current-error-port))))
 (current-render-window render-window)
 
 (define (render-windows win)

@@ -185,7 +185,7 @@
     (set! file (finder:put-file)))
   (when file
     (set-buffer-path! b file)
-    (deregister-buffer (buffer-name b))       ; because name changes!
+    (deregister-buffer b)                     ; because name changes!
     (set-buffer-name! b (path->string file))
     (register-buffer b)    
     (with-output-to-file file

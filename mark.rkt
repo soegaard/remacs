@@ -403,6 +403,8 @@
     (define d   (interval-map-ref im p))
     (unless (mark-on-last-line? m)
       (unless (dempty? d)
+        (unless (eq? (mark-link m) d)
+          (error 'huh "huh"))
         (set-linked-line-marks! d (set-remove (linked-line-marks d) m))
         (define l1 (dfirst d))
         (define l2 (dlist-ref d 1))

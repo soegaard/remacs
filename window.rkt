@@ -526,9 +526,9 @@
                       (define n   (- (screen-line-end-position sl) (screen-line-start-position sl)))
                       (define col (+ (* i (screen-line-length))
                                      (min n screen-column)))
-                      (values row col)])]
+                      (values row col)])]                  
                   [else
-                   ; Turns out we have screen coordinates after anything cached.
+                   ; Turns out we have screen coordinates before or after anything cached.
                    ; This is typically due to a very short text being displayed.
                    ; Let's return the row and column of the end of the buffer.
                    (mark-row+column (window-end-mark window))])]))

@@ -17,7 +17,8 @@
 
 ; point : buffer -> integer
 (define (point [b (current-buffer)])
-  (mark-position (buffer-point b)))
+  (define m (buffer-point b))
+  (if (mark? m) (mark-position m) m))
 
 ; set-point! : mark buffer -> void
 (define (set-point! m [b (current-buffer)])

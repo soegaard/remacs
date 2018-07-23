@@ -1218,11 +1218,11 @@
     (define here (point))
     ; get to position where parser state is empty
     (backward-to-open-parenthesis-on-beginning-of-line)
-    (define back (point))
+    ; (define back (point))
     ; (displayln (list 'forward-sexp 'back-to (point)))
     ; (displayln (list 'before here 'after (point)))
     ; repeatedly call parse-partial-sexp
-    (define start       (point))
+    ; (define start  (point))
     (define state-here
       (let loop ([state empty-state])
         (cond [(< (point) here)  ; (displayln (list 'forward-sexp 'back-to back 'parse (point) here))
