@@ -1,5 +1,6 @@
 #lang racket/base
 (provide (except-out (all-defined-out) position))
+
 ;;;
 ;;; MARKERS
 ;;; 
@@ -19,21 +20,47 @@
          "line.rkt"
          "text.rkt")
 
+;;;
+;;; Representation
+;;;
+
+; See "representation.rkt"
+
+; (struct mark (buffer link position name fixed? active?) #:transparent #:mutable)
+;   A mark rembers a position in the text of a buffer.
+;   The mark stores the link (linked-line) which hold the line.
+;   The mark name can be used to refer to the mark.
+;     buffer = #f  buffer points no where - only position is valid
+;     buffer =     the mark belongs to this buffer
+;     link   =     valid if mark belongs to a buffer 
+;     fixed? = #f  A normal mark moves when insertions are made to the buffer.
+;     fixed? = #t  A fixed-mark remain in place.
+;     active? =#t  text between mark and point is an active region 
+;     active? =#f  region is non-active (will not be highlighted)
+
+
+;;;
+;;; Invariant
+;;;
+
+; When the mark belongs to a buffer, the position of the mark
+; must point to a position in the line given by the link.
+
 (define (check-mark m)
-  (when m
-    (void)
-    (define l   (mark-line m))
+  (when (and m (mark-buffer m))
+    ; find line using the link
+    (define l1   (mark-line m))  ; = (dfirst (mark-link m))
+    ; find line using the position
     (define i   (position m))
     (define im  (text-positions (buffer-text (mark-buffer m))))
     (define-values (start end d) (interval-map-ref/bounds im i #f))
-    (unless (and d (eq? l (dfirst d)))
+    (define l2  (and d (dfirst d)))
+    ; check that l1 and l2 are the same line
+    (unless (and d (eq? l1 l2))
       (error 'check-mark (~a "internal error: " (mark-name m)
                              " pos: " (mark-position m)
                              " line: " start " " end
-                             " line-lengh: " (line-length l))))))
-
-
-             
+                             " line-lengh: " (line-length l1))))))
 
 ;;;
 ;;; WORDS

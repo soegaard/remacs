@@ -78,7 +78,7 @@
 ; The buffer might have an associated file:
 ;   path = #f     <=>  buffer is not associated with a file
 ;   path = path   <=>  reads and writes to the file given by the path
-; A point is a position between two characters. 
+; A point is an integer position between two characters. 
 ; Insertions and deletion will happen at the points (usually only one).
 ; If modified? is true, then the buffer has been modified since the last
 ; read or save of the file.
@@ -99,6 +99,9 @@
 ; A mark rembers a position in the text of a buffer.
 ; The mark stores the link (linked-line) which hold the line.
 ; The mark name can be used to refer to the mark.
+;   buffer = #f  buffer points no where - only position is valid
+;   buffer =     the mark belongs to this buffer
+;   link   =     valid if mark belongs to a buffer 
 ;   fixed? = #f  A normal mark moves when insertions are made to the buffer.
 ;   fixed? = #t  A fixed-mark remain in place.
 ;   active? =#t  text between mark and point is an active region 
@@ -142,7 +145,7 @@
 ;;;
 
 ; buffer-point : buffer -> mark
-;   return the first mark in the list of points
+;   return the first point in the list of points
 (define (buffer-point b)
   (first (buffer-points b)))
 
