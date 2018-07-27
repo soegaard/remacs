@@ -27,7 +27,7 @@
                      (when end-is-a-mark?
                        #;(mark-move-to-position! end   from)
                        (mark-move-to-position! point to))
-                     (buffer-delete-backward-char! point n)]
+                     (buffer-delete-backward-char! b point n)]
     [(mark< end beg) (region-delete-between! end beg)]
     [else            (void)]))
 

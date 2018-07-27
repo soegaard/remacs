@@ -107,8 +107,7 @@
 
 ; buffer-exchange-point-and-mark! : buffer -> void
 ;   exchange point and mark
-(define (buffer-exchange-point-and-mark!)
-  (define b (current-buffer))
+(define (buffer-exchange-point-and-mark! [b (current-buffer)])
   (define p (buffer-point    b))
   (define m (buffer-the-mark b))
   (set-buffer-the-mark! b p)
@@ -341,7 +340,7 @@
     (mark-forward-word! (buffer-point b)))
 
 
-(define (buffer-display b port)
+(define (buffer-display b [port current-output-port])
   (parameterize ([current-output-port port])
     (define (line-display l)
       (write l) (newline)
@@ -383,28 +382,26 @@
       [(list)   (void 'done)]
       [(list s) (text-insert-string-at-mark! t m b s)]
       [_        (text-insert-string-at-mark! t m b (first segs))
-                (buffer-break-line! m b)
+                (buffer-break-line! b m)
                 (mark-move! m -1) ; due to newline
                 (loop (rest segs))]))
   ; delete temporary mark
   (delete-mark! m))
 
-; raw-buffer-insert-char! : mark char -> void
+; raw-buffer-insert-char! : buffer mark char -> void
 ;   insert char at mark
 ;   Note: this functions does not adjust marks
-(define (raw-buffer-insert-char! m c)
-  (unless (mark? m) (error 'buffer-insert-char! "fix caller, expected mark"))
-  (define b (mark-buffer m))
+(define (raw-buffer-insert-char! b m c)
   (define t (buffer-text b))
   (text-insert-char-at-mark! t m b c)
   (buffer-stretch-overlays b m 1)
   (buffer-dirty! b))
 
-; buffer-insert-char! : mark char -> void
+; buffer-insert-char! : buffer mark char -> void
 ;   insert character at mark,
 ;   move mark according to adjustment type
-(define (buffer-insert-char! mark c)
-  (raw-buffer-insert-char! mark c)
+(define (buffer-insert-char! b mark c)
+  (raw-buffer-insert-char! b mark c)
   (define p (mark-position mark))
   (for ([m (buffer-marks (mark-buffer mark))])
     (mark-adjust-due-to-insertion! m p 1)))
@@ -442,22 +439,17 @@
 
 ; buffer-break-line! : buffer -> void
 ;   break line at mark
-(define (buffer-break-line! [m (get-point)] [b #f])
-  (set! b (or b (current-buffer)))
+(define (buffer-break-line! b [m (get-point)])
   (text-break-line! (buffer-text b) m)
   (when (and (mark? m) (mark-insertion-type m))
     (mark-move! m 1))
   (buffer-dirty! b))
 
-; buffer-delete-backward-char! : mark [natural] -> void
-(define (buffer-delete-backward-char! m [count 1])
-  (unless (mark? m) (error 'buffer-delete-backward-char! "fix caller, expected mark"))
-  ; emacs: delete-backward-char
-  (define b (mark-buffer m))
+; buffer-delete-backward-char! : buffer mark [natural] -> void
+(define (buffer-delete-backward-char! b m [count 1])  
   (define t (buffer-text b))
   (define p (position m))
-  (buffer-contract-overlays b p count)
-  (check-mark m)
+  (buffer-contract-overlays b p count)  
   (for ([i (max 0 (min p count))]) ; TODO improve efficiency!    
     (text-delete-backward-char! t m)
     (buffer-adjust-marks-due-to-deletion-before! b (mark-position m) 1)

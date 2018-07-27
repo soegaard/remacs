@@ -508,17 +508,19 @@
   (when (use-region?) (delete-region))
   (define pa (current-prefix-argument))
   (define i (or (and (integer? pa) (positive? pa) pa) 1))
+  (define b (current-buffer))
+  (define point (get-point))
   (for ([_ (in-range i)])
     ; insert character
-    (buffer-insert-char! (get-point) k)
-    ; does character that can break the line - if so maybe call auto-fill
+    (buffer-insert-char! b point k)
+    ; does the character break the line - if so maybe call auto-fill
     (cond [(and (local auto-fill-mode?)
                 (set-member? (local auto-fill-chars) k)                
                 (or (local auto-fill-function) normal-auto-fill-function))
            => (λ (fill) (fill))])))
 
 (define-interactive (insert-newline)  
-  (buffer-break-line! (get-point)))
+  (buffer-break-line! (current-buffer) (get-point)))
 
 (define-interactive (break-line)    ; called newline in Emacs
   ; Insert newline at before point. 
@@ -559,18 +561,15 @@
 (define-interactive (delete-region)
   (region-delete))
 
-(define (buffer-backward-delete-char! [n 1])
-  (if (and (= n 1) (use-region?))
-      (begin
-        (delete-region)
-        #;(deactivate! (region-mark)))
-      (buffer-delete-backward-char! (get-point) 1)))
-
 ; backward-delete-char
 ;   Delete n characters backwards.
 ;   If n=1 and region is active, delete region.
 (define-interactive (backward-delete-char [n 1])
-  (buffer-backward-delete-char! n))
+  (if (and (= n 1) (use-region?))
+      (begin
+        (delete-region)
+        #;(deactivate! (region-mark)))
+      (buffer-delete-backward-char! (current-buffer) (get-point) n)))
 
 ; select all
 (define-interactive (mark-whole-buffer [b (current-buffer)])
