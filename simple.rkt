@@ -687,9 +687,8 @@
 
 (define-interactive (test)
   (define b (current-buffer))
-  (mark-whole-buffer b)
-  (delete-region b)
-  (displayln (text->string (buffer-text b)))
+  (mark-whole-buffer b)  
+  ; (displayln (text->string (buffer-text b)))
   ; (buffer-insert-string-before-point! (get-point) "x")
   (displayln (text->string (buffer-text b))))
 

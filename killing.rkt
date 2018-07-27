@@ -72,7 +72,7 @@
   (define s (or (and (not (ring-empty? kill-ring))
                      (ring-ref kill-ring 0))
                 ""))
-  (buffer-insert-string! (get-point) s))
+  (buffer-insert-string! (current-buffer) (get-point) s))
 
 
 ; buffer-kill-line : mark -> void
