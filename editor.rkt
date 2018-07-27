@@ -553,16 +553,18 @@
 (define make-frame frame)
 (define (frame-install-frame%! this-frame)
   ;;; FRAME SIZE  
+  (define min-width  100)
+  (define min-height 100)
   (define std-width  800)
-  (define std-height 400)  
+  (define std-height 400)
   ;;; FRAME  
   (define frame (new frame% [label "Remacs  -  The Racket Editor"] [style '(fullscreen-button)]
-                     [min-width 100] [min-height 100]
-                     [width 800] [height 400]))
+                     [min-width min-width] [min-height min-height]
+                         [width std-width]     [height std-height]))
   (set-frame-frame%! this-frame frame)
   (define msg (new message% [parent frame] [label "No news"]))
   (current-message msg)
-  (send msg min-width std-width)
+  (send msg min-width min-width)
   ;;; MENUBAR
   (define (create-menubar)
     ; SYNTAX (new-menu-item parent label shortcut prefix callback)
@@ -673,8 +675,8 @@
   ; The holds contains the shown window 
   (define panel (new vertical-panel% 
                      [parent     frame]
-                     [min-width  std-width]
-                     [min-height std-height]))
+                     [min-width  min-width]
+                     [min-height min-height]))
   (set-frame-panel! this-frame panel)
   ;;; CANVAS
   ; Non-split windows are rendered into an associated canvas.
@@ -685,9 +687,11 @@
   ; (define canvas 'todo #;(create-window-canvas w))
   ; (set-frame-canvas! this-frame canvas) ; XXX
   ;; Status line
-  (define status-line (new message% [parent frame] [label "Welcome"]))
+  (define status-line (new message% [parent frame] [label "Welcome"]
+                           ; [auto-resize #t]
+                           [stretchable-width min-width]))
   (set-frame-status-line! this-frame status-line)
-  (send status-line min-width std-width)
+  (send status-line min-width min-width)
   (define (display-status-line s) (send status-line set-label s))
   (display-status-line "Don't panic")
   (send frame show #t)
