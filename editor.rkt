@@ -128,7 +128,6 @@
 
 (define (render-buffer w)
   (semaphore-wait sema-render-buffer)
-  (display "(" (current-error-port))
   (define b (window-buffer w))
   (define now (current-milliseconds))
   (define (marks-between marks from to)
@@ -224,7 +223,6 @@
       (define num-lines-to-skip   start-row)
       ;; Color area on screen (TODO: cache the coloring)
       (when (local color-buffer)
-        (display (~a "c" (buffer-name b)) (current-error-port))
         (define from (or (position (window-start-mark w)) 0))
         (define to   (or (position (window-end-mark w)) (buffer-length b)))
         ; (displayln (list from to))
@@ -404,7 +402,6 @@
     (render-points w start-row end-row)
     (define later (current-milliseconds))
       (status-line-render-time (- later now))))
-  (display ")" (current-error-port))
   (semaphore-post sema-render-buffer))
 
 (define debug-buffer #f)
@@ -464,7 +461,6 @@
 (define (render-window w)
   (define b  (window-buffer w))
   (when (buffer? b)
-    (display (~a "[w: " (buffer-name b)) (current-error-port))
     (define c  (window-canvas w))
     (define dc (send c get-dc))
     (send dc suspend-flush)
@@ -494,8 +490,7 @@
       (send dc draw-line 0 0 0 ymax)
       (set! xmin (+ xmin 1)))
     (send dc set-pen op)
-    (send dc resume-flush)
-    (display "]" (current-error-port))))
+    (send dc resume-flush)))
 (current-render-window render-window)
 
 (define (render-windows win)
@@ -557,15 +552,17 @@
 
 (define make-frame frame)
 (define (frame-install-frame%! this-frame)
-  ;;; FRAME SIZE
-  (define min-width  800)
-  (define min-height 400)
+  ;;; FRAME SIZE  
+  (define std-width  800)
+  (define std-height 400)  
   ;;; FRAME  
-  (define frame (new frame% [label "Remacs  -  The Racket Editor"] [style '(fullscreen-button)]))
+  (define frame (new frame% [label "Remacs  -  The Racket Editor"] [style '(fullscreen-button)]
+                     [min-width 100] [min-height 100]
+                     [width 800] [height 400]))
   (set-frame-frame%! this-frame frame)
   (define msg (new message% [parent frame] [label "No news"]))
   (current-message msg)
-  (send msg min-width min-width)
+  (send msg min-width std-width)
   ;;; MENUBAR
   (define (create-menubar)
     ; SYNTAX (new-menu-item parent label shortcut prefix callback)
@@ -676,8 +673,8 @@
   ; The holds contains the shown window 
   (define panel (new vertical-panel% 
                      [parent     frame]
-                     [min-width  min-width]
-                     [min-height min-height]))
+                     [min-width  std-width]
+                     [min-height std-height]))
   (set-frame-panel! this-frame panel)
   ;;; CANVAS
   ; Non-split windows are rendered into an associated canvas.
@@ -690,7 +687,7 @@
   ;; Status line
   (define status-line (new message% [parent frame] [label "Welcome"]))
   (set-frame-status-line! this-frame status-line)
-  (send status-line min-width min-width)
+  (send status-line min-width std-width)
   (define (display-status-line s) (send status-line set-label s))
   (display-status-line "Don't panic")
   (send frame show #t)

@@ -10,6 +10,7 @@
          "embedded.rkt"
          "frame.rkt"
          "killing.rkt"
+         "locals.rkt"
          "mark.rkt"
          "message.rkt"
          "parameters.rkt"
@@ -63,7 +64,7 @@
                                  [(empty? cs) (message (~a "M-x " so-far key))
                                               'ignore]
                                  [else
-                                  (define b (current-completion-buffer))
+                                  (define b (current-completion-buffer))                                  
                                   (unless b 
                                     ;; no prev completions buffer => make a new
                                     (define bn "*completions*")
@@ -77,16 +78,17 @@
                                     (define ob (window-buffer w))
                                     (set-window-buffer! w nb)
                                     (current-completion-window ob))
-                                  ;; text in *completion* buffer
-                                  (define t (completions->text so-far cs))
-                                  ;; replace text in completions buffer
-                                  (mark-whole-buffer b)
-                                  (delete-region b)
-                                  (buffer-insert-string! (get-point) (text->string t))
-                                  ;; replace prefix with the longest unique completion
-                                  (define pre (longest-common-prefix cs))
-                                  (message (~a "M-x " pre))
-                                  (list 'replace (cons "M-x" (string->list pre)))])])]
+                                  (localize ([current-buffer b])
+                                    ;; text in *completion* buffer
+                                    (define t (completions->text so-far cs))
+                                    ;; replace text in completions buffer
+                                    (mark-whole-buffer)
+                                    (delete-region)
+                                    (insert (text->string t))
+                                    ;; replace prefix with the longest unique completion
+                                    (define pre (longest-common-prefix cs))
+                                    (message (~a "M-x " pre))
+                                    (list 'replace (cons "M-x" (string->list pre))))])])]
          ["return"          (define cmd-name (string-append* (map ~a more)))
                             (define cmd      (lookup-interactive-command cmd-name))
                             (cond [cmd   (message "") cmd]

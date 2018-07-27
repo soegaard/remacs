@@ -595,7 +595,7 @@
     (move-beginning-of-line b)
     (buffer-kill-line b #t)  
     (forward-char)
-    (buffer-backward-delete-char! b)))
+    (backward-delete-char)))
 
 ; mark-kill-line-to-beginning : mark -> void
 ;   Kill text from the given mark to beginning of line.
