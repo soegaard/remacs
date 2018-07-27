@@ -16,7 +16,6 @@
 ;;; PRIORITY: MEDIUM
 
 ;;; TODO documentation
-;;; TODO recently opened files
 ;;; TODO Render #\tab correctly
 ;;; TODO Implement open-input-buffer (naive implementation already done)
 ;;; TODO paragraphs
@@ -101,9 +100,7 @@
 ;;; GUI
 ;;;
 
-
 (current-point-color point-colors)
-
 (define (sort-numbers xs) (sort xs <))
 
 ; (define cached-screen-lines-ht (make-hasheq)) ; buffer -> info
@@ -217,6 +214,8 @@
       (define num-lines-on-screen   (number-of-lines-on-screen w))
       ;; Font Dimensions
       (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
+      ; todo: the 10 must be the width of the "change line character"
+      (local! screen-line-length (inexact->exact (quotient (- (- xmax xmin) 10) font-width)))
       ;; Placement of point relative to lines on screen
       (define-values (row col)           (mark-row+column (buffer-point b)))
       (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
