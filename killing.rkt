@@ -62,38 +62,38 @@
   (update-current-clipboard-at-latest-kill)
   (refresh-frame))
 
-(define (kill-ring-push-region [b (current-buffer)])
-  (define s (region->string b))
+(define (kill-ring-push-region)
+  (define s (region->string))
   (when s
     (kill-ring-insert! s)
     s))
 
-(define (buffer-insert-latest-kill [b (current-buffer)])
+(define (buffer-insert-latest-kill)
   (define s (or (and (not (ring-empty? kill-ring))
                      (ring-ref kill-ring 0))
                 ""))
-  (buffer-insert-string-before-point! b s))
+  (buffer-insert-string! (get-point) s))
 
 
-; buffer-kill-line : buffer -> void
-;   Kill text from point to end of line.
-;   If point is at end of line, the newline is deleted.
-;   Point is at end of line, if text from point to newline is all whitespace.
-(define (buffer-kill-line [b (current-buffer)] [called-by-kill-whole-line #f])
+; buffer-kill-line : mark -> void
+;   Kill text from the given mark to end of line.
+;   If the mark is at end of line, the newline is deleted.
+;   Note: The mark is at the end of line, if text from mark to newline is all whitespace.
+(define (buffer-kill-line m [called-by-kill-whole-line #f])
   ; setup region, then use kill-ring-push-region and delete-region
-  (define m  (buffer-point b))
+  (define b  (current-buffer))
   (define p1 (mark-position m))
   (define p2 (position-of-end-of-line m))
   (define rest-of-line (subtext->string (buffer-text b) p1 p2))
   (define eol? (and (string-whitespace? rest-of-line)
                     (not (= (+ (mark-position m) 1) (position-of-end b)))))
   ; delete to end of line
-  (buffer-set-mark-to-point b)  
-  (buffer-move-point-to-end-of-line! b)
-  (when eol?
-    (buffer-move-point! b +1)
-    #;(forward-char b))
+  (error 'todo)
+  #;(buffer-set-mark-to-point b)  
+  #;(buffer-move-point-to-end-of-line! b)
+  #;(when eol?
+      (buffer-move-point! b +1))
   
-  (kill-ring-push-region)
-  (region-delete b))
+  #;(kill-ring-push-region)
+  #;(region-delete b))
 

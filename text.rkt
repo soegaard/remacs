@@ -17,9 +17,9 @@
 
 (require racket/dict racket/string racket/set
          data/interval-map
-         "representation.rkt"
+         "dlist.rkt"
          "line.rkt"
-         "dlist.rkt")
+         "representation.rkt")
 
 (define beep void)
 
@@ -179,7 +179,7 @@
   (when (string-contains? s "\n")
     (error 'text-insert-string-at-mark! "got string containing newline, ~a" s))
   ; note: we assume there is no newlines in s
-  (define i  (mark-position m))
+  (define i  (if (mark? m) (mark-position m) m))
   (define im (text-positions t))
   (define n  (string-length s))
   (when (> n 0)

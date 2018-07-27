@@ -13,6 +13,7 @@
          "mark.rkt"
          "message.rkt"
          "parameters.rkt"
+         "point.rkt"
          "representation.rkt"
          "simple.rkt"
          "text.rkt"
@@ -81,7 +82,7 @@
                                   ;; replace text in completions buffer
                                   (mark-whole-buffer b)
                                   (delete-region b)
-                                  (buffer-insert-string-before-point! b (text->string t))
+                                  (buffer-insert-string! (get-point) (text->string t))
                                   ;; replace prefix with the longest unique completion
                                   (define pre (longest-common-prefix cs))
                                   (message (~a "M-x " pre))
@@ -157,9 +158,9 @@
          ["S-up"          previous-line/extend-region]
          ["S-down"        next-line/extend-region]         
          ; Ctrl + something
-         ["C-a"           beginning-of-line]
+         ["C-a"           move-beginning-of-line]
          ["C-b"           backward-char]
-         ["C-e"           end-of-line]
+         ["C-e"           move-end-of-line]
          ["C-f"           forward-char]
          ["C-k"           kill-line]
          ["D-backspace"   kill-line-to-beginning]
@@ -174,8 +175,8 @@
          ["D-c"           copy-region]         ; copy  (Edit Menu)
          ["D-x"           kill-region]         ; cut   (Edit Menu)
          ["D-v"           insert-latest-kill]  ; paste (Edit Menu)
-         ["D-left"        beginning-of-line]
-         ["D-right"       end-of-line]
+         ["D-left"        move-beginning-of-line]
+         ["D-right"       move-end-of-line]
          ["D-down"        end-of-buffer]
          ["D-up"          beginning-of-buffer]
          ["D-S-left"      beginning-of-line/extend-region]   ; todo: should move word wise? 
@@ -205,12 +206,12 @@
          ["M-e"           eval-buffer]
          ["M-w"           'exit #;(λ () (save-buffer! (current-buffer)) #;(send frame on-exit) )]
          [#\return        break-line]
-         [#\backspace     backward-delete-char]                                            ; backspace
-         [#\rubout        (λ () (error 'todo))]                                            ; delete
+         [#\backspace     backward-delete-char]   ; backspace
+         [#\rubout        (λ () (error 'todo))]   ; delete
          ; make tab insert 4 spaces
          [#\tab           (local indent-for-tab)]
-         ['home           (λ () (buffer-move-point-to-beginning-of-line! (current-buffer)))] ; fn+left
-         ['end            (λ () (buffer-move-point-to-end-of-line! (current-buffer)))]      ; fn+right
+         ['home           move-beginning-of-line] ; fn+left
+         ['end            move-end-of-line]       ; fn+right
          ['next           page-down] 
          ['prior          page-up]
          ["C-space"       command-set-mark]

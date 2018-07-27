@@ -7,8 +7,6 @@
 
 ;;; PRIORITY: HIGH
 
-;;;   TODO markers needs a sticky left or sticky right fields
-;;;   TODO point belongs to a window, not a buffer: example, two windows displaying same buffer
 ;;;   TODO buffer narrowing
 ;;;   TODO indentation
 ;;;   TODO The column position of the cursor when using down should stay the same
@@ -166,7 +164,7 @@
                (filter position-is-in-this-string?
                        (append other
                                (marks-between (buffer-marks b)  p (+ p sn))
-                               (marks-between (buffer-points b) p (+ p sn))
+                               (marks-between (list (buffer-point b)) p (+ p sn))
                                (filter number?
                                        (list show-paren-from-1 show-paren-to-1
                                              show-paren-from-2 show-paren-to-2))
@@ -221,7 +219,7 @@
       ;; Font Dimensions
       (define-values (font-width font-height _ __) (send dc get-text-extent "M"))
       ;; Placement of point relative to lines on screen
-      (define-values (row col)           (mark-row+column (buffer-point  b)))
+      (define-values (row col)           (mark-row+column (buffer-point b)))
       (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
       (define num-lines-to-skip   start-row)
       ;; Color area on screen (TODO: cache the coloring)
@@ -251,7 +249,7 @@
             (send dc set-text-background background-color))
           ;; Placement of region
           (define-values (reg-begin reg-end)
-            (if (use-region? b) (values (region-beginning b) (region-end b)) (values #f #f)))
+            (if (use-region?) (values (region-beginning) (region-end)) (values #f #f)))
           ; (displayln (list 'first-line first-row-on-screen 'last-line last-row-on-screen))
           (send dc suspend-flush)
           ; draw-string : string real real -> real
@@ -440,7 +438,7 @@
       (define cached-info (hash-ref cached-screen-lines-ht b #f))
       (when (and active? cached-info)
         ; (define on? (current-show-points?))
-        (for ([p (buffer-points b)])
+        (for ([p (list (buffer-point b))])
           ; (define-values (r c) (mark-row+column p))
           (when #t #;(<= start-row r end-row)
             (define n (mark-position p))
@@ -502,13 +500,13 @@
 
 (define (render-windows win)
   (match win
-    [(horizontal-split-window _ _ _ _ _ _ _ _ left  right) 
+    [(horizontal-split-window _ _ _  _ _ _  _ _ _ left  right)
      (render-windows left)
      (render-windows right)]
-    [(vertical-split-window _ _ _ _ _ _ _ _ upper lower)
+    [(vertical-split-window   _ _ _  _ _ _  _ _ _ upper lower)
      (render-windows upper)
      (render-windows lower)]
-    [(window frame panel borders canvas parent buffer start end)
+    [(window frame panel borders canvas parent buffer start end point)
      (render-window  win)]
     [_ (error 'render-window "got ~a" win)]))
 

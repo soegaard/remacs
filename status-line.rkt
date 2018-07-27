@@ -33,13 +33,15 @@
 
 ; The default function used to compute status line information
 (define (status-line-hook)
-  (define b (current-buffer))
+  (define w     (current-window))
+  (define b     (window-buffer w))  
+  (define point (buffer-point b))
   (cond
     [b (define save-status      (if (buffer-modified? b) "***" "---"))
        (define line?            (local   line-number-mode?))
        (define col?             (local column-number-mode?))
        (define-values (row col) (if (and (<= (buffer-length b) (local line-number-display-limit)))
-                                    (mark-row+column (buffer-point b))
+                                    (mark-row+column point)
                                     (values "-" "-")))
        (define line+col         (cond [(and line? col?) (~a "(" row "," col ")")]
                                       [line?            (~a "L" row)]
@@ -47,8 +49,8 @@
                                       [else             ""]))
        (~a save-status  
            "   " "Buffer: "          (buffer-name) "    " line+col
-           "   " "Position: "        (mark-position (buffer-point (current-buffer)))
-           "   " "Length: "          (buffer-length (current-buffer))
+           "   " "Position: "        (mark-position point)
+           "   " "Length: "          (buffer-length b)
            "   " "Mode: "            "(" (get-mode-name) ")"
            "   " "Time: "            the-time
            "   " "Render Time: "     the-render-time)]

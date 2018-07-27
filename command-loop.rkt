@@ -44,7 +44,7 @@
        #;(let () expr ...)
        (queue-command
         (λ ()
-          (display "." (current-error-port))
+          ; (display "." (current-error-port))
           expr ...)))]))
 
 #;(define-syntax (send-command/parameters stx)

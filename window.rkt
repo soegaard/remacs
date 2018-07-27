@@ -41,8 +41,9 @@
   (define bs (or borders (seteq)))
   (define start (new-mark b "*start*"))
   (define end   (new-mark b "*end*"))
+  (define point (copy-mark (buffer-point b)))
   (mark-move! end (buffer-length b))
-  (define w (window f panel bs #f parent b start end))
+  (define w (window f panel bs #f parent b start end point))
   (window-install-canvas! w panel)
   (set! all-windows (cons w all-windows))
   w)
@@ -96,12 +97,12 @@
     (define b  (window-buffer w))
     (define bs (window-borders w))
     (define c  (window-canvas w))
-    (define p  (window-parent w))
-    (define root? (not (window? p)))
+    (define p  (window-parent w))    
+    (define root? (not (window? p)))    
     ; the new split window get the parent of our old window
     (define parent-panel (if root? (frame-panel f) (window-panel p)))
     (define pan (new horizontal-panel% [parent parent-panel]))
-    (define sp  (horizontal-split-window f pan bs #f p #f #f #f w #f))
+    (define sp  (horizontal-split-window f pan bs #f p #f #f #f #f w #f))
     ; the old window get a new parent
     (set-window-parent! w sp)
     (send c reparent pan)
@@ -144,7 +145,7 @@
     ; the parent of the new split window (sp), is the parent the window (w) to be split
     (define parent-panel (if root? (frame-panel f) (window-panel p)))
     (define new-panel    (new vertical-panel% [parent parent-panel]))
-    (define sp (vertical-split-window f new-panel bs #f p #f #f #f w #f))
+    (define sp (vertical-split-window f new-panel bs #f p #f #f #f #f w #f))
     ; the split window becomes he parent of the old window
     (set-window-parent! w sp)
     ; this means that the canvas of w, now belongs the the new panel
@@ -199,6 +200,7 @@
   (define p (window-parent w))
   ; only split windows can hold subwindows
   (unless (split-window? p)
+    (print p)
     (error 'window-delete "can't delete window"))
   ;; since the parent is a split window, it must hold another window:
   (define ow ; other window
@@ -460,22 +462,24 @@
   "Move line containing point to center of window."
   (define b                (window-buffer w))
   (define n                (number-of-lines-on-screen w))
-  (define-values (row col) (mark-row+column (buffer-point b)))
+  (define p                (window-point w))
+  (unless (mark-buffer p)
+    (error 'maybe-recenter-top-bottom "huh"))
+  (define-values (row col) (mark-row+column p))
   (define start-mark       (window-start-mark w))
   (define end-mark         (window-end-mark w))
   (define start-row        (mark-row start-mark))
   (define end-row          (mark-row end-mark))
-  ; xxx todo remove uncommenting
-  #;(when (or force?
-              (not (and (<= start-row row) (< row (+ start-row n)))))
-      ;(define n num-lines-on-screen)
-      (define n/2 (quotient n 2))
-      (define new-start-row (max (- row n/2) 0))
-      (define new-end-row   (+ new-start-row n))
-      (mark-move-up! start-mark (- start-row new-start-row))
-      (mark-move-up! end-mark   (-   end-row  new-end-row))
-      (set! start-row new-start-row)
-      (set! end-row   new-end-row))
+  (when (or force?
+            (not (and (<= start-row row) (< row (+ start-row n)))))
+    ;(define n num-lines-on-screen)
+    (define n/2 (quotient n 2))
+    (define new-start-row (max (- row n/2) 0))
+    (define new-end-row   (+ new-start-row n))
+    (mark-move-up! start-mark (- start-row new-start-row))
+    (mark-move-up! end-mark   (-   end-row  new-end-row))
+    (set! start-row new-start-row)
+    (set! end-row   new-end-row))
   (values start-row end-row))
 
 

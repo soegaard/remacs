@@ -120,7 +120,7 @@
     ;; Mode
     (racket-repl-mode b)
     ;; Banner
-    (buffer-insert-string-before-point! b (banner))
+    (buffer-insert-string! b (get-point) (banner))
     ;; Marks before and after prompt
     (define before-prompt-mark (buffer-set-mark-to-point b))
     (define  after-prompt-mark (buffer-set-mark-to-point b))
@@ -391,6 +391,7 @@
     (set-repl-namespace! repl namespace)
     ; 5. Evaluate the user program
     (parameterize ([current-output-port out-port]
+                   ; [current-error-port  out-port]
                    [current-namespace   namespace]
                    [current-custodian   custodian])
       ;; Start user process
@@ -398,6 +399,11 @@
       (set! user-thread
             (thread
              (λ ()
+               (define (handle-exn e)
+                 (define msg (exn-message e))
+                 (define ctx (continuation-mark-set->context (exn-continuation-marks e)))
+                 (displayln msg)
+                 (displayln ctx))
                (namespace-require program-path)
                (parameterize ([current-namespace (module->namespace program-path)])
                  (let loop ()
@@ -415,8 +421,9 @@
                    (define stx (read-syntax 'repl (open-input-string str)))
                    (display "7" (current-error-port))
                    (call-with-values
-                    (λ () (eval (with-syntax ([stx stx])
-                                  (syntax/loc #'stx (#%top-interaction . stx)))))
+                    (λ () (with-handlers ([exn:fail? handle-exn])
+                            (eval (with-syntax ([stx stx])
+                                    (syntax/loc #'stx (#%top-interaction . stx))))))
                     (λ vs (for ([v vs])
                             (unless (void? v)
                               (print v))

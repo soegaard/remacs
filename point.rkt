@@ -1,6 +1,5 @@
 #lang racket/base
 (provide (all-defined-out))
-
 ;;;
 ;;; POINT
 ;;;
@@ -11,18 +10,17 @@
          "parameters.rkt"
          "representation.rkt")
 
-; get-point : buffer -> mark
+; get-point : window -> mark
 (define (get-point [b (current-buffer)])
   (buffer-point b))
 
-; point : buffer -> integer
+; point : window -> integer
 (define (point [b (current-buffer)])
-  (define m (buffer-point b))
-  (if (mark? m) (mark-position m) m))
+  (mark-position (buffer-point b)))
 
 ; set-point! : mark buffer -> void
-(define (set-point! m [b (current-buffer)])
-  (set-buffer-points! b (cons m (rest (buffer-points b)))))
+#;(define (set-point! m [b (current-buffer)])
+    (set-buffer-points! b (cons m (rest (buffer-points b)))))
 
 ; SYNTAX   (with-saved-point body ...)
 ;   Save position of point before evaluating body ...
@@ -38,6 +36,6 @@
          (dynamic-wind
           (λ () (set-point! new-point b))
           (λ () (begin0 (begin body ...)
-                        (delete-mark! new-point))) ; xxx point not mark! ?
+                        #;(delete-mark! new-point))) ; xxx point not mark! ?
           (λ () (set-point! old-point b)))))]))
 

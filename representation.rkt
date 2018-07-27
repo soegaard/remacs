@@ -21,7 +21,7 @@
          buffer-modified?
          set-buffer-modified!
          buffer-name
-         buffer-point
+         ; buffer-point
          (struct-out mark)
          mark-row+column
          mark-row
@@ -63,12 +63,13 @@
 (struct stats (num-lines num-chars) #:transparent)
 ; The number of lines and number of characters in a text.
 
-#;(struct buffer (text name path points marks modes cur-line num-chars num-lines modified? locals))
+#;(struct buffer (text name path point the-mark marks
+                       modes cur-line num-chars num-lines modified? locals))
 (module buffer-struct racket/base
   ; buffer-name and buffer-modified? are extendeded to handle current-buffer later on
   (provide (except-out (struct-out buffer) buffer-name buffer-modified?) 
            (rename-out [buffer-name -buffer-name] [buffer-modified? -buffer-modified?]))
-  (struct buffer (text name path points marks modes cur-line num-chars num-lines modified?
+  (struct buffer (text name path point the-mark marks modes cur-line num-chars num-lines modified?
                        locals overlays)
     #:transparent #:mutable))
 (require (submod "." buffer-struct))
@@ -78,16 +79,17 @@
 ; The buffer might have an associated file:
 ;   path = #f     <=>  buffer is not associated with a file
 ;   path = path   <=>  reads and writes to the file given by the path
-; A point is an integer position between two characters. 
-; Insertions and deletion will happen at the points (usually only one).
-; If modified? is true, then the buffer has been modified since the last
-; read or save of the file.
-; The list modes contains the active modes (see below).
-; A buffer can have multiple marks:
-; marks = list of marks
+; point    = cursor represented as a mark
+; the-mark = mark used together with point to make a region
+; marks    = list of all marks using in buffer including point and the-mark
+; Notes:
+;   Insertions and deletion will happen at the points (usually only one).
+;   If modified? is true, then the buffer has been modified since the last
+;   read or save of the file.
+;   The list modes contains the active modes (see below).
 
 (struct screen-line
-  (line            ; part of this line
+  (line            ; part of this (text) line
    row             ; row number in text (not screen row)
    screen-row      ;
    start-position  ; position in text
@@ -95,7 +97,8 @@
    contents)
   #:transparent)
 
-(struct mark (buffer link position name fixed? active?) #:transparent #:mutable)
+(struct mark (buffer link position name fixed? active? insertion-type)
+  #:transparent #:mutable)
 ; A mark rembers a position in the text of a buffer.
 ; The mark stores the link (linked-line) which hold the line.
 ; The mark name can be used to refer to the mark.
@@ -106,6 +109,8 @@
 ;   fixed? = #t  A fixed-mark remain in place.
 ;   active? =#t  text between mark and point is an active region 
 ;   active? =#f  region is non-active (will not be highlighted)
+;   insertion-type = #t means:       advance marker when insertion here (insert before)
+;   insertion-type = #f means: don't advance marker when insertion here (insert after)
 
 ; If there is exactly one mark, the area between the point and the mark
 ; is called a region.
@@ -113,17 +118,19 @@
 (struct mode (name) #:transparent)
 ; A mode has a name (displayed in the status bar).
 
-(struct window (frame panel borders canvas parent buffer start-mark end-mark) #:mutable #:transparent)
+(struct window (frame panel borders canvas parent buffer start-mark end-mark point)
+  #:mutable #:transparent)
 ; A window is an area in which a buffer is displayed.
 ; Multiple windows are grouped in a frame.
-; Split windows are backed by a panel.
+; Split  windows are backed by a panel.
 ; Single windows are backed by a canvas into which the buffer is rendered.
 ; borders is a set of symbols indicating which borders to draw
 ;   'left 'right 'top 'bottom
 ; start = mark of first position in buffer to display
 ; end   = mark of last posistion in buffer to display
-; The marks start and end are updated on redisplay such that
-; the point is visible.
+; The marks start and end are updated on redisplay such that the point is visible.
+; point = mark holding the position of the cursor [See Emacs Reference "Windows and Point"]
+;         used to set the buffer point, when the window is selected
 
 (struct frame (frame% panel windows mini-window status-line) #:mutable #:transparent)
 ; frame%      = gui frame 
@@ -144,10 +151,11 @@
 ;;;
 ;;;
 
+
 ; buffer-point : buffer -> mark
 ;   return the first point in the list of points
-(define (buffer-point b)
-  (first (buffer-points b)))
+;(define (buffer-point b)
+;  (window-point (buffer-window b)))
 
 ; buffer-length : buffer -> natural
 ;   return the total length of the text

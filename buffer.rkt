@@ -1,9 +1,5 @@
 #lang racket/base
-(provide
- (except-out (all-defined-out)
-             refresh-buffer
-             refresh-frame
-             buffer-insert-char!))
+(provide (except-out (all-defined-out) refresh-buffer refresh-frame))
 
 ;;;
 ;;; BUFFER
@@ -13,7 +9,7 @@
          racket/format racket/list racket/match racket/string
          racket/set
          framework
-         "buffer-locals.rkt"
+         "buffer-locals.rkt" 
          "buffer-namespace.rkt"
          "default.rkt"
          "embedded.rkt"
@@ -79,8 +75,9 @@
 (define (new-buffer [text (new-text)] [path #f] [name (generate-new-buffer-name "buffer")])
   (define locals (new-buffer-namespace)) ; see "buffer-namespace.rkt"
   (define overlays (new-overlays))
-  (define b (buffer text name path 
-                    '()        ; points
+  (define b (buffer text name path
+                    'point     ; point
+                    'the-mark  ; the mark
                     '()        ; marks
                     '()        ; modes 
                     0          ; cur-line
@@ -89,9 +86,10 @@
                     #f         ; modified?
                     locals     ; locals
                     overlays)) ; overlays
-  (define point (new-mark b "*point*"))
-  (define points (list point))
-  (set-buffer-points! b points)
+  (define point    (new-mark b "*point*"))
+  (set-buffer-point! b point)
+  (define the-mark (new-mark b "*mark*" 0 #f #:active? #f #:insertion-type #f))
+  (set-buffer-the-mark! b the-mark)
   (define stats (text-stats text))
   (define num-lines (stats-num-lines stats))
   (set-buffer-num-lines! b num-lines)
@@ -108,16 +106,13 @@
 ;;; Point and Marks
 
 ; buffer-exchange-point-and-mark! : buffer -> void
-;   exchange first point with first mark
-(define (buffer-exchange-point-and-mark! b)
-  (define ps (buffer-points b))
-  (define p  (first ps))
-  (define ms (buffer-marks b))
-  (define m (cond [(empty? ms) (push-mark 0 b)
-                               (first (buffer-marks b))]
-                  [else        (first ms)]))
-  (set-buffer-marks!  b (cons p (rest ms)))
-  (set-buffer-points! b (cons m (rest ps))))
+;   exchange point and mark
+(define (buffer-exchange-point-and-mark!)
+  (define b (current-buffer))
+  (define p (buffer-point    b))
+  (define m (buffer-the-mark b))
+  (set-buffer-the-mark! b p)
+  (set-buffer-point! b m))
 
 
 ;;; Scratch Buffer
@@ -240,10 +235,12 @@
    (text->string (buffer-text b))))
 
 ; make-output-buffer : buffer -> output-buffer
-;   Return an output buffer. When written to the data is inserted into
+;   Return an output buffer. When written to, the data is inserted into
 ;   the buffer b at the position given by the mark. If the mark is #f
 ;   then the data is inserted at the end of the buffer.
-(define (make-output-buffer b [m #f])
+(define (make-output-buffer b m)
+  (set! m (or m (buffer-point b)))
+  (define point (buffer-point b))
   ;(displayln (list 'make-output-buffer 'current-frame (refresh-frame)))
   ;; State
   (define count-lines? #f)
@@ -255,12 +252,15 @@
       ; write bytes from out-bytes from index start (inclusive) to index end (exclusive)
       (define the-bytes (subbytes out-bytes start end))
       (define as-string (bytes->string/utf-8 the-bytes))
+      ;(displayln as-string (current-error-port))
+      ;(displayln (~a "mark: " (position m) " point: " (point)) (current-error-port))
+      (check-mark m)
       (cond
-        [m    (with-saved-point
-                (buffer-move-point-to-position! b (position m))
-                (buffer-insert-string-before-point! b as-string))
-              (mark-move! (get-point b) (string-length as-string))]
-        [else (buffer-insert-string-before-point! b as-string)])
+        [m    (buffer-insert-string! b m       as-string)
+              #;(mark-move! m     (string-length as-string))]
+        [else (buffer-insert-string! b (point) as-string)
+              #;(mark-move! point (string-length as-string))])
+      (check-mark m)
       (buffer-dirty! b)
       (parameterize ([current-rendering-suspended? #f])
         (refresh-buffer name))     ; todo how to find the correct the frame?
@@ -277,12 +277,11 @@
   (define get-location          ; #f or procedure that returns 
     (λ ()                       ; line number, column number, and position
       (when count-lines?
-        (define m (buffer-point b))
         (define-values (row col) (mark-row+column m))
         (values (+ 1 row) col (+ 1 (mark-position m))))))
   (define count-lines!
     (λ () (set! count-lines? #t)))
-  (define init-position (+ 1 (mark-position (buffer-point b)))) ; 
+  (define init-position (+ 1 (mark-position m))) ; 
   (define buffer-mode #f)
   (make-output-port name evt write-out close write-out-special get-write-evt
                     get-write-special-evt get-location count-lines! init-position buffer-mode))
@@ -319,27 +318,27 @@
 ; buffer-point-set! : buffer mark -> void
 ;   set the point at the position given by the mark m
 
-(define (buffer-move-point! b n)
-  (mark-move! (buffer-point b) n))
+#;(define (buffer-move-point! b n)
+    (mark-move! (buffer-point b) n))
 
-(define (buffer-move-point-up! b)
-  (mark-move-up! (buffer-point b)))
+#;(define (buffer-move-point-up! b)
+    (mark-move-up! (buffer-point b)))
 
-(define (buffer-move-point-down! b)
-  (mark-move-down! (buffer-point b)))
+#;(define (buffer-move-point-down! b)
+    (mark-move-down! (buffer-point b)))
 
-(define (buffer-move-to-column! b n)
-  (mark-move-to-column! (buffer-point b) n))
+#;(define (buffer-move-to-column! b n)
+    (mark-move-to-column! (buffer-point b) n))
 
 ; buffer-backward-word! : buffer -> void
 ;   move point backward until a word separator is found
-(define (buffer-backward-word! b)
-  (mark-backward-word! (buffer-point b)))
+#;(define (buffer-backward-word! b)
+    (mark-backward-word! (buffer-point b)))
 
 ; buffer-forward-word! : buffer -> void
 ;   move point forward until a word delimiter is found
-(define (buffer-forward-word! b)
-  (mark-forward-word! (buffer-point b)))
+#;(define (buffer-forward-word! b)
+    (mark-forward-word! (buffer-point b)))
 
 
 (define (buffer-display b port)
@@ -359,59 +358,79 @@
 (module+ test
   #;(buffer-display illead-buffer))
 
-; buffer-insert-char! : buffer char -> void
-;   insert char after point (does not move point)
-(define (buffer-insert-char! b c)
-  (define m (buffer-point b))
-  (define t (buffer-text b))
-  (text-insert-char-at-mark! t m b c)
-  (buffer-stretch-overlays b m 1)
-  (buffer-dirty! b))
+; buffer-insert-string! : mark string -> void
+;   insert string at mark,
+;   move marks according to adjustment type
+(define (buffer-insert-string! b m s)
+  (raw-buffer-insert-string! b m s)
+  (define p (position m))
+  (define n (string-length s))
+  (for ([m (buffer-marks b)])
+    (mark-adjust-due-to-insertion! m p n)))
 
-; buffer-insert-string! : buffer string -> void
-;   insert string after point (does not move point)
-(define (buffer-insert-string! b s)
-  (define m (buffer-point b))
+; raw-buffer-insert-string! : buffer position string -> void
+;   insert string s at position i, do not move any marks
+(define (raw-buffer-insert-string! b i s)
+  (define m (new-mark b "*temp:raw-buffer-insert-string*" (position i)))
   (define t (buffer-text b))
   (define n (string-length s))
   (buffer-stretch-overlays b m n)
   ; the function text-insert-string-at-mark! works for strings
   ; containing no newlines - so we will need to split the string s
-  ; into segments.  
+  ; into segments.
   (let loop ([segs (reverse (string-split s "\n" #:trim? #f))])
     (match segs
       [(list)   (void 'done)]
       [(list s) (text-insert-string-at-mark! t m b s)]
       [_        (text-insert-string-at-mark! t m b (first segs))
-                (buffer-break-line! b)
-                (buffer-move-point! b -1)                                
-                (loop (rest segs))])))
+                (buffer-break-line! m b)
+                (mark-move! m -1) ; due to newline
+                (loop (rest segs))]))
+  ; delete temporary mark
+  (delete-mark! m))
 
+; raw-buffer-insert-char! : mark char -> void
+;   insert char at mark
+;   Note: this functions does not adjust marks
+(define (raw-buffer-insert-char! m c)
+  (unless (mark? m) (error 'buffer-insert-char! "fix caller, expected mark"))
+  (define b (mark-buffer m))
+  (define t (buffer-text b))
+  (text-insert-char-at-mark! t m b c)
+  (buffer-stretch-overlays b m 1)
+  (buffer-dirty! b))
 
-; buffer-insert-char-after-point! : buffer char -> void
-;   insert character and move point
-(define (buffer-insert-char-after-point! b k)
-  ; note: the position of a single point does not change, but given multiple points...
-  (define m (buffer-point b))
-  (buffer-insert-char! b k)
-  (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) 1))
+; buffer-insert-char! : mark char -> void
+;   insert character at mark,
+;   move mark according to adjustment type
+(define (buffer-insert-char! mark c)
+  (raw-buffer-insert-char! mark c)
+  (define p (mark-position mark))
+  (for ([m (buffer-marks (mark-buffer mark))])
+    (mark-adjust-due-to-insertion! m p 1)))
 
-; buffer-insert-char-before-point! : buffer char -> void
-;   insert character and move point
-(define (buffer-insert-char-before-point! b k)
-  (define m (buffer-point b))
-  (buffer-insert-char! b k)
-  (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) 1)
-  (buffer-move-point! b 1))
+; buffer-insert-char-after-mark! : mark char -> void
+;   insert character after mark
+#;(define (buffer-insert-char-after-mark! m k)
+    ; insert character
+    (raw-buffer-insert-char! m k)
+    ; adjust other marks
+    (define b (mark-buffer m))
+    (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) 1))
 
-; buffer-insert-string-before-point! : buffer string -> void
-;   insert string before point (and move point)
-(define (buffer-insert-string-before-point! b s)
-  (define m (buffer-point b))
-  (define n (string-length s))
-  (buffer-insert-string! b s)
-  (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) n)
-  (buffer-move-point! b n))
+; buffer-insert-char-before-mark! : mark char -> void
+;   insert character and move mark
+#;(define (buffer-insert-char-before-point! m k)
+    (define b (mark-buffer m))
+    (raw-buffer-insert-char! b k)
+    (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) 1))
+
+; buffer-insert-string-before-mark! : mark string -> void
+;   insert string before mark (and move marks)
+#;(define (buffer-insert-string-before-point! b m s)
+    (define n (string-length s))
+    (buffer-insert-string! b m s)
+    (buffer-adjust-marks-due-to-insertion-after! b (mark-position m) n))
 
 (define (buffer-adjust-marks-due-to-insertion-after! b n a)
   (for ([m (buffer-marks b)])
@@ -421,29 +440,20 @@
   (for ([m (buffer-marks b)])
     (mark-adjust-insertion-before! m n a)))
 
-; buffer-move-point-to-beginning-of-line! : buffer -> void
-;   move the point to the beginning of the line
-(define (buffer-move-point-to-beginning-of-line! b)  
-  (mark-move-beginning-of-line! (buffer-point b)))
-
-; buffer-move-point-to-end-of-line! : buffer -> void
-;   move the point to the end of the line
-(define (buffer-move-point-to-end-of-line! b)
-  (mark-move-end-of-line! (buffer-point b)))
-
-
 ; buffer-break-line! : buffer -> void
-;   break line at point
-(define (buffer-break-line! b)
-  (define m (buffer-point b))
+;   break line at mark
+(define (buffer-break-line! [m (get-point)] [b #f])
+  (set! b (or b (current-buffer)))
   (text-break-line! (buffer-text b) m)
-  (mark-move! m 1) ; xxx
+  (when (and (mark? m) (mark-insertion-type m))
+    (mark-move! m 1))
   (buffer-dirty! b))
 
-; buffer-delete-backward-char! : buffer [natural] -> void
-(define (buffer-delete-backward-char! b [count 1])
+; buffer-delete-backward-char! : mark [natural] -> void
+(define (buffer-delete-backward-char! m [count 1])
+  (unless (mark? m) (error 'buffer-delete-backward-char! "fix caller, expected mark"))
   ; emacs: delete-backward-char
-  (define m (buffer-point b))
+  (define b (mark-buffer m))
   (define t (buffer-text b))
   (define p (position m))
   (buffer-contract-overlays b p count)
@@ -451,7 +461,6 @@
   (for ([i (max 0 (min p count))]) ; TODO improve efficiency!    
     (text-delete-backward-char! t m)
     (buffer-adjust-marks-due-to-deletion-before! b (mark-position m) 1)
-    (mark-adjust! m -1) ; point
     (buffer-dirty! b)))
 
 (define (buffer-adjust-marks-due-to-deletion-before! b p a)
@@ -478,7 +487,7 @@
   ; before and after the region (consider: are all properties toggles?)
   ; if there are no region the property is simply inserted at point
   (cond
-    [(use-region? b)
+    [(use-region?)
      (define t (buffer-text b))     
      (define rb (region-beginning b))
      (define re (region-end b))
@@ -490,30 +499,31 @@
     [else
      (buffer-insert-property-at-point! b sym val)]))
 
-(define (buffer-move-point-to-position! b n)
-  (mark-move-to-position! (buffer-point b) n)) ; xxxx
+#;(define (buffer-move-point-to-position! b n)
+    (mark-move-to-position! (buffer-point b) n)) ; xxxx
 
 (define (buffer-move-mark-to-position! m n)
   (mark-move-to-position! m n))
 
-(define (buffer-move-point-to-end-of-buffer b)
-  (mark-move-end-of-buffer! (buffer-point b)))
+#;(define (buffer-move-point-to-end-of-buffer b)
+    (mark-move-end-of-buffer! (buffer-point b)))
 
-(define (buffer-move-point-to-beginning-of-buffer b)
-  (mark-move-beginning-of-buffer! (buffer-point b)))
+#;(define (buffer-move-point-to-beginning-of-buffer b)
+    (mark-move-beginning-of-buffer! (buffer-point b)))
 
 (define (buffer-set-mark-to-point [b (current-buffer)])
-  ; make new mark at current point and return it
-  (define p (buffer-point b))
-  (define fixed? #f)
-  (define active? #t)
-  (define name "*mark*")
-  (define l (mark-link p))
-  (define m (mark b l (mark-position p) name fixed? active?))
-  (set-linked-line-marks! l (set-add (linked-line-marks l) m))
-  (set-buffer-marks! b (cons m (buffer-marks b)))
-  (mark-activate! m)
+  ; todo: what should happen with the old mark?
+  (define m (new-mark b "*mark*" (point) #f #:active? #t))
+  (set-buffer-the-mark! b m)
   m)
+
+(define (buffer-set-the-mark [b (current-buffer)] [m #f])
+  (unless (and (buffer? b) (mark? m))
+    (error 'buffer-set-mark "expected buffer and mark"))
+  ; todo: what should happen with the old mark?
+  (define old-the-mark (buffer-the-mark b))
+  (set-buffer-the-mark! b m)
+  old-the-mark)
 
 
 ; list-next : list any (any any -> boolean)
@@ -559,8 +569,8 @@
 ;;;
 
 (define (position [mark-or-pos (get-point)])
-  (define pos mark-or-pos)
-  (if (mark? pos) (mark-position pos) pos))
+    (define pos mark-or-pos)
+    (if (mark? pos) (mark-position pos) pos))
 
 (define (get-mark [b (current-buffer)])
   (define marks (buffer-marks b))
@@ -614,7 +624,7 @@
   ; todo: add narrowing
   (cond
     [m    (buffer-move-mark-to-position! m (position pos))]
-    [else (buffer-move-point-to-position! (current-buffer) (position pos))]))
+    [else (buffer-move-mark-to-position! (get-point) (position pos))]))
 
 (define-syntax (with-saved-point stx)
   (syntax-parse stx

@@ -52,35 +52,40 @@
 ;;; MOVEMENT
 ;;;
 
-(define-interactive (beginning-of-line [b (current-buffer)])
-  (buffer-move-point-to-beginning-of-line! b))
+(define-interactive (move-beginning-of-line [m #f])
+  (when (buffer? m) (error 'beginning-of-line "fix caller"))    
+  (mark-move-to-beginning-of-line! (or m (get-point))))
 
-(define-interactive (end-of-line [b (current-buffer)])
-  (buffer-move-point-to-end-of-line! b))
+(define-interactive (move-end-of-line [m #f])
+  (when (buffer? m) (error 'end-of-line "fix caller"))
+  (mark-move-to-end-of-line! (or m (get-point))))
 
-(define-interactive (move-to-column n)
-  (buffer-move-to-column! (current-buffer) n)) ; n=numprefix 
+(define-interactive (move-to-column n [m #f])  
+  (mark-move-to-column! (or m (get-point)) n)) ; n=numprefix 
 
-(define-interactive (forward-char [n +1] [b (current-buffer)])
+(define-interactive (forward-char [n +1] [m #f])
   (cond [(region-mark) => mark-deactivate!])
-  (buffer-move-point! b n))
+  (mark-move! (or m (get-point)) n))
 
-(define-interactive (backward-char)
+(define-interactive (backward-char [m #f])
   (cond [(region-mark) => mark-deactivate!])
-  (buffer-move-point! (current-buffer) -1))
+  (mark-move! (or m (get-point)) -1))
 
 (define-interactive (forward-line)
   ; Move point an entire text-line (see next-line for moving a screen line).
   (cond [(region-mark) => mark-deactivate!])
-  (define b (current-buffer))
-  (if (mark-on-last-line? (buffer-point b))
-      (buffer-move-point-to-end-of-line! b)
-      (buffer-move-point-down! b)))
+  (define p (get-point))
+  (if (mark-on-last-line? p)
+      (mark-move-to-end-of-line! p)
+      (mark-move-down! p)))
 
 (define-interactive (backward-line)
   ; Moves point one text line up.
-  (cond [(region-mark) => mark-deactivate!])  
-  (buffer-move-point-up!   (current-buffer)))
+  (cond [(region-mark) => mark-deactivate!])
+  (define p (get-point))
+  (if (mark-on-first-line? p)
+      (mark-move-to-beginning-of-line! p)
+      (mark-move-up! p)))
 
 (define-interactive (next-line)
   ; Moves point one screen line down. Attempts to keep the column.
@@ -94,7 +99,7 @@
   (cond       
     [(and (not (mark-on-last-line? point))
           (>= col (* whole n)))             ; we need to move to the next text line
-     (beginning-of-line)
+     (move-beginning-of-line)
      (forward-line)        
      (move-to-column (min screen-col (line-length (mark-line point))))]
     [(<= (+ col n) len)   ; there is room to move an entire screen line (same text line)
@@ -117,15 +122,16 @@
             [(>= col n)   ; room to move entire screen line (same text line)
              (move-to-column (- col n))]
             [else               
-             (beginning-of-line)
+             (move-beginning-of-line)
              (backward-line)
              (define prev-len (line-length (mark-line point)))
              (move-to-column (+ (- prev-len (remainder prev-len n))
                                 (min screen-col (remainder prev-len n))))])]))
 
 (define-interactive (forward-word [n 1])
-  (define (forward-word1) (buffer-forward-word! (current-buffer)))
   (cond [(region-mark) => mark-deactivate!])
+  (define p (get-point))
+  (define (forward-word1) (mark-forward-word! p))  
   (cond
     [(= n 1) (forward-word1)]
     [(= n 0) (void)]
@@ -133,18 +139,20 @@
     [else    (for ([_ n]) (forward-word1))]))
 
 (define-interactive (backward-word [n 1])
-  (define (backward-word1) (buffer-backward-word! (current-buffer)))
   (cond [(region-mark) => mark-deactivate!])
+  (define p (get-point))
+  (define (backward-word1) (mark-backward-word! p))  
   (cond
     [(= n 1) (backward-word1)]
     [(= n 0) (void)]
     [(< n 0) (forward-word (- n))]
     [else    (for ([_ n]) (backward-word1))]))
 
-(define-interactive (page-down [w (current-window)])
+(define-interactive (page-down)
+  (define w          (current-window))
   (define point      (buffer-point (window-buffer w)))
   (define start-mark (window-start-mark w))
-  (define end-mark   (window-end-mark w))
+  (define end-mark   (window-end-mark   w))
   (define start-row  (mark-row start-mark))
   (define end-row    (mark-row end-mark))  
   (define delta      (max 0 (- (number-of-lines-on-screen w)
@@ -154,10 +162,11 @@
   (mark-move-down! end-mark   delta)
   (refresh-frame))
 
-(define-interactive (page-up [w (current-window)])
+(define-interactive (page-up)
+  (define w          (current-window))
   (define point      (buffer-point (window-buffer w)))
   (define start-mark (window-start-mark w))
-  (define end-mark   (window-end-mark w))
+  (define end-mark   (window-end-mark   w))
   (define start-row  (mark-row start-mark))
   (define end-row    (mark-row end-mark))  
   (define delta      (max 0 (- (number-of-lines-on-screen w)
@@ -170,6 +179,7 @@
 ;;;
 ;;; MARK AND POINT - REGION
 ;;;
+
 
 (define-interactive (command-set-mark)
   (buffer-set-mark-to-point (current-buffer)))
@@ -191,57 +201,61 @@
 
 
 (define (prepare-extend-region)
-  (define marks (buffer-marks (current-buffer)))
-  (cond [(and (not (empty? marks)) (not (mark-active? (first marks))))
-         (delete-mark! (first marks))
-         (command-set-mark)]
-        [(empty? marks)
-         (command-set-mark)])
-  (mark-activate! (region-mark)))
+  (define b        (current-buffer))
+  (define the-mark (buffer-the-mark b))
+  (unless (mark-active? the-mark)
+    (set-mark (get-point))))
 
 (define-interactive (backward-char/extend-region)
+  (check-mark (get-point))
   (prepare-extend-region)
-  (buffer-move-point! (current-buffer) -1))
+  (mark-move! (get-point) -1))
 (define-interactive (forward-char/extend-region)
+  (check-mark (get-point))
   (prepare-extend-region)
-  (buffer-move-point! (current-buffer) +1))
+  (check-mark (get-point))
+  (mark-move! (get-point) +1))
 (define-interactive (previous-line/extend-region) 
   (prepare-extend-region)
-  (buffer-move-point-up! (current-buffer)))
+  (define p (get-point))
+  (if (mark-on-first-line? p)
+      (mark-move-to-beginning-of-line! p)
+      (mark-move-up! p)))
 (define-interactive (next-line/extend-region)
   (prepare-extend-region)
-  (define b (current-buffer))
-  (if (mark-on-last-line? (buffer-point b))
-      (buffer-move-point-to-end-of-line! b)
-      (buffer-move-point-down! b)))
+  (define p (get-point))
+  (if (mark-on-last-line? p)
+      (mark-move-to-end-of-line! p)
+      (mark-move-down! p)))
 (define-interactive (forward-word/extend-region) 
   (prepare-extend-region)
-  (buffer-forward-word! (current-buffer)))
+  (mark-forward-word! (get-point)))
 (define-interactive (backward-word/extend-region)
   (prepare-extend-region)
-  (buffer-backward-word! (current-buffer)))
+  (mark-backward-word! (get-point)))
 (define-interactive (beginning-of-line/extend-region)
   (prepare-extend-region)
-  (beginning-of-line))
+  (move-beginning-of-line))
 (define-interactive (end-of-line/extend-region)
   (prepare-extend-region)
-  (end-of-line))
+  (move-end-of-line))
 
 ;;;
 ;;; BUFFER
 ;;; 
 
 ;;; Buffer Movement
-(define-interactive (beginning-of-buffer [b (current-buffer)])
-  (buffer-move-point-to-beginning-of-buffer b))
-(define-interactive (end-of-buffer       [b (current-buffer)])
-  (buffer-move-point-to-end-of-buffer b))
+(define-interactive (beginning-of-buffer)
+  (define p (get-point))
+  (mark-move-to-beginning-of-buffer! p))
+(define-interactive (end-of-buffer)
+  (mark-move-to-end-of-buffer! (get-point)))
 (define-interactive (end-of-buffer/extend-region)
   (prepare-extend-region)
-  (end-of-buffer (current-buffer)))
+  (end-of-buffer))
 (define-interactive (beginning-of-buffer/extend-region)
   (prepare-extend-region)
-  (beginning-of-buffer (current-buffer)))
+  (beginning-of-buffer))
 
 ;;; Buffer Input and Output
 (define-interactive (save-buffer [b (current-buffer)])
@@ -322,6 +336,7 @@
   (define ws (frame-window-tree (current-frame)))
   (define w (list-next ws (current-window) eq?))
   (current-window w)
+  (unless (window? w) (error))
   (current-buffer (window-buffer w))
   (focus-window w))
 
@@ -380,19 +395,34 @@
 
 (define-interactive (goto-char pos [m #f])
   (check-position 'goto-char pos)
-  ; (when (= pos 119) (error 'goto-char))
   ; todo: add narrowing
+  (define idx (position->index pos))
   (cond
-    [m    (buffer-move-mark-to-position! m (position->index pos))]
-    [else (buffer-move-point-to-position! (current-buffer) (position->index pos))]))
+    [m    (mark-move-to-position! m           idx)]
+    [else (mark-move-to-position! (get-point) idx)]))
+
 
 (define-interactive (set-mark pos)
   (check-position 'set-mark pos)
-  (with-saved-point
-      (goto-char pos)
-      (mark-activate!
-       (buffer-set-mark-to-point))))
-
+  (define mb (current-buffer))
+  (define m  (buffer-the-mark mb))
+  (define b (and (mark? pos) (mark-buffer pos)))
+  (cond
+    ; the two marks belong to the same buffer
+    [(and b (eq? b mb))
+     ; set position
+     (set-mark-position! m (mark-position pos))
+     ; and link
+     (remove-mark-from-linked-line! m (mark-link m))
+     (define l (mark-link pos))
+     (set-mark-link! m l)
+     (add-mark-to-linked-line! m l)
+     (mark-activate! m)]
+    [else
+     (with-saved-point
+       (goto-char pos)
+       (mark-activate!
+        (buffer-set-mark-to-point)))]))
 
 
 (define-interactive (text-scale-adjust m)
@@ -475,22 +505,20 @@
 ; (self-insert-command k) : -> void
 ;   insert character k and move point
 (define ((self-insert-command k))
-  ; (display "Inserting: ") (write k) (newline)
-  (define b (current-buffer))
-  (when (use-region? b) (delete-region b))
+  (when (use-region?) (delete-region))
   (define pa (current-prefix-argument))
   (define i (or (and (integer? pa) (positive? pa) pa) 1))
   (for ([_ (in-range i)])
-    (buffer-insert-char-before-point! b k)
-    ; when insert a character that can break the line
-    
+    ; insert character
+    (buffer-insert-char! (get-point) k)
+    ; does character that can break the line - if so maybe call auto-fill
     (cond [(and (local auto-fill-mode?)
                 (set-member? (local auto-fill-chars) k)                
                 (or (local auto-fill-function) normal-auto-fill-function))
            => (λ (fill) (fill))])))
 
-(define-interactive (insert-newline)
-  (buffer-break-line! (current-buffer)))
+(define-interactive (insert-newline)  
+  (buffer-break-line! (get-point)))
 
 (define-interactive (break-line)    ; called newline in Emacs
   ; Insert newline at before point. 
@@ -509,7 +537,7 @@
 (define (blank-line?)
   ; Is the line containing point blank?
   (with-saved-point
-    (beginning-of-line)
+    (move-beginning-of-line)
     (looking-at #px"^[[:blank:]]*$")))
   
 
@@ -517,32 +545,32 @@
   ; insert new line after the current line,
   ; place point at beginning of new line
   ; [Sublime: cmd+enter]
-  (end-of-line)
+  (move-end-of-line)
   (insert-newline))
 
 (define-interactive (insert-line-before)
   ; insert new line before the current line,
   ; place point at beginning of new line
   ; [Sublime: cmd+enter]
-  (beginning-of-line)
+  (move-beginning-of-line)
   (insert-newline)
   (backward-char))
 
-(define-interactive (delete-region [b (current-buffer)])
-  (region-delete b))
+(define-interactive (delete-region)
+  (region-delete))
 
-(define (buffer-backward-delete-char! [b (current-buffer)] [n 1])
-  (if (and (= n 1) (use-region? b))
+(define (buffer-backward-delete-char! [n 1])
+  (if (and (= n 1) (use-region?))
       (begin
         (delete-region)
-        (delete-mark! (region-mark)))
-      (buffer-delete-backward-char! b 1)))
+        #;(deactivate! (region-mark)))
+      (buffer-delete-backward-char! (get-point) 1)))
 
 ; backward-delete-char
 ;   Delete n characters backwards.
 ;   If n=1 and region is active, delete region.
 (define-interactive (backward-delete-char [n 1])
-  (buffer-backward-delete-char! (current-buffer) n))
+  (buffer-backward-delete-char! n))
 
 ; select all
 (define-interactive (mark-whole-buffer [b (current-buffer)])
@@ -565,29 +593,30 @@
 ;   kill whole line including its newline
 (define (buffer-kill-whole-line [b (current-buffer)])
   (localize ([current-buffer b])
-    (beginning-of-line b)
+    (move-beginning-of-line b)
     (buffer-kill-line b #t)  
     (forward-char)
     (buffer-backward-delete-char! b)))
 
-; buffer-kill-line-to-beginning : buffer -> void
-;   Kill text from point to beginning of line.
-;   If point is at the beginning of line, the newline is deleted.
-;   Point is at the beginning of line, if text from point to newline is all whitespace.
-(define (buffer-kill-line-to-beginning [b (current-buffer)])
+; mark-kill-line-to-beginning : mark -> void
+;   Kill text from the given mark to beginning of line.
+;   If mark is at the beginning of line, the newline is deleted.
+;   The mark is at the beginning of line, if text from the given mark to newline is all whitespace.
+(define (mark-kill-line-to-beginning [m (get-point)])
   ; TODO : store deleted text in kill ring
-  (define m (buffer-point b))
   (define p1 (mark-position m))
   (define p2 (position-of-beginning-of-line m))
   (define rest-of-line (subtext->string (buffer-text b) p2 p1))
   ; delete to beginning of line
-  (buffer-set-mark-to-point b)
-  (beginning-of-line b)
-  (region-delete b)
-  ; maybe delete newline
-  (when (and (string-whitespace? rest-of-line)
-             (not (= (mark-position m) 0)))
-    (buffer-backward-delete-char! b)))
+  (define b  (mark-buffer m))
+  (let ([old (buffer-set-the-mark b m)])
+    (error 'mark-kill-line-to-beginning "todo")
+    #;(beginning-of-line b)
+    #;(region-delete b)
+    ; maybe delete newline
+    #;(when (and (string-whitespace? rest-of-line)
+                 (not (= (mark-position m) 0)))
+        (buffer-backward-delete-char! b))))
 
 
 (define-interactive (kill-whole-line)
@@ -596,7 +625,7 @@
   (refresh-frame))
 
 (define-interactive (kill-line-to-beginning)
-  (buffer-kill-line-to-beginning)
+  (mark-kill-line-to-beginning)
   (update-current-clipboard-at-latest-kill)
   (refresh-frame))
 
@@ -607,9 +636,9 @@
   ; If another application has put any text onto the system clipboard
   ; later than the latest kill, that text is inserted.
   ; Note: The timestamp is ignored in OS X.
-  (define s (send the-clipboard get-clipboard-string 0))
-  (define b (current-buffer))
-  (when (use-region? b) (backward-delete-char))
+  (define time 0) ; current time
+  (define s (send the-clipboard get-clipboard-string time))
+  (when (use-region?) (backward-delete-char))
   (cond
     [(or (equal? s "") 
          (equal? s (current-clipboard-at-latest-kill)))
@@ -617,7 +646,7 @@
      (buffer-insert-latest-kill)]
     [else
      ; system clipboard is newer
-     (buffer-insert-string-before-point! b s)]))
+     (buffer-insert-string! (get-point) s)]))
 
 (define-interactive (copy-region)
   (update-current-clipboard-at-latest-kill)
@@ -661,7 +690,7 @@
   (mark-whole-buffer b)
   (delete-region b)
   (displayln (text->string (buffer-text b)))
-  (buffer-insert-string-before-point! b "x")
+  ; (buffer-insert-string-before-point! (get-point) "x")
   (displayln (text->string (buffer-text b))))
 
 
@@ -682,7 +711,7 @@
                           [else        (error 'insert
                                               "expected strings and characters as input, got ~a"
                                               x)])))  
-  (buffer-insert-string-before-point! b (string-append* strings)))
+  (buffer-insert-string! b (get-point) (string-append* strings)))
 
 
 (define-interactive (insert-char character [count 1])
@@ -1076,6 +1105,7 @@
     ; Invariant: Exactly one (skip) in all paths not returning (create-state)
     (define (skip) (set! j (+ i 1)) (forward-char))
     (cond
+      [(> i limit) (error)]
       [(= i limit)
        ; Set last-complete and start-current to proper values, before returning the parse state
        (define x (char-category (char-after-point)))
@@ -1187,7 +1217,7 @@
 (define-interactive (backward-to-open-parenthesis-on-beginning-of-line)
   "Moves backwards for a open parenthesis on the beginning of a line."
   (let loop ()
-    (beginning-of-line)
+    (move-beginning-of-line)
     (unless (at-beginning-of-buffer?)
       (unless (eqv? (char-after-point) #\()
         (backward-line)
@@ -1442,7 +1472,7 @@ If the closer doesn't belong to a balanced expression, return false."
   (buffer-overlay-ref b sym i))
 
 (define (region-overlay sym val [b (current-buffer)])
-  (cond [(use-region? b)
+  (cond [(use-region?)
          (define rb (region-beginning b))
          (define re (region-end b))
          (buffer-overlay-range-set! b rb re sym val)
