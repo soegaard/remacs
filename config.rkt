@@ -68,7 +68,7 @@
 (define region-highlighted-color base01)   ; solarized dark mode 
 (define text-color               base0)    ; solarized dark mode
 (define border-color             base00)   ; ?
-(define show-paren-color         base2)    ; background color between parens
+(define show-paren-color         base02)    ; background color between parens
 (define show-paren-error-color   red)      ; color to show no mathcing paren
 ;;; Style and Weight
 (define text-style               'normal)  
