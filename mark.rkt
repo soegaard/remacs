@@ -350,6 +350,11 @@
   (define-values (start end d) (interval-map-ref/bounds (text-positions (buffer-text b)) p))
   start)
 
+(define (line-beginning-position) ; emacs name
+  (position-of-beginning-of-line))
+
+(define (line-end-position) ; emacs name
+  (position-of-end-of-line))
 
 (define (position-of-end [b (current-buffer)])
   (text-length (buffer-text b)))
@@ -514,7 +519,9 @@
      (mark-move! m (if j (- j col) col))]))
 
 
-(define (mark-move-to-position! m n)  
+(define (mark-move-to-position! m n)
+  (unless (and (integer? n) (>= n 0))
+    (error 'mark-move-to-position! (~a "expected index, got " n)))
   (check-mark m)
   (define b (mark-buffer m))
   (cond
@@ -528,6 +535,8 @@
      (define t (buffer-text (mark-buffer m)))
      (define d (interval-map-ref (text-positions t) n #f))
      ; add mark to the new line
+     (unless (linked-line? d)
+       (displayln (list n (text-positions t)) (current-error-port)))
      (add-mark-to-linked-line! m d)  
      (set-mark-link! m d)
      ; store the new position
