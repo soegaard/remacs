@@ -1630,3 +1630,9 @@ If the closer doesn't belong to a balanced expression, return false."
           before-error after-error)))
 
 
+(define (line-number-at-pos [pos #f])
+  (cond
+    [pos (with-saved-point
+           (goto-char pos)
+           (mark-row (get-point)))]
+    [else  (mark-row (get-point))]))

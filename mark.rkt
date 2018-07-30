@@ -359,6 +359,7 @@
 (define (position-of-end [b (current-buffer)])
   (text-length (buffer-text b)))
 
+
 (define (mark-move-to-end-of-buffer! m)
   ; remove mark from current line
   (define d (mark-link m))

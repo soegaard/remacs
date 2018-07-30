@@ -391,161 +391,6 @@ the `racket-indent-function` property."
   (define sym (string->symbol head))
   (hash-ref racket-indent-function-ht sym #f))
 
-(define (racket:set-indentation)
-  "Set indentation for various Racket forms.
-Note that `beg*`, `def*` and `with-*` aren't listed here because
-`racket-indent-function' handles those.
-Note that indentation is set for the symbol alone, and also with
-a : suffix for legacy Typed Racket. For example both `let` and
-`let:`. Although this is overzealous in the sense that Typed
-Racket does not define its own variant of all of these, it
-doesn't hurt to do so."
-  (define settings
-    '(;; begin* forms default to 0 unless otherwise specified here
-      (begin0 1)
-      (c-declare 0)
-      (c-lambda 2)
-      (call-with-input-file   define)
-      (call-with-input-file*  define)
-      (call-with-output-file  define)
-      (call-with-output-file* define)
-      (case 1)
-      (case-lambda 0)
-      (catch 1)
-      (class define)
-      (class* define)
-      (compound-unit/sig 0)
-      (cond 0)
-      ;; def* forms default to 'define unless otherwise specified here
-      (define define)
-      (delay 0)
-      (do 2)
-      (dynamic-wind 0)
-      (fn 1) ;alias for lambda (although not officially in Racket)
-      (for 1)
-      (for/list racket--indent-for)
-      (for/vector racket--indent-for)
-      (for/hash racket--indent-for)
-      (for/hasheq racket--indent-for)
-      (for/hasheqv racket--indent-for)
-      (for/and racket--indent-for)
-      (for/or racket--indent-for)
-      (for/lists racket--indent-for/fold)
-      (for/first racket--indent-for)
-      (for/last racket--indent-for)
-      (for/fold racket--indent-for/fold)
-      (for/flvector racket--indent-for)
-      (for/set racket--indent-for)
-      (for/seteq racket--indent-for)
-      (for/seteqv racket--indent-for)
-      (for/sum racket--indent-for)
-      (for/product racket--indent-for)
-      (for* 1)
-      (for*/list racket--indent-for)
-      (for*/vector racket--indent-for)
-      (for*/hash racket--indent-for)
-      (for*/hasheq racket--indent-for)
-      (for*/hasheqv racket--indent-for)
-      (for*/and racket--indent-for)
-      (for*/or racket--indent-for)
-      (for*/lists racket--indent-for/fold)
-      (for*/first racket--indent-for)
-      (for*/last racket--indent-for)
-      (for*/fold racket--indent-for/fold)
-      (for*/flvector racket--indent-for)
-      (for*/set racket--indent-for)
-      (for*/seteq racket--indent-for)
-      (for*/seteqv racket--indent-for)
-      (for*/sum racket--indent-for)
-      (for*/product racket--indent-for)
-      (instantiate 2)
-      (interface 1)
-      (λ 1)
-      (lambda 1)
-      (lambda/kw 1)
-      (let racket--indent-maybe-named-let)
-      (let* 1)
-      (letrec 1)
-      (letrec-values 1)
-      (let-values 1)
-      (let*-values 1)
-      (let+ 1)
-      (let-syntax 1)
-      (let-syntaxes 1)
-      (letrec-syntax 1)
-      (letrec-syntaxes 1)
-      (letrec-syntaxes+values racket--indent-for/fold-untyped)
-      (local 1)
-      (let/cc 1)
-      (let/ec 1)
-      (match 1)
-      (match* 1)
-      (match-define define)
-      (match-lambda 0)
-      (match-lambda* 0)
-      (match-let 1)
-      (match-let* 1)
-      (match-let*-values 1)
-      (match-let-values 1)
-      (match-letrec 1)
-      (match-letrec-values 1)
-      (match/values 1)
-      (mixin 2)
-      (module 2)
-      (module+ 1)
-      (module* 2)
-      (opt-lambda 1)
-      (parameterize 1)
-      (parameterize-break 1)
-      (parameterize* 1)
-      (quasisyntax/loc 1)
-      (receive 2)
-      (require/typed 1)
-      (require/typed/provide 1)
-      (send* 1)
-      (shared 1)
-      (sigaction 1)
-      (splicing-let 1)
-      (splicing-letrec 1)
-      (splicing-let-values 1)
-      (splicing-letrec-values 1)
-      (splicing-let-syntax 1)
-      (splicing-letrec-syntax 1)
-      (splicing-let-syntaxes 1)
-      (splicing-letrec-syntaxes 1)
-      (splicing-letrec-syntaxes+values racket--indent-for/fold-untyped)
-      (splicing-local 1)
-      (splicing-syntax-parameterize 1)
-      (struct define)
-      (syntax-case 2)
-      (syntax-case* 3)
-      (syntax-rules 1)
-      (syntax-id-rules 1)
-      (syntax-parse 1)
-      (syntax-parser 0)
-      (syntax-parameterize 1)
-      (syntax/loc 1)
-      (syntax-parse 1)
-      (test-begin 0)
-      (test-case 1)
-      (unit define)
-      (unit/sig 2)
-      (unless 1)
-      (when 1)
-      (while 1)
-      ;; with- forms default to 1 unless otherwise specified here
-      ))
-  (for ([setting settings])
-    (match setting
-      [(list key val-spec)
-       (define val
-         (match val-spec
-           [(? integer? i) i]
-           ['define        'define]
-           [_              0]))
-       (hash-set! racket-indent-function-ht key val)])))
-          
-(racket:set-indentation)
 
 
 (define-syntax (inc! stx) (syntax-parse stx [(_inc x) (syntax/loc stx (begin (set! x (+ x 1)) x))]))
@@ -618,6 +463,68 @@ doesn't hurt to do so."
           [else                         ;distinguished args
            (+ containing-column (* 2 lisp-body-indent))])))
 
+(define (racket-conditional-indent indent-point state looking-at-regexp true false)
+  (skip-chars-forward " \t")
+  (let ([n (if (looking-at looking-at-regexp) true false)])
+    (racket-indent-special-form n indent-point state)))
+
+(define racket-identifier-regexp
+  #rx"^[a-zA-Z0-9]+") ; todo: use the racket-lexer
+;  (rx (or (syntax symbol) (syntax word) (syntax punctuation))))
+;  "A regexp matching valid Racket identifiers."
+
+(define (racket-indent-maybe-named-let indent-point state)
+  "Indent a let form, handling named let (let <id> <bindings> <expr> ...)"
+  (racket-conditional-indent indent-point state
+                             racket-identifier-regexp
+                             2 1))
+
+(define (racket-indent-for indent-point state)
+  "Indent function for all for/ and for*/ forms EXCEPT
+for/fold and for*/fold.
+Checks for either of:
+  - maybe-type-ann e.g. (for/list : T ([x xs]) x)
+  - for/vector optional length, (for/vector #:length ([x xs]) x)"
+  (racket-conditional-indent indent-point state
+                             #rx"[:#]"
+                             3 1))
+
+(define (racket-indent-for/fold indent-point state)
+  "Indent function for for/fold and for*/fold."
+  ;; check for maybe-type-ann e.g. (for/fold : T ([n 0]) ([x xs]) x)
+  (skip-chars-forward " \t\n")
+  (if (looking-at ":")
+      (racket-indent-special-form 4 indent-point state)
+      (racket-indent-for/fold-untyped indent-point state)))
+
+(define (racket-indent-for/fold-untyped indent-point state)
+  (let* ((containing-sexp-start  (state-inner-start state))
+         (_                      (goto-char containing-sexp-start))
+         (containing-sexp-column (current-column))
+         (containing-sexp-line   (line-number-at-pos))
+         (body-indent            (+ containing-sexp-column lisp-body-indent))
+         (clause-indent          #f))
+    ;; Move to the open paren of the first, accumulator sexp
+    (forward-char 1)    ;past the open paren
+    (forward-sexp 2)    ;to the next sexp, past its close paren
+    (backward-sexp 1)   ;back to its open paren
+    ;; If the first, accumulator sexp is not on the same line as
+    ;; `for/fold`, then this is simply specform 2.
+    (if (not (= (line-number-at-pos) containing-sexp-line)) ;expensive?
+        (racket-indent-special-form 2 indent-point state)
+        (begin
+          (set! clause-indent (current-column))
+          (forward-sexp 1)    ;past close paren
+          ;; Now go back to the beginning of the line holding
+          ;; the indentation point. Count the sexps on the way.
+          (parse-partial-sexp (point) indent-point 1 #t)
+          (let ((n 1))
+            (while (and (< (point) indent-point)
+                        (ignore-errors
+                         (inc! n)
+                         (forward-sexp 1)
+                         (parse-partial-sexp (point) indent-point 1 #t))))
+            (if (= 1 n) clause-indent body-indent))))))
 
 
 (define (hash-literal-or-keyword?)
@@ -672,6 +579,166 @@ To handle nested items, we search `backward-up-list' up to
               (displayln 5)
               (set! answer #f)]))
          answer)))
+
+(define (racket:set-indentation)
+  "Set indentation for various Racket forms.
+Note that `beg*`, `def*` and `with-*` aren't listed here because
+`racket-indent-function' handles those.
+Note that indentation is set for the symbol alone, and also with
+a : suffix for legacy Typed Racket. For example both `let` and
+`let:`. Although this is overzealous in the sense that Typed
+Racket does not define its own variant of all of these, it
+doesn't hurt to do so."
+  (define settings
+    '(;; begin* forms default to 0 unless otherwise specified here
+      (begin0 1)
+      (c-declare 0)
+      (c-lambda 2)
+      (call-with-input-file   define)
+      (call-with-input-file*  define)
+      (call-with-output-file  define)
+      (call-with-output-file* define)
+      (case 1)
+      (case-lambda 0)
+      (catch 1)
+      (class define)
+      (class* define)
+      (compound-unit/sig 0)
+      (cond 0)
+      ;; def* forms default to 'define unless otherwise specified here
+      (define define)
+      (delay 0)
+      (do 2)
+      (dynamic-wind 0)
+      (fn 1) ;alias for lambda (although not officially in Racket)
+      (for 1)
+      (for/list racket-indent-for)
+      (for/vector racket-indent-for)
+      (for/hash racket-indent-for)
+      (for/hasheq racket-indent-for)
+      (for/hasheqv racket-indent-for)
+      (for/and racket-indent-for)
+      (for/or racket-indent-for)
+      (for/lists racket-indent-for/fold)
+      (for/first racket-indent-for)
+      (for/last racket-indent-for)
+      (for/fold racket-indent-for/fold)
+      (for/flvector racket-indent-for)
+      (for/set racket-indent-for)
+      (for/seteq racket-indent-for)
+      (for/seteqv racket-indent-for)
+      (for/sum racket-indent-for)
+      (for/product racket-indent-for)
+      (for* 1)
+      (for*/list racket-indent-for)
+      (for*/vector racket-indent-for)
+      (for*/hash racket-indent-for)
+      (for*/hasheq racket-indent-for)
+      (for*/hasheqv racket-indent-for)
+      (for*/and racket-indent-for)
+      (for*/or racket-indent-for)
+      (for*/lists racket-indent-for/fold)
+      (for*/first racket-indent-for)
+      (for*/last racket-indent-for)
+      (for*/fold racket-indent-for/fold)
+      (for*/flvector racket-indent-for)
+      (for*/set racket-indent-for)
+      (for*/seteq racket-indent-for)
+      (for*/seteqv racket-indent-for)
+      (for*/sum racket-indent-for)
+      (for*/product racket-indent-for)
+      (instantiate 2)
+      (interface 1)
+      (λ 1)
+      (lambda 1)
+      (lambda/kw 1)
+      (let racket-indent-maybe-named-let)
+      (let* 1)
+      (letrec 1)
+      (letrec-values 1)
+      (let-values 1)
+      (let*-values 1)
+      (let+ 1)
+      (let-syntax 1)
+      (let-syntaxes 1)
+      (letrec-syntax 1)
+      (letrec-syntaxes 1)
+      (letrec-syntaxes+values racket-indent-for/fold-untyped)
+      (local 1)
+      (let/cc 1)
+      (let/ec 1)
+      (match 1)
+      (match* 1)
+      (match-define define)
+      (match-lambda 0)
+      (match-lambda* 0)
+      (match-let 1)
+      (match-let* 1)
+      (match-let*-values 1)
+      (match-let-values 1)
+      (match-letrec 1)
+      (match-letrec-values 1)
+      (match/values 1)
+      (mixin 2)
+      (module 2)
+      (module+ 1)
+      (module* 2)
+      (opt-lambda 1)
+      (parameterize 1)
+      (parameterize-break 1)
+      (parameterize* 1)
+      (quasisyntax/loc 1)
+      (receive 2)
+      (require/typed 1)
+      (require/typed/provide 1)
+      (send* 1)
+      (shared 1)
+      (sigaction 1)
+      (splicing-let 1)
+      (splicing-letrec 1)
+      (splicing-let-values 1)
+      (splicing-letrec-values 1)
+      (splicing-let-syntax 1)
+      (splicing-letrec-syntax 1)
+      (splicing-let-syntaxes 1)
+      (splicing-letrec-syntaxes 1)
+      (splicing-letrec-syntaxes+values racket-indent-for/fold-untyped)
+      (splicing-local 1)
+      (splicing-syntax-parameterize 1)
+      (struct define)
+      (syntax-case 2)
+      (syntax-case* 3)
+      (syntax-rules 1)
+      (syntax-id-rules 1)
+      (syntax-parse 1)
+      (syntax-parser 0)
+      (syntax-parameterize 1)
+      (syntax/loc 1)
+      (syntax-parse 1)
+      (test-begin 0)
+      (test-case 1)
+      (unit define)
+      (unit/sig 2)
+      (unless 1)
+      (when 1)
+      (while 1)
+      ;; with- forms default to 1 unless otherwise specified here
+      ))
+  (for ([setting settings])
+    (match setting
+      [(list key val-spec)
+       (define val
+         (match val-spec
+           [(? integer? i)                  i]
+           ['define                         'define]
+           ['racket-indent-for              racket-indent-for]
+           ['racket-indent-for/fold         racket-indent-for/fold]
+           ['racket-indent-for/fold-untyped racket-indent-for/fold-untyped]
+           ['racket-indent-maybe-named-let  racket-indent-maybe-named-let]
+           [_                               0]))
+       (hash-set! racket-indent-function-ht key val)])))
+          
+(racket:set-indentation)
 
 ;;;
 ;;; SYNTAX COLORING
