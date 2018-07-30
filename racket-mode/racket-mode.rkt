@@ -360,6 +360,9 @@ See `racket-indent-line' for more information about users setting
 the `racket-indent-function` property."
   ; find start of inner-most s-exp
   (goto-char (state-inner-start state))
+  ; if we are dealing with a define-like expression,
+  ; we will later need to know the indendentation of the body  
+  (define body-indent (+ (current-column) lisp-body-indent))
   ; skip the parenthesis of inner most s-exp
   (forward-char 1)
   ; 
@@ -372,8 +375,8 @@ the `racket-indent-function` property."
      ; find out how to indent that type of s-expression
      (define method (get-indent-function-method head))
      
-     (define body-indent (+ (current-column) lisp-body-indent))
-     (displayln (list 'head head 'method method))          
+          
+     (displayln (list 'head head 'method method 'body-indent body-indent))
      (cond
        [(integer? method)                  (racket-indent-special-form method indent-point state)]
        [(eq? method 'define)               body-indent]
