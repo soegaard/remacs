@@ -52,11 +52,13 @@
 ;;; MOVEMENT
 ;;;
 
-(define-interactive (move-beginning-of-line [m #f])
+; beginning-of-line
+;   move point to beginning of line (logical line, not screen line)
+(define-interactive (beginning-of-line [m #f])
   (when (buffer? m) (error 'beginning-of-line "fix caller"))    
   (mark-move-to-beginning-of-line! (or m (get-point))))
 
-(define-interactive (move-end-of-line [m #f])
+(define-interactive (end-of-line [m #f])
   (when (buffer? m) (error 'end-of-line "fix caller"))
   (mark-move-to-end-of-line! (or m (get-point))))
 
@@ -64,12 +66,14 @@
   (mark-move-to-column! (or m (get-point)) n)) ; n=numprefix 
 
 (define-interactive (forward-char [n +1] [m #f])
+  (and m (check-mark m))
   (cond [(region-mark) => mark-deactivate!])
   (mark-move! (or m (get-point)) n))
 
-(define-interactive (backward-char [m #f])
+(define-interactive (backward-char [n -1] [m #f])
+  (and m (check-mark m))
   (cond [(region-mark) => mark-deactivate!])
-  (mark-move! (or m (get-point)) -1))
+  (mark-move! (or m (get-point)) n))
 
 (define-interactive (forward-line)
   ; Move point an entire text-line (see next-line for moving a screen line).
@@ -80,9 +84,12 @@
       (mark-move-down! p)))
 
 (define-interactive (backward-line)
+  ;(displayln "backward-line: x")
   ; Moves point one text line up.
   (cond [(region-mark) => mark-deactivate!])
+  ;(displayln "backward-line: xx")
   (define p (get-point))
+  ;(displayln "backward-line: xxx")
   (if (mark-on-first-line? p)
       (mark-move-to-beginning-of-line! p)
       (mark-move-up! p)))
@@ -99,7 +106,7 @@
   (cond       
     [(and (not (mark-on-last-line? point))
           (>= col (* whole n)))             ; we need to move to the next text line
-     (move-beginning-of-line)
+     (beginning-of-line)
      (forward-line)        
      (move-to-column (min screen-col (line-length (mark-line point))))]
     [(<= (+ col n) len)   ; there is room to move an entire screen line (same text line)
@@ -122,7 +129,7 @@
             [(>= col n)   ; room to move entire screen line (same text line)
              (move-to-column (- col n))]
             [else               
-             (move-beginning-of-line)
+             (beginning-of-line)
              (backward-line)
              (define prev-len (line-length (mark-line point)))
              (move-to-column (+ (- prev-len (remainder prev-len n))
@@ -235,10 +242,10 @@
   (mark-backward-word! (get-point)))
 (define-interactive (beginning-of-line/extend-region)
   (prepare-extend-region)
-  (move-beginning-of-line))
+  (beginning-of-line))
 (define-interactive (end-of-line/extend-region)
   (prepare-extend-region)
-  (move-end-of-line))
+  (end-of-line))
 
 ;;;
 ;;; BUFFER
@@ -397,6 +404,8 @@
   (check-position 'goto-char pos)
   ; todo: add narrowing
   (define idx (position->index pos))
+  (unless (and (integer? idx) (>= idx 0))
+    (error 'goto-char (~a "expected index, got " idx)))
   (cond
     [m    (mark-move-to-position! m           idx)]
     [else (mark-move-to-position! (get-point) idx)]))
@@ -539,7 +548,7 @@
 (define (blank-line?)
   ; Is the line containing point blank?
   (with-saved-point
-    (move-beginning-of-line)
+    (beginning-of-line)
     (looking-at #px"^[[:blank:]]*$")))
   
 
@@ -547,19 +556,19 @@
   ; insert new line after the current line,
   ; place point at beginning of new line
   ; [Sublime: cmd+enter]
-  (move-end-of-line)
+  (end-of-line)
   (insert-newline))
 
 (define-interactive (insert-line-before)
   ; insert new line before the current line,
   ; place point at beginning of new line
   ; [Sublime: cmd+enter]
-  (move-beginning-of-line)
+  (beginning-of-line)
   (insert-newline)
   (backward-char))
 
-(define-interactive (delete-region)
-  (region-delete))
+(define-interactive (delete-region [start #f] [end #f])
+  (region-delete start end))
 
 ; backward-delete-char
 ;   Delete n characters backwards.
@@ -592,7 +601,7 @@
 ;   kill whole line including its newline
 (define (buffer-kill-whole-line [b (current-buffer)])
   (localize ([current-buffer b])
-    (move-beginning-of-line b)
+    (beginning-of-line b)
     (buffer-kill-line b #t)  
     (forward-char)
     (backward-delete-char)))
@@ -802,6 +811,8 @@
 
 ; TODO M-=     (define (count-words-region) ...)
 
+        
+
 (define (following-char) ; TODO: use char-after-point instead?
   ; Return character at point.
   ; If point at end position, return #f.
@@ -914,19 +925,39 @@
   0)
 
 (define (end-of-buffer-position)
-  (max 0 (buffer-length (current-buffer))))
+  (max 0 (- (buffer-length (current-buffer)) 1)))
+
+(define (eob?)
+  ; is point at end of buffer?
+  (>= (point) (end-of-buffer-position)))
+
 
 ;;; Looking
 
+(define (char-before m)
+  (cond
+    [(mark? m) (define l (mark-line m))
+               (define c (mark-column m))
+               (cond [(= (position m) (start-of-buffer-position)) #f]
+                     [(not c)                                     #f] ; ??
+                     [(= c 0)                                     #\newline]
+                     [else                                        (line-ref l (- c 1))])]
+    [(integer? m) (if (= m (point))
+                      (char-before (get-point))
+                      (with-saved-point
+                        (goto-char m)
+                        (char-before (get-point))))]
+    [else (error 'char-before "expected position")]))
+
 (define (char-before-point)
-  ;(displayln 'char-before-point (current-error-port))
-  (define p (get-point))
-  (define l (mark-line p))
-  (define c (mark-column p))
-  (cond [(= (position p) (start-of-buffer-position)) #f]
-        [(not c)                                     #f] ; ??
-        [(= c 0)                                     #\newline]
-        [else                                        (line-ref l (- c 1))]))
+  (char-before (get-point)))
+
+(define (char-after [m #f])
+  (cond
+    [(eq? m (get-point)) (char-after-point)]
+    [(and (integer? m)
+          (= m (point))) (char-after-point)]
+    [else                (error 'char-after "todo")]))
 
 (define (char-after-point)
   ; (displayln 'char-after-point (current-error-port))
@@ -956,6 +987,7 @@
 (struct comment-starter    syntax-category ())      ; ;
 (struct string-starter     syntax-category (ender)) ; "
 (struct symbol-constituent syntax-category ())      ; a-z A-Z 0-9
+(struct expression-prefix  syntax-category ())      ; ' , # 
 
 (define syntax-category-ht
   (make-hasheqv (list (cons #\(       (opener #\)))
@@ -968,7 +1000,10 @@
                       (cons #\space   (blank))
                       (cons #\tab     (blank))
                       (cons #\newline (comment-ender))
-                      (cons #\;       (comment-starter)))))
+                      (cons #\;       (comment-starter))
+                      (cons #\'       (expression-prefix))
+                      (cons #\,       (expression-prefix))
+                      (cons #\#       (expression-prefix)))))
 (define (add-char-range from to cat)
   (for ([c (in-range (char->integer from) (char->integer to))])
     (hash-set! syntax-category-ht (integer->char c) cat)))
@@ -1012,6 +1047,14 @@
       (backward-char)
       (loop))))
 
+(define (backward-prefix-chars)
+  "Move backward over any number of expression prefix characters."
+  (let loop ()
+    (define c (char-before-point))
+    (when (expression-prefix? (char-category c))
+      (backward-char)
+      (loop))))
+
 (define (forward-to-char target-char)
   "Move forward to target char."
   "Point will be to the left of the target character."
@@ -1021,6 +1064,16 @@
       [(== target-char) #f] ; found
       [_                (forward-char)
                         (loop)])))
+
+(define (skip-chars-forward str [limit #f])
+  "Move forward while the next char is present in string."
+  "If limit is non-false, stop at limit."
+  (cond
+    [(eob?)                                             (void)]
+    [(and limit (>= (point) limit))                     (void)]
+    [(string-contains? str (string (char-after-point))) (forward-char)
+                                                        (skip-chars-forward str limit)]
+    [else                                               (void)]))
 
 (struct state (depth           ; depth in parentheses
                inner-start     ; pos of inner most start paren, #f depth=0
@@ -1215,7 +1268,7 @@
 (define-interactive (backward-to-open-parenthesis-on-beginning-of-line)
   "Moves backwards for a open parenthesis on the beginning of a line."
   (let loop ()
-    (move-beginning-of-line)
+    (beginning-of-line)
     (unless (at-beginning-of-buffer?)
       (unless (eqv? (char-after-point) #\()
         (backward-line)
@@ -1283,6 +1336,37 @@
   (backward-sexp)
   (mark-activate! (region-mark)))
 
+(define (bob?)
+  ; point at beginning of (possible narrowed) buffer?
+  (= (point) (point-min)))
+
+(define-interactive (backward-up-list)
+  ; move backwards as far as possible at this level
+  (let loop ([pos (point)])
+    (backward-sexp)
+    (unless (= pos (point))
+      (loop (point))))
+  ; move backwards until we go up a level
+  (let loop ()
+    (unless (bob?)
+      (backward-char)
+      (unless (opener? (char-category (char-after-point)))
+        (loop)))))
+
+(define-interactive (forward-up-list)
+  ; move forwards as far as possible at this level
+  (let loop ([pos (point)])
+    (forward-sexp)
+    (unless (= pos (point))
+      (loop (point))))
+  ; move forwards until we go up a level
+  (let loop ()
+    (unless (bob?)
+      (forward-char)
+      (unless (opener? (char-category (char-before-point)))
+        (loop)))))
+  
+
 (define-interactive (forward-list [use-message? #t])
   "Move forward over a balanced expression.
 First move forward until first opener or end of buffer.
@@ -1295,6 +1379,7 @@ If the opener doesn't belong to a balanced expression, return false."
   (define (loop i depth seen)
     (define j (+ i 1))
     (define c (char-after-point))
+    (unless (eob?)
     (if c
         (match depth
            [0 (match (char-category c)
@@ -1316,10 +1401,11 @@ If the opener doesn't belong to a balanced expression, return false."
                                                           " at position " (point)))])]
                 [_                   (forward-char)
                                      (loop j depth seen)])])
-        (on-error "expected a closer before end of buffer")))
+        (on-error "expected a closer before end of buffer"))))
   (define (forward-non-opener)
     (define c (char-after-point))
     (cond
+      [(eob?)          #f] ; end of buffer
       [(not c)         #f] ; end of buffer
       [(not (char? c)) #f] ; surprise ?
       [(char? c)
@@ -1328,7 +1414,7 @@ If the opener doesn't belong to a balanced expression, return false."
          [(closer op) (on-error (~a "containing expression ends prematurely at position " (point)))]
          [_           (forward-char)
                       (forward-non-opener)])]))
-(forward-non-opener)
+  (forward-non-opener)
   (define c (char-after-point))
   (cond
     [(and c (opener? (char-category c)))  (loop 0 0 '())]
@@ -1458,6 +1544,37 @@ If the closer doesn't belong to a balanced expression, return false."
     ; If next character is an opener, move over the corresponding closer.
     ; If next character beins a symbol, string or number, move over.    
     ...)
+
+;;; 32.16 Counting Columns
+
+(define (current-column)
+  "Horizontal position of point"
+  ; Note: current-column ought to count some characters differently 
+  ;       such as tab. The function mark-column works on logical characters.
+  (mark-column (get-point)))
+
+;;; 32.17.1 Indentation Primitives
+
+(define (current-indentation)
+  "Column of first non-blank character. "
+  "If line is all blank, then the position of the end of line is returned"
+  (with-saved-point
+    (beginning-of-line)
+    (if (blank-line?)
+        (position-of-end-of-line)
+        (forward-whitespace))))
+
+(define (indent-to column [minimum #f])
+  "Indent from point to column."
+  "If minimum is present, insert at least minimum spaces even if column is exceeded."
+  "If point is past column do nothing (except when minimum is given)."
+  "Return column of position where indentation ends."
+  (define c      (current-column))  
+  (define amount (max (if (< c column) (- column c) 0)
+                      (or minimum 0)))
+  (insert (make-string amount #\space))
+  (+ c amount))
+  
 
 ;;; 37.9 Overlays
 

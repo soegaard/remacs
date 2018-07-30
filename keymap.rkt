@@ -160,9 +160,9 @@
          ["S-up"          previous-line/extend-region]
          ["S-down"        next-line/extend-region]         
          ; Ctrl + something
-         ["C-a"           move-beginning-of-line]
+         ["C-a"           beginning-of-line]
          ["C-b"           backward-char]
-         ["C-e"           move-end-of-line]
+         ["C-e"           end-of-line]
          ["C-f"           forward-char]
          ["C-k"           kill-line]
          ["D-backspace"   kill-line-to-beginning]
@@ -177,8 +177,8 @@
          ["D-c"           copy-region]         ; copy  (Edit Menu)
          ["D-x"           kill-region]         ; cut   (Edit Menu)
          ["D-v"           insert-latest-kill]  ; paste (Edit Menu)
-         ["D-left"        move-beginning-of-line]
-         ["D-right"       move-end-of-line]
+         ["D-left"        beginning-of-line]
+         ["D-right"       end-of-line]
          ["D-down"        end-of-buffer]
          ["D-up"          beginning-of-buffer]
          ["D-S-left"      beginning-of-line/extend-region]   ; todo: should move word wise? 
@@ -196,7 +196,9 @@
          ["M-left"        backward-word]
          ["M-right"       forward-word]
          ["C-M-left"      backward-list] ; xxx
-         ["C-M-right"     forward-list]         
+         ["C-M-right"     forward-list]
+         ["C-M-up"        backward-up-list]
+         ; ["C-M-down"      forward-up-list] ; up-list in emcas
          ["M-S-left"      backward-word/extend-region]
          ["M-S-right"     forward-word/extend-region]
          ["f1"            test-buffer-output]
@@ -212,8 +214,8 @@
          [#\rubout        (λ () (error 'todo))]   ; delete
          ; make tab insert 4 spaces
          [#\tab           (local indent-for-tab)]
-         ['home           move-beginning-of-line] ; fn+left
-         ['end            move-end-of-line]       ; fn+right
+         ['home           beginning-of-line] ; fn+left
+         ['end            end-of-line]       ; fn+right
          ['next           page-down] 
          ['prior          page-up]
          ["C-space"       command-set-mark]

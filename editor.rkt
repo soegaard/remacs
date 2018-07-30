@@ -1,5 +1,11 @@
 #lang racket
 ;;;
+;;; BUGS
+;;;
+
+; racket-mode:  indent inside comment leads to error
+
+;;;
 ;;; INSTRUCTIONS
 ;;;
 
@@ -7,8 +13,9 @@
 
 ;;; PRIORITY: HIGH
 
+;;;   TODO indentation (almost done)
+;;;   TODO magin insert paren
 ;;;   TODO buffer narrowing
-;;;   TODO indentation
 ;;;   TODO The column position of the cursor when using down should stay the same
 ;;;        even if one goes across short line.
 ;;;   TODO Implement undo
@@ -737,12 +744,11 @@
 (current-window w)
 (current-frame f)
 
-#;(register-auto-mode "rkt" racket-mode)
-
 (send (window-canvas w) focus)
 ;)
 
-(require "racket-mode/racket-mode.rkt")
+(require (only-in "racket-mode/racket-mode.rkt"     racket-mode))
+(require (only-in "markdown-mode/markdown-mode.rkt" markdown-mode))
 
 (start-command-loop)
 

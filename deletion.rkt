@@ -33,13 +33,16 @@
 
 ; region-delete! :  -> void
 ;   Delete all characters in region.
-(define (region-delete)
+(define (region-delete [start #f] [end #f])
   (define b     (current-buffer))
   (define mark  (buffer-the-mark b))
   (define point (buffer-point b))
-  (when (use-region?)
+  (when (or (use-region?)
+            (and start end))
     (buffer-dirty! b)
-    (region-delete-between! mark point)
+    (if (and start end)
+        (region-delete-between! start end)
+        (region-delete-between! mark point))
     (mark-deactivate! mark)))
 
 ; Note: Emacs has delete-active-region, delete-and-extract-region, and, delete-region

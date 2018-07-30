@@ -426,7 +426,7 @@
           ; (log-info (~a (list 'on-paint-points count 'suspended? (current-rendering-suspended?))))
           ;(display (list count))
           (send-command
-           (unless #f ; (current-rendering-suspended?)
+           (unless (current-rendering-suspended?)
              (parameterize ([current-render-points-only? #t]
                             ;[current-show-points?        on?]
                             )
@@ -449,10 +449,10 @@
     (send canvas min-client-height 20)
     ;;; blinking cursor / point
     ; start update-points thread
-    #;(thread (λ () (let loop ([on? #t])
+    (thread (λ () (let loop ([on? #t])
                     ; (log-info (~a (list 'thread count 'suspended? (current-rendering-suspended?))))
                     (set! on? #t)
-                    (sleep/yield 1.0)
+                    (sleep/yield 0.2)
                     (unless #f #;(current-rendering-suspended?)
                       (send canvas on-paint-points on?))
                     (loop (not on?)))))

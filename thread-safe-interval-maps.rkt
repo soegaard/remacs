@@ -51,11 +51,12 @@
     (save-interval-map-post interval-map)))
 
 (define (safe-interval-map-set! interval-map start end value)
-  (define sema (safe-interval-map-sema interval-map))
-  (define im (safe-interval-map-im interval-map))
-  (semaphore-wait sema)
-  (interval-map-set! im start end value)
-  (semaphore-post sema))
+  (when (not (= start end))
+    (define sema (safe-interval-map-sema interval-map))
+    (define im (safe-interval-map-im interval-map))
+    (semaphore-wait sema)
+    (interval-map-set! im start end value)
+    (semaphore-post sema)))
 
 (define (uniqify xs)
   (match xs
@@ -75,10 +76,11 @@
     (save-interval-map-post interval-map)))
 
 (define (safe-interval-map-expand! interval-map start end)
-  (save-interval-map-wait interval-map)
-  (define im (safe-interval-map-im interval-map))    
-  (interval-map-expand! im start end)
-  (save-interval-map-post interval-map))
+  (when (not (= start end))
+    (save-interval-map-wait interval-map)
+    (define im (safe-interval-map-im interval-map))    
+    (interval-map-expand! im start end)
+    (save-interval-map-post interval-map)))
 
 (define (safe-interval-map-contract! interval-map start end)
   (save-interval-map-wait interval-map)

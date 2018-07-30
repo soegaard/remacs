@@ -5,7 +5,8 @@
          racket-run
          racket-mode)
 
-(require racket/class racket/format racket/match racket/set
+(require (for-syntax racket/base syntax/parse)
+         racket/class racket/format racket/list racket/match racket/set racket/string
          syntax-color/racket-lexer
          "../buffer.rkt"
          "../buffer-locals.rkt"
@@ -18,6 +19,7 @@
          "../parameters.rkt"
          "../point.rkt"
          "../representation.rkt"
+         "../search.rkt"
          "../simple.rkt"
          "../window.rkt"
          "../text.rkt")
@@ -77,6 +79,7 @@
                    ["M-S-right" forward-sexp/extend-region]
                    ["M-S-left"  backward-sexp/extend-region]
                    ["D-d"       hide-definitions]
+                   ["return"    break-line-and-indent]
                    ;["D-e"       hide-interaction-window]
                    [_           #f])]
                 [_ #f]))
@@ -94,6 +97,10 @@
 
 ; use racket-mode automatically for all rkt files`
 (register-auto-mode "rkt" racket-mode)
+
+(define (break-line-and-indent)
+  (break-line)
+  (indent-for-tab))
 
 ;;;
 ;;; PROMPT
@@ -263,9 +270,405 @@
 ;;; INDENTATION
 ;;;
 
-(define (indent-for-tab)
-  (insert "    "))
+;;; The variables are dir local in racket-mode.
+(define racket-indent-sequence-depth    3)
+(define racket-indent-curly-as-sequence #t)
 
+(define (indent-for-tab)
+  (indent-line))
+
+(define-interactive (indent-line)
+  (define amount (calculate-indent))
+  (displayln (list 'indent-line 'amount amount))
+  (when amount
+    ;; When point is within the leading whitespace, move it past the
+    ;; new indentation whitespace. Otherwise preserve its position
+    ;; relative to the original text.
+    (let ([pos (- (point-max) (point))]
+          [beg (begin (beginning-of-line) (point))])
+      (skip-chars-forward " \t")
+      (unless (= amount (current-column))
+        (delete-region beg (point))
+        (indent-to amount))
+      (when (< (point) (- (point-max) pos))
+        (goto-char (- (point-max) pos))))))
+
+(define-syntax (while stx)
+  (syntax-parse stx
+    [(_while expr body ...)
+     (syntax/loc stx
+       (let loop ()
+         (when expr
+           body ...
+           (loop))))]))
+
+(define (plain-beginning-of-define)
+  (backward-to-open-parenthesis-on-beginning-of-line))
+
+(define (calculate-indent)
+  "Return appropriate indentation for current line as Lisp code.
+In usual case returns an integer: the column to indent to.
+If the value is #f, that means don't change the indentation
+because the line starts inside a string.
+This is `calculate-lisp-indent' distilled to what we actually
+need."
+  (with-saved-point
+    (beginning-of-line)
+    (let ([indent-point (point)]
+          [state        empty-state])
+      ; move back to position with an empty parse state
+      (plain-beginning-of-define)
+      ; parse forward to the indent-point
+      (define state
+        (let loop ([s empty-state])
+          (if (< (point) indent-point)
+              (loop (parse-partial-sexp (point) indent-point
+                                        #:state s #:target-depth 0))
+              s)))
+      (display-state state)
+      (let ([str?  (state-inside-string  state)]   ; inside string?
+            [cmt?  (state-inside-comment state)]   ; inside comment?
+            [last  (state-last-complete  state)]   ; start of last complete s-expr 
+            [cont  (state-inner-start    state)]   ; start of inners most parent s-expr (containing)
+            [depth (state-depth          state)])  ; paren depth
+        (display (list 'str? str? 'cmt? cmt? 'last last 'cont cont 'depth depth)
+                 (current-error-port))
+        (cond
+          ; no indentation if point is in a string or comment
+          [(or str? cmt?)                    (displayln "X")
+                                             #f]
+          [(and (not (= depth 0)) last cont) (displayln "Y")
+                                             (indent-function indent-point state)]
+          [cont                              (displayln "Z")
+                                             (goto-char (+ cont 1)) ; why?
+                                             (current-column)]
+          [else                              (displayln "W")
+                                             (current-column)])))))
+
+(define lisp-body-indent 2)
+
+(define (indent-function indent-point state)
+  "Called by `calculate-indent' to get indent column.
+INDENT-POINT is the position at which the line being indented begins.
+STATE is the `parse-partial-sexp' state for that position.
+There is special handling for:
+  - forms that begin with a #:keyword (as found in contracts)
+  - forms like #hasheq()
+  - data sequences when `racket-indent-sequence-depth' is > 0
+  - {} forms when `racket-indent-curly-as-sequence' is not nil
+See `racket-indent-line' for more information about users setting
+the `racket-indent-function` property."
+  ; find start of inner-most s-exp
+  (goto-char (state-inner-start state))
+  ; skip the parenthesis of inner most s-exp
+  (forward-char 1)
+  ; 
+  (cond
+    [(or (hash-literal-or-keyword?) (data-sequence?))
+     (backward-prefix-chars) (current-column)]
+    [else
+     ; get the head of the inner-most sexp
+     (define head (buffer-substring (current-buffer) (point) (begin (forward-sexp 1) (point))))
+     ; find out how to indent that type of s-expression
+     (define method (get-indent-function-method head))
+     
+     (define body-indent (+ (current-column) lisp-body-indent))
+     (displayln (list 'head head 'method method))          
+     (cond
+       [(integer? method)                  (racket-indent-special-form method indent-point state)]
+       [(eq? method 'define)               body-indent]
+       [method                             (method indent-point state)]
+       [(regexp-match "^(def|with-)" head) body-indent] ;just like 'define
+       [(regexp-match "^begin" head)       (racket-indent-special-form 0 indent-point state)]
+       [else                               (racket-normal-indent indent-point state)])]))
+
+(define racket-indent-function-ht (make-hash))
+
+(define (get-indent-function-method head)
+  (define sym (string->symbol head))
+  (hash-ref racket-indent-function-ht sym #f))
+
+(define (racket:set-indentation)
+  "Set indentation for various Racket forms.
+Note that `beg*`, `def*` and `with-*` aren't listed here because
+`racket-indent-function' handles those.
+Note that indentation is set for the symbol alone, and also with
+a : suffix for legacy Typed Racket. For example both `let` and
+`let:`. Although this is overzealous in the sense that Typed
+Racket does not define its own variant of all of these, it
+doesn't hurt to do so."
+  (define settings
+    '(;; begin* forms default to 0 unless otherwise specified here
+      (begin0 1)
+      (c-declare 0)
+      (c-lambda 2)
+      (call-with-input-file   define)
+      (call-with-input-file*  define)
+      (call-with-output-file  define)
+      (call-with-output-file* define)
+      (case 1)
+      (case-lambda 0)
+      (catch 1)
+      (class define)
+      (class* define)
+      (compound-unit/sig 0)
+      (cond 0)
+      ;; def* forms default to 'define unless otherwise specified here
+      (define define)
+      (delay 0)
+      (do 2)
+      (dynamic-wind 0)
+      (fn 1) ;alias for lambda (although not officially in Racket)
+      (for 1)
+      (for/list racket--indent-for)
+      (for/vector racket--indent-for)
+      (for/hash racket--indent-for)
+      (for/hasheq racket--indent-for)
+      (for/hasheqv racket--indent-for)
+      (for/and racket--indent-for)
+      (for/or racket--indent-for)
+      (for/lists racket--indent-for/fold)
+      (for/first racket--indent-for)
+      (for/last racket--indent-for)
+      (for/fold racket--indent-for/fold)
+      (for/flvector racket--indent-for)
+      (for/set racket--indent-for)
+      (for/seteq racket--indent-for)
+      (for/seteqv racket--indent-for)
+      (for/sum racket--indent-for)
+      (for/product racket--indent-for)
+      (for* 1)
+      (for*/list racket--indent-for)
+      (for*/vector racket--indent-for)
+      (for*/hash racket--indent-for)
+      (for*/hasheq racket--indent-for)
+      (for*/hasheqv racket--indent-for)
+      (for*/and racket--indent-for)
+      (for*/or racket--indent-for)
+      (for*/lists racket--indent-for/fold)
+      (for*/first racket--indent-for)
+      (for*/last racket--indent-for)
+      (for*/fold racket--indent-for/fold)
+      (for*/flvector racket--indent-for)
+      (for*/set racket--indent-for)
+      (for*/seteq racket--indent-for)
+      (for*/seteqv racket--indent-for)
+      (for*/sum racket--indent-for)
+      (for*/product racket--indent-for)
+      (instantiate 2)
+      (interface 1)
+      (λ 1)
+      (lambda 1)
+      (lambda/kw 1)
+      (let racket--indent-maybe-named-let)
+      (let* 1)
+      (letrec 1)
+      (letrec-values 1)
+      (let-values 1)
+      (let*-values 1)
+      (let+ 1)
+      (let-syntax 1)
+      (let-syntaxes 1)
+      (letrec-syntax 1)
+      (letrec-syntaxes 1)
+      (letrec-syntaxes+values racket--indent-for/fold-untyped)
+      (local 1)
+      (let/cc 1)
+      (let/ec 1)
+      (match 1)
+      (match* 1)
+      (match-define define)
+      (match-lambda 0)
+      (match-lambda* 0)
+      (match-let 1)
+      (match-let* 1)
+      (match-let*-values 1)
+      (match-let-values 1)
+      (match-letrec 1)
+      (match-letrec-values 1)
+      (match/values 1)
+      (mixin 2)
+      (module 2)
+      (module+ 1)
+      (module* 2)
+      (opt-lambda 1)
+      (parameterize 1)
+      (parameterize-break 1)
+      (parameterize* 1)
+      (quasisyntax/loc 1)
+      (receive 2)
+      (require/typed 1)
+      (require/typed/provide 1)
+      (send* 1)
+      (shared 1)
+      (sigaction 1)
+      (splicing-let 1)
+      (splicing-letrec 1)
+      (splicing-let-values 1)
+      (splicing-letrec-values 1)
+      (splicing-let-syntax 1)
+      (splicing-letrec-syntax 1)
+      (splicing-let-syntaxes 1)
+      (splicing-letrec-syntaxes 1)
+      (splicing-letrec-syntaxes+values racket--indent-for/fold-untyped)
+      (splicing-local 1)
+      (splicing-syntax-parameterize 1)
+      (struct define)
+      (syntax-case 2)
+      (syntax-case* 3)
+      (syntax-rules 1)
+      (syntax-id-rules 1)
+      (syntax-parse 1)
+      (syntax-parser 0)
+      (syntax-parameterize 1)
+      (syntax/loc 1)
+      (syntax-parse 1)
+      (test-begin 0)
+      (test-case 1)
+      (unit define)
+      (unit/sig 2)
+      (unless 1)
+      (when 1)
+      (while 1)
+      ;; with- forms default to 1 unless otherwise specified here
+      ))
+  (for ([setting settings])
+    (match setting
+      [(list key val-spec)
+       (define val
+         (match val-spec
+           [(? integer? i) i]
+           ['define        'define]
+           [_              0]))
+       (hash-set! racket-indent-function-ht key val)])))
+          
+(racket:set-indentation)
+
+
+(define-syntax (inc! stx) (syntax-parse stx [(_inc x) (syntax/loc stx (begin (set! x (+ x 1)) x))]))
+(define-syntax (dec! stx) (syntax-parse stx [(_dec x) (syntax/loc stx (begin (set! x (- x 1)) x))]))
+
+(define-syntax (ignore-errors stx)
+  (syntax-parse stx
+    [(_ignore-errors body ...)
+     (syntax/loc stx
+       (with-handlers ([exn? (λ (_) #f)])
+         body ...))]))
+
+(define (string-match regexp string [start #f])
+  ; Return index of start of first match.
+  (define ps (regexp-match-positions regexp  string start))
+  (and ps
+       (car (first ps))))
+
+(define (racket-normal-indent indent-point state)
+  ;; Credit: Substantially borrowed from clojure-mode
+  (goto-char (state-last-complete state))
+  (backward-prefix-chars)
+  (let ([last-sexp #f])
+    (if (ignore-errors
+          ;; `backward-sexp' until we reach the start of a sexp that is the
+          ;; first of its line (the start of the enclosing sexp).
+          (while (string-match #rx"[^ \t]"
+                               (buffer-substring (line-beginning-position)
+                                                 (point)))
+            (set! last-sexp (begin0 (point)
+                                    (forward-sexp -1))))
+          #t)
+        ;; Here we've found an arg before the arg we're indenting
+        ;; which is at the start of a line.
+        (current-column)
+        ;; Here we've reached the start of the enclosing sexp (point is
+        ;; now at the function name), so the behavior depends on whether
+        ;; there's also an argument on this line.
+        (begin
+          (when (and last-sexp
+                     (< last-sexp (line-end-position)))
+            ;; There's an arg after the function name, so align with it.
+            (goto-char last-sexp))
+          (current-column)))))
+
+(define (racket-indent-special-form method indent-point state)
+  "METHOD must be a nonnegative integer -- the number of
+  \"special\" args that get extra indent when not on the first
+  line. Any additinonal args get normal indent."
+  ;; Credit: Substantially borrowed from clojure-mode
+  (let ([containing-column (with-saved-point
+                             (goto-char (state-inner-start state))
+                             (current-column))]
+        [pos -1])
+    (with-handlers
+        ;; If indent-point is _after_ the last sexp in the current sexp,
+        ;; we detect that by catching the `scan-error'. In that case, we
+        ;; should return the indentation as if there were an extra sexp
+        ;; at point.
+        ([exn? (λ (e) (inc! pos))]) ; Note: this assumes that forward-sexp throws an error
+      (while (and (<= (point) indent-point)
+                  (not (eob?)))
+             (forward-sexp 1)
+             (inc! pos)))
+      
+    (cond [(= method pos)               ;first non-distinguished arg
+           (+ containing-column lisp-body-indent)]
+          [(< method pos)               ;more non-distinguished args
+           (racket-normal-indent indent-point state)]
+          [else                         ;distinguished args
+           (+ containing-column (* 2 lisp-body-indent))])))
+
+
+
+(define (hash-literal-or-keyword?)
+  "Looking at things like #fl() #hash() or #:keyword ?
+The last occurs in Racket contract forms, e.g. (->* () (#:kw kw)).
+Returns nil for #% identifiers like #%app."
+  (looking-at #rx"#(:|[^%])"))
+
+(define (data-sequence?)
+  "Looking at \"data\" sequences where we align under head item?
+These sequences include '() `() #() -- and {} when
+`racket-indent-curly-as-sequence' is t -- but never #'() #`() ,()
+,@().
+To handle nested items, we search `backward-up-list' up to
+`racket-indent-sequence-depth' times."
+  #f
+  #;(and (< 0 racket-indent-sequence-depth)
+       (with-saved-point
+         (define answer 'unknown)
+         (define depth  racket-indent-sequence-depth)
+         (while (and (eq? answer 'unknown) (< 0 depth))
+           (displayln 1)
+           (backward-up-list)
+           (displayln 2)
+           (dec! depth)
+           (displayln 3)
+           (cond
+             [(or
+               ;; a quoted '( ) or quasiquoted `( ) list --
+               ;; but NOT syntax #'( ) or quasisyntax #`( )
+               (and (displayln '3a)
+                    (memq (char-before (point)) '(#\' #\`))
+                    (eqv? (char-after  (point)) #\()
+                    (not (eqv? (char-before (- (point) 1)) #\#)))
+               ;; a vector literal: #( )
+               (and (displayln '3b)
+                    (eqv? (char-before (point)) #\#)
+                    (eqv? (char-after  (point)) #\())
+               ;; { }
+               (and (displayln '3c)
+                    racket-indent-curly-as-sequence
+                    (let ([t (eqv? (char-after (point)) #\{)])
+                      (displayln '3d)
+                      t)))
+               (displayln 4)
+               (set! answer #t)]
+             [;; unquote or unquote-splicing
+              (and (or (eqv? (char-before (point)) #\,)
+                       (and (eqv? (char-before (- (point) 1)) #\,)
+                            (eqv? (char-before    (point))    #\@)))
+                   (eqv? (char-after (point)) #\())
+              (displayln 5)
+              (set! answer #f)]))
+         answer)))
 
 ;;;
 ;;; SYNTAX COLORING
@@ -323,6 +726,7 @@
          (overlay-set (- start 1) (- end 1) 'color color b)
          (when (< end to)
            (loop))]))))
+
 
 ;;;
 ;;; MOVEMENT

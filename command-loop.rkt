@@ -29,12 +29,20 @@
 (define (queue-command cmd)
   (async-channel-put command-channel cmd))
 
+(define (new-alarm)
+  (alarm-evt (+ (current-inexact-milliseconds) 100)))
+
+(define alarm (new-alarm))
+
 (define (start-command-loop)
   (thread
    (λ ()
      (let loop ()
-       (define cmd (async-channel-get command-channel))
-       (cmd)
+       (define cmd (sync command-channel alarm))
+       (cond
+         [(evt? cmd)     (set! alarm (new-alarm))
+                         (current-point-color (cdr (current-point-color)))]
+         [else           (cmd)])
        (loop)))))
 
 (define-syntax (send-command stx)
