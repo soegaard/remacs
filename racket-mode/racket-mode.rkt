@@ -278,6 +278,7 @@
   (indent-line))
 
 (define-interactive (indent-line)
+  (displayln 'indent-line (current-error-port))
   (define amount (calculate-indent))
   (displayln (list 'indent-line 'amount amount))
   (when amount
@@ -306,6 +307,7 @@
   (backward-to-open-parenthesis-on-beginning-of-line))
 
 (define (calculate-indent)
+  (displayln 'calculate-indent (current-error-port))
   "Return appropriate indentation for current line as Lisp code.
 In usual case returns an integer: the column to indent to.
 If the value is #f, that means don't change the indentation
@@ -313,18 +315,30 @@ because the line starts inside a string.
 This is `calculate-lisp-indent' distilled to what we actually
 need."
   (with-saved-point
+    (displayln 'a)
     (beginning-of-line)
+    (backward-char)
+    (displayln 'b)
     (let ([indent-point (point)]
           [state        empty-state])
       ; move back to position with an empty parse state
+      (displayln 'c)
       (plain-beginning-of-define)
+      (displayln 'd)
       ; parse forward to the indent-point
       (define state
-        (let loop ([s empty-state])
-          (if (< (point) indent-point)
+        (let loop ([s empty-state] [old-point #f])
+          (if (and (<= (point) indent-point)
+                   (not (equal? old-point (point))))
               (loop (parse-partial-sexp (point) indent-point
-                                        #:state s #:target-depth 0))
-              s)))
+                                        #:state s #:target-depth 0)
+                    (point))
+              (begin
+                (when (equal? old-point (point))
+                  (display-state s)
+                  (displayln (list 'indent-point indent-point 'point (point))))
+                s))))
+      (displayln 'e)
       (display-state state)
       (let ([str?  (state-inside-string  state)]   ; inside string?
             [cmt?  (state-inside-comment state)]   ; inside comment?
@@ -333,10 +347,12 @@ need."
             [depth (state-depth          state)])  ; paren depth
         (display (list 'str? str? 'cmt? cmt? 'last last 'cont cont 'depth depth)
                  (current-error-port))
+        (displayln 'f)
         (cond
           ; no indentation if point is in a string or comment
           [(or str? cmt?)                    (displayln "X")
                                              #f]
+          [(= depth 0)                       0]
           [(and (not (= depth 0)) last cont) (displayln "Y")
                                              (indent-function indent-point state)]
           [cont                              (displayln "Z")
@@ -348,6 +364,7 @@ need."
 (define lisp-body-indent 2)
 
 (define (indent-function indent-point state)
+  (displayln 'indent-function (current-error-port))
   "Called by `calculate-indent' to get indent column.
 INDENT-POINT is the position at which the line being indented begins.
 STATE is the `parse-partial-sexp' state for that position.
@@ -373,8 +390,7 @@ the `racket-indent-function` property."
      ; get the head of the inner-most sexp
      (define head (buffer-substring (current-buffer) (point) (begin (forward-sexp 1) (point))))
      ; find out how to indent that type of s-expression
-     (define method (get-indent-function-method head))
-     
+     (define method (get-indent-function-method head)) ; method = #f when head empty
           
      (displayln (list 'head head 'method method 'body-indent body-indent))
      (cond
@@ -410,8 +426,8 @@ the `racket-indent-function` property."
        (car (first ps))))
 
 (define (racket-normal-indent indent-point state)
-  ;; Credit: Substantially borrowed from clojure-mode
-  (goto-char (state-last-complete state))
+  (displayln 'racket-normal-indent-function (current-error-port))  
+  (goto-char (state-last-complete state)) ; start of last complete sexp
   (backward-prefix-chars)
   (let ([last-sexp #f])
     (if (ignore-errors
@@ -420,8 +436,7 @@ the `racket-indent-function` property."
           (while (string-match #rx"[^ \t]"
                                (buffer-substring (line-beginning-position)
                                                  (point)))
-            (set! last-sexp (begin0 (point)
-                                    (forward-sexp -1))))
+            (set! last-sexp (begin0 (point) (backward-sexp))))
           #t)
         ;; Here we've found an arg before the arg we're indenting
         ;; which is at the start of a line.
@@ -437,31 +452,37 @@ the `racket-indent-function` property."
           (current-column)))))
 
 (define (racket-indent-special-form method indent-point state)
+  (displayln 'racket-indent-special-form (current-error-port))
   "METHOD must be a nonnegative integer -- the number of
   \"special\" args that get extra indent when not on the first
-  line. Any additinonal args get normal indent."
-  ;; Credit: Substantially borrowed from clojure-mode
-  (let ([containing-column (with-saved-point
-                             (goto-char (state-inner-start state))
-                             (current-column))]
-        [pos -1])
-    (with-handlers
-        ;; If indent-point is _after_ the last sexp in the current sexp,
-        ;; we detect that by catching the `scan-error'. In that case, we
-        ;; should return the indentation as if there were an extra sexp
-        ;; at point.
-        ([exn? (λ (e) (inc! pos))]) ; Note: this assumes that forward-sexp throws an error
-      (while (and (<= (point) indent-point)
-                  (not (eob?)))
-             (forward-sexp 1)
-             (inc! pos)))
-      
-    (cond [(= method pos)               ;first non-distinguished arg
-           (+ containing-column lisp-body-indent)]
-          [(< method pos)               ;more non-distinguished args
-           (racket-normal-indent indent-point state)]
-          [else                         ;distinguished args
-           (+ containing-column (* 2 lisp-body-indent))])))
+  line. Any additional args get normal indent."
+  ; At entry we know that we are indenting a parenthesized
+  ; s-expression. We first find the column of the start parenthesis.
+  (define containing-column
+    ; todo: make a column-at-position
+    (with-saved-point (goto-char (state-inner-start state))
+                      (current-column)))
+  ; Now we need to count how many complete s-expressions are before
+  ; the indent point. 
+  (define pos
+    (let loop ([count     0]
+               [old-point #f]) ; needed to se if forward-sexp makes progress
+      (cond
+        ; no progress?
+        [(or (eq? (point) old-point) (eob?)) (+ count 1)]
+        ; we found the indent point
+        [(> (point) indent-point)            count]
+        ; move forward again 
+        [else                                (forward-sexp)
+                                             (loop (+ count 1) (point))])))
+  (displayln (list 'pos pos))
+  ; we need to figure the index of the s-expression at indent-point      
+  (cond [(= method pos)               ;first non-distinguished arg
+         (+ containing-column lisp-body-indent)]
+        [(< method pos)               ;more non-distinguished args
+         (racket-normal-indent indent-point state)]
+        [else                         ;distinguished args
+         (+ containing-column (* 2 lisp-body-indent))]))
 
 (define (racket-conditional-indent indent-point state looking-at-regexp true false)
   (skip-chars-forward " \t")
@@ -474,12 +495,14 @@ the `racket-indent-function` property."
 ;  "A regexp matching valid Racket identifiers."
 
 (define (racket-indent-maybe-named-let indent-point state)
+  (displayln 'racket-indent-maybe-named-let (current-error-port))
   "Indent a let form, handling named let (let <id> <bindings> <expr> ...)"
   (racket-conditional-indent indent-point state
                              racket-identifier-regexp
                              2 1))
 
 (define (racket-indent-for indent-point state)
+  (displayln 'racket-indent-for (current-error-port))
   "Indent function for all for/ and for*/ forms EXCEPT
 for/fold and for*/fold.
 Checks for either of:
@@ -490,6 +513,7 @@ Checks for either of:
                              3 1))
 
 (define (racket-indent-for/fold indent-point state)
+  (displayln 'racket-indent-for/fold (current-error-port))
   "Indent function for for/fold and for*/fold."
   ;; check for maybe-type-ann e.g. (for/fold : T ([n 0]) ([x xs]) x)
   (skip-chars-forward " \t\n")
@@ -498,6 +522,7 @@ Checks for either of:
       (racket-indent-for/fold-untyped indent-point state)))
 
 (define (racket-indent-for/fold-untyped indent-point state)
+  (displayln 'racket-indent-for/fold-untyped (current-error-port))
   (let* ((containing-sexp-start  (state-inner-start state))
          (_                      (goto-char containing-sexp-start))
          (containing-sexp-column (current-column))

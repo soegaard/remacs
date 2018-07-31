@@ -66,8 +66,12 @@
   (mark-move-to-column! (or m (get-point)) n)) ; n=numprefix 
 
 (define-interactive (forward-char [n +1] [m #f])
-  (and m (check-mark m))
-  (cond [(region-mark) => mark-deactivate!])
+  (when (= (position (or m (get-point)))
+           (end-of-buffer-position))
+    (displayln "F" (current-error-port)))
+  (when m
+    (check-mark m)
+    (cond [(region-mark) => mark-deactivate!]))
   (mark-move! (or m (get-point)) n))
 
 (define-interactive (backward-char [n -1] [m #f])
@@ -86,7 +90,7 @@
 (define-interactive (backward-line)
   ;(displayln "backward-line: x")
   ; Moves point one text line up.
-  (cond [(region-mark) => mark-deactivate!])
+  ;(cond [(region-mark) => mark-deactivate!])
   ;(displayln "backward-line: xx")
   (define p (get-point))
   ;(displayln "backward-line: xxx")
@@ -192,7 +196,7 @@
   (buffer-set-mark-to-point (current-buffer)))
 
 (define-interactive (exchange-point-and-mark)
-  (unless (get-mark) (new-mark (current-buffer) "*mark*")) ; TODO
+  (unless (get-mark) (new-mark (current-buffer) "*mark-pm*")) ; TODO
   (buffer-exchange-point-and-mark! (current-buffer))
   (mark-activate! (get-mark)))
 
@@ -1278,11 +1282,19 @@
   (define here (point))
   (backward-to-open-parenthesis-on-beginning-of-line)
   (let loop ([state empty-state])
-    (cond [(< (point) here)  (loop (parse-partial-sexp (point) here
-                                                       #:state state #:target-depth 0))]
-          [else              state])))
+    (cond
+      [(< (point) here)
+       (define old-point (point))
+       (define new-state (parse-partial-sexp (point) here #:state state #:target-depth 0))
+       (define new-point (point))
+       (when (= new-point old-point)
+         (error 'parse-state-at-ppoint "sigh"))
+       (loop new-state)]
+      [else
+       state])))
 
 (define (backward-sexp)
+  (backward-whitespace/quotes)
   (define s (parse-state-at-point))
   ; (display-state s)
   (match-define (state depth inner-start last-complete

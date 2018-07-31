@@ -88,7 +88,7 @@
                     overlays)) ; overlays
   (define point    (new-mark b "*point*"))
   (set-buffer-point! b point)
-  (define the-mark (new-mark b "*mark*" 0 #f #:active? #f #:insertion-type #f))
+  (define the-mark (new-mark b "*mark-nb*" 0 #f #:active? #f #:insertion-type #f))
   (set-buffer-the-mark! b the-mark)
   (define stats (text-stats text))
   (define num-lines (stats-num-lines stats))
@@ -382,7 +382,7 @@
       [(list)   (void 'done)]
       [(list s) (text-insert-string-at-mark! t m b s)]
       [_        (text-insert-string-at-mark! t m b (first segs))
-                (buffer-break-line! b m)
+                (text-break-line! t m) ; no marks adjustment
                 (mark-move! m -1) ; due to newline
                 (loop (rest segs))]))
   ; delete temporary mark
@@ -441,8 +441,11 @@
 ;   break line at mark
 (define (buffer-break-line! b [m (get-point)])
   (text-break-line! (buffer-text b) m)
-  (when (and (mark? m) (mark-insertion-type m))
-    (mark-move! m 1))
+  (define n (position m))
+  (for ([m (buffer-marks b)])
+    (mark-adjust-insertion-after! m n 1))
+  #;(when (and (mark? m) (mark-insertion-type m))
+      (mark-move! m 1))
   (buffer-dirty! b))
 
 ; buffer-delete-backward-char! : buffer mark [natural] -> void
@@ -504,9 +507,11 @@
     (mark-move-beginning-of-buffer! (buffer-point b)))
 
 (define (buffer-set-mark-to-point [b (current-buffer)])
+  (check-mark (get-point))
   ; todo: what should happen with the old mark?
-  (define m (new-mark b "*mark*" (point) #f #:active? #t))
+  (define m (new-mark b "*mark-smp*" (point) #f #:active? #t))
   (set-buffer-the-mark! b m)
+  (check-mark m)
   m)
 
 (define (buffer-set-the-mark [b (current-buffer)] [m #f])

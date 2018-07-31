@@ -25,7 +25,7 @@
                      (define n    (abs (- to from)))
                      (define end-is-a-mark? (member end (buffer-marks b) eq?))
                      (when end-is-a-mark?
-                       #;(mark-move-to-position! end   from)
+                       (mark-move-to-position! end   from)
                        (mark-move-to-position! point to))
                      (buffer-delete-backward-char! b point n)]
     [(mark< end beg) (region-delete-between! end beg)]
@@ -36,7 +36,9 @@
 (define (region-delete [start #f] [end #f])
   (define b     (current-buffer))
   (define mark  (buffer-the-mark b))
+  (check-mark mark)
   (define point (buffer-point b))
+  (check-mark point)
   (when (or (use-region?)
             (and start end))
     (buffer-dirty! b)
