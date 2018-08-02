@@ -353,9 +353,6 @@
 (define (line-beginning-position) ; emacs name
   (position-of-beginning-of-line))
 
-(define (line-end-position) ; emacs name
-  (position-of-end-of-line))
-
 (define (position-of-end [b (current-buffer)])
   (text-length (buffer-text b)))
 

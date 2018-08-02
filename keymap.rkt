@@ -122,7 +122,7 @@
          [_           #f])]
       [(list "C-x")
        (match key
-         [#\t         depth-at-point]
+         [#\t         split-line]
          [#\0         delete-window]
          [#\1         delete-other-windows]
          [#\2         split-window-below]

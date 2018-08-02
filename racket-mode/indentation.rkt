@@ -2,6 +2,14 @@
 (provide break-line-and-indent
          indent-for-tab
          indent-line)
+;;;
+;;; INDENTATION FOR RACKET
+;;;
+
+;; This file implements indentation for the Racket programming language.
+;; The implementation is heavily based on Greg Hendershott's elisp code
+;; for the indentation in racket-mode for Emacs.
+;; https://github.com/greghendershott/racket-mode/blob/master/racket-indent.el
          
 (require (for-syntax racket/base syntax/parse)
          racket/format racket/list racket/match racket/set
@@ -13,13 +21,13 @@
          "../search.rkt"
          "../simple.rkt")
 
-;;;
-;;; INDENTATION
-;;;
-
-;;; The variables are dir local in racket-mode.
+;;; These variables are dir local in Emacs racket-mode.
 (define racket-indent-sequence-depth    3)
 (define racket-indent-curly-as-sequence #t)
+
+;;;
+;;; GENERAL
+;;; 
 
 (define (indent-for-tab)
   (indent-line))
@@ -29,6 +37,7 @@
   (indent-for-tab))
 
 (define-interactive (indent-line)
+  "Indent a single line"
   (displayln 'indent-line (current-error-port))
   (define amount (calculate-indent))
   (displayln (list 'indent-line 'amount amount))
@@ -44,15 +53,6 @@
         (indent-to amount))
       (when (< (point) (- (point-max) pos))
         (goto-char (- (point-max) pos))))))
-
-(define-syntax (while stx)
-  (syntax-parse stx
-    [(_while expr body ...)
-     (syntax/loc stx
-       (let loop ()
-         (when expr
-           body ...
-           (loop))))]))
 
 (define (plain-beginning-of-define)
   (backward-to-open-parenthesis-on-beginning-of-line))
@@ -125,29 +125,32 @@ See `racket-indent-line' for more information about users setting
 the `racket-indent-function` property."
   ; find start of inner-most s-exp
   (goto-char (state-inner-start state))
+  ; record a few positions relative to the current point (maybe needed later)
+  (define no-head-indent (+ (current-column) 1))
+  (define body-indent    (+ (current-column) lisp-body-indent))
   ; if we are dealing with a define-like expression,
   ; we will later need to know the indendentation of the body  
-  (define body-indent (+ (current-column) lisp-body-indent))
   ; skip the parenthesis of inner most s-exp
-  (forward-char 1)
+  (forward-char 1)  
   ; 
   (cond
     [(or (hash-literal-or-keyword?) (data-sequence?))
-     (backward-prefix-chars) (current-column)]
+     (backward-prefix-chars)
+     (current-column)]
     [else
      ; get the head of the inner-most sexp
      (define head (buffer-substring (current-buffer) (point) (begin (forward-sexp 1) (point))))
      ; find out how to indent that type of s-expression
-     (define method (get-indent-function-method head)) ; method = #f when head empty
-          
+     (define method (get-indent-function-method head)) ; method = #f when head empty          
      (displayln (list 'head head 'method method 'body-indent body-indent))
      (cond
-       [(integer? method)                  (racket-indent-special-form method indent-point state)]
-       [(eq? method 'define)               body-indent]
-       [method                             (method indent-point state)]
-       [(regexp-match "^(def|with-)" head) body-indent] ;just like 'define
-       [(regexp-match "^begin" head)       (racket-indent-special-form 0 indent-point state)]
-       [else                               (racket-normal-indent indent-point state)])]))
+       [(only-whitespace-and-newline? head) no-head-indent]
+       [(integer? method)                   (racket-indent-special-form method indent-point state)]
+       [(eq? method 'define)                body-indent]
+       [method                              (method indent-point state)]
+       [(regexp-match "^(def|with-)" head)  body-indent] ;just like 'define
+       [(regexp-match "^begin" head)        (racket-indent-special-form 0 indent-point state)]
+       [else                                (racket-normal-indent indent-point state)])]))
 
 (define racket-indent-function-ht (make-hash))
 
@@ -160,44 +163,54 @@ the `racket-indent-function` property."
 (define-syntax (inc! stx) (syntax-parse stx [(_inc x) (syntax/loc stx (begin (set! x (+ x 1)) x))]))
 (define-syntax (dec! stx) (syntax-parse stx [(_dec x) (syntax/loc stx (begin (set! x (- x 1)) x))]))
 
-(define-syntax (ignore-errors stx)
-  (syntax-parse stx
-    [(_ignore-errors body ...)
-     (syntax/loc stx
-       (with-handlers ([exn? (λ (_) #f)])
-         body ...))]))
+(define (only-whitespace-and-newline? str)
+  (not (string-match #rx"[^ \t\n]" str)))
 
-(define (string-match regexp string [start #f])
+(define (string-match regexp string [start 0])
   ; Return index of start of first match.
-  (define ps (regexp-match-positions regexp  string start))
+  (define ps (regexp-match-positions regexp string start))
   (and ps
        (car (first ps))))
 
 (define (racket-normal-indent indent-point state)
   (displayln 'racket-normal-indent-function (current-error-port))  
+  "Return the indentation column for an s-expression with standard indentation."
+  ; In the following examples, the x marks the spot where the point should end up.
+  ;    (       (a         (a b     (a b c   (a b c d     (   (a  (a b   (a b     (a b
+  ;     x)      x)           x        x        x          b   b     c      c d         c d
+  ;                                                       x   x     x      x           x
+  ; The first five examples show how to indent in line after the head line.
+  ;   The first two examples are special cases.
+  ;   The next three examples show that we want to indent to the start of the
+  ;   first sexp after the head.  
+  ; The last five examples show how to indent a line not directly below the head line:
+  ;   Indent to the start of the first sexp on the previous line.
+  (define (string-on-line-before-point)
+    (buffer-substring (current-buffer) (line-beginning-position) (point)))
+  (define (only-whitespace? str)
+    (not (string-match #rx"[^ \t]" str)))
+  
+  ; 1. Find position from where we can use backward-sexp to go backwards.
   (goto-char (state-last-complete state)) ; start of last complete sexp
   (backward-prefix-chars)
-  (let ([last-sexp #f])
-    (if (ignore-errors
-          ;; `backward-sexp' until we reach the start of a sexp that is the
-          ;; first of its line (the start of the enclosing sexp).
-          (while (string-match #rx"[^ \t]"
-                               (buffer-substring (line-beginning-position)
-                                                 (point)))
-            (set! last-sexp (begin0 (point) (backward-sexp))))
-          #t)
-        ;; Here we've found an arg before the arg we're indenting
-        ;; which is at the start of a line.
-        (current-column)
-        ;; Here we've reached the start of the enclosing sexp (point is
-        ;; now at the function name), so the behavior depends on whether
-        ;; there's also an argument on this line.
-        (begin
-          (when (and last-sexp
-                     (< last-sexp (line-end-position)))
-            ;; There's an arg after the function name, so align with it.
-            (goto-char last-sexp))
-          (current-column)))))
+  ; 2. Go back until we find the head or an s-expression that appears
+  ;    as the first thing on a line. If we find the head, we will need
+  ;    to know the position of the s-expression after head (if any).
+  (let loop ([after #f])
+    (cond
+      [(only-whitespace? (string-on-line-before-point))
+       (current-column)]
+      [else
+       (define here (point))
+       (backward-sexp)
+       (cond [(= here (point)) ; found head
+              ; if there an argument after head, move to it
+              (when (and after (< after (line-end-position)))
+                (goto-char after))
+              ; otherwise just align with head
+              (current-column)]
+             [else
+              (loop here)])])))
 
 (define (racket-indent-special-form method indent-point state)
   (displayln 'racket-indent-special-form (current-error-port))
@@ -223,7 +236,6 @@ the `racket-indent-function` property."
         ; move forward again 
         [else                                (forward-sexp)
                                              (loop (+ count 1) (point))])))
-  (displayln (list 'pos pos))
   ; we need to figure the index of the s-expression at indent-point      
   (cond [(= method pos)               ;first non-distinguished arg
          (+ containing-column lisp-body-indent)]

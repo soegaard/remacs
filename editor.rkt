@@ -1,11 +1,5 @@
 #lang racket
 ;;;
-;;; BUGS
-;;;
-
-; racket-mode:  indent inside comment leads to error
-
-;;;
 ;;; INSTRUCTIONS
 ;;;
 
@@ -15,6 +9,7 @@
 
 ;;;   TODO indentation (almost done)
 ;;;   TODO magin insert paren
+;;;   TODO completion for modes
 ;;;   TODO buffer narrowing
 ;;;   TODO The column position of the cursor when using down should stay the same
 ;;;        even if one goes across short line.
@@ -225,7 +220,7 @@
       (local! screen-line-length (inexact->exact (quotient (- (- xmax xmin) 10) font-width)))
       ;; Placement of point relative to lines on screen
       (define-values (row col)           (mark-row+column (buffer-point b)))
-      (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
+      (define-values (start-row end-row) (maybe-recenter-top-bottom #t w)) ; XXX
       (define num-lines-to-skip   start-row)
       ;; Color area on screen (TODO: cache the coloring)
       (when (local color-buffer)

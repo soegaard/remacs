@@ -1,7 +1,7 @@
 #lang racket/base
 (provide color-buffer)
 ;;;
-;;; SYNTAX COLORING
+;;; SYNTAX COLORING FOR RACKET
 ;;;
 
 (require syntax-color/racket-lexer
@@ -17,9 +17,7 @@
 ;;; Colors
 
 ; See also "colors.rkt"
-(define brown orange)
 (define grey  (local text-color))
-(define black orange)
 
 ; The lexer returns token and the type of token.
 ; These colors are the standard colors used in DrRacket.

@@ -26,7 +26,6 @@
 (require racket/match 
          "../buffer.rkt"
          "../buffer-locals.rkt"
-         "../colors.rkt"
          "../commands.rkt"
          "../locals.rkt"
          "../mark.rkt"
@@ -60,17 +59,6 @@
   #:transparent #:mutable
   #:extra-name make-repl)
 
-;; We keep track of the repl in a hash table.
-
-; racket-mode-buffers-ht : buffer -> repl
-(define racket-mode-buffers-ht      (make-hasheq))
-(define racket-repl-mode-buffers-ht (make-hasheq))
-(define (register b repl)
-  (hash-set! racket-mode-buffers-ht b repl)
-  (hash-set! racket-repl-mode-buffers-ht (repl-buffer repl) repl))
-(define (get-repl b)
-  (or (hash-ref racket-mode-buffers-ht      b #f)
-      (hash-ref racket-repl-mode-buffers-ht b #f)))
 
 (define-interactive (racket-mode [b (current-buffer)])
   (define ns (current-namespace))
@@ -119,9 +107,21 @@
 (define prompt-length (string-length prompt-string))
 
 ;;;
-;;;
+;;; REPL
 ;;;
 
+;; Each buffer in racket-mode has has a corresponding repl,
+;; We keep track of the association in a hash table.
+
+; racket-mode-buffers-ht : buffer -> repl
+(define racket-mode-buffers-ht      (make-hasheq))
+(define racket-repl-mode-buffers-ht (make-hasheq))
+(define (register b repl)
+  (hash-set! racket-mode-buffers-ht b repl)
+  (hash-set! racket-repl-mode-buffers-ht (repl-buffer repl) repl))
+(define (get-repl b)
+  (or (hash-ref racket-mode-buffers-ht      b #f)
+      (hash-ref racket-repl-mode-buffers-ht b #f)))
 
 ; create-repl : buffer -> repl
 ;   Given a buffer in racket-mode, create a corresponding repl buffer
@@ -233,8 +233,7 @@
 
 (define-interactive (racket-repl-eval-or-newline-and-indent)
   "If there is a complete s-expression before point, then evaluate it."
-  "Otherwise use racket-newline-and-indent."
-  ; TODO: Check for existing
+  "Otherwise use racket-newline-and-indent."  
   (define b (current-buffer))
   (localize ([current-buffer b])
     (define r (get-repl b))
