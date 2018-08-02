@@ -1243,12 +1243,13 @@
                                          (set! inner-start (pop! inner-starts))
                                          ; we are about to go a paren depth down,
                                          ; if the target-depth is hit, we stop
-                                         (if (or (= depth 1)
-                                                 (= depth (and target-depth (+ target-depth 1))))
+                                         (set! depth (- depth 1))
+                                         (if (or (= depth 0)
+                                                 (= depth (and target-depth target-depth)))
                                              (create-state)
-                                             (begin (set! depth (- depth 1))
-                                                    (set! seen (rest seen))
-                                                    (loop j)))]
+                                             (begin 
+                                               (set! seen (rest seen))
+                                               (loop j)))]
                                         [else
                                          ; (message
                                          ;   (~a "forward-sexp: expected " (first seen)))
@@ -1292,6 +1293,10 @@
        (loop new-state)]
       [else
        state])))
+
+
+(define-interactive (depth-at-point)
+  (message (~a "depth: " (state-depth (parse-state-at-point)))))
 
 (define (backward-sexp)
   (backward-whitespace/quotes)
