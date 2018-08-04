@@ -8,7 +8,6 @@
 ;;; PRIORITY: HIGH
 
 ;;;   TODO indentation (almost done)
-;;;   TODO magic insert paren
 ;;;   TODO completion for modes
 ;;;   TODO buffer narrowing
 ;;;   TODO The column position of the cursor when using down should stay the same
@@ -301,9 +300,10 @@
             (define xmax
               (for/fold ([x xmin]) ([p+s contents])
                 (match-define (list p s) p+s)
-                ; background color
+                ; The background color is set in this order:
+                ; 1. Highlight line
                 (set-text-background-color #f hl? #f)
-                ; show-paren mode
+                ; 2. Parenthesis Pairing (show-paren mode)
                 (when #t ; show-paren
                   (define (indicator error-code) (if error-code 'error #t))
                   (when (and     show-paren-from-1         show-paren-to-1
@@ -314,7 +314,7 @@
                              (<= show-paren-from-2 p) (< p show-paren-to-2))
                     (define ind (indicator show-paren-error-2))
                     (set-text-background-color #f #f ind)))
-                ; region
+                ; 3. Region
                 (when (and reg-begin (<= reg-begin p) (< p reg-end))
                   (set-text-background-color #t hl? #f))
                 (when (and reg-end   (<= reg-end   p))

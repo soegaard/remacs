@@ -72,8 +72,9 @@
     (local! local-keymap
             (λ (prefix key)
               (match prefix
-                [(list)
+                [(list) ; no prefix
                  (match key
+                   [#\]         balance-parens]
                    ["M-left"    backward-sexp]
                    ["M-right"   forward-sexp]
                    ["M-S-right" forward-sexp/extend-region]

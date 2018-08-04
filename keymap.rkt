@@ -139,7 +139,7 @@
          ['left       previous-buffer]
          ; ["C-b"     list-buffers]     TODO        
          [_           #f])]      
-      [(list)
+      [(list) ; without prefix!
        ; (write (list 'empty-prefix 'key key)) (newline)
        (match key
          ["ESC"          'prefix]

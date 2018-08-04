@@ -1290,7 +1290,7 @@
                                       (set! depth (+ depth 1))
                                       (set! seen (cons cp seen))
                                       (loop j)]
-                [(closer _)           (create-state)] ; unexpected closer - don't eat!
+                [(closer _)           (skip) (create-state)] ; unexpected closer - do eat
                 [_                    (skip) (loop j)])])]
           [d ; inside at least one parenthesis, not at target-depth
            (cond
@@ -1326,19 +1326,13 @@
                                          (skip) (complete-parens!)
                                          (set! last-complete inner-start)
                                          (set! inner-start (pop! inner-starts))
-                                         ; we are about to go a paren depth down,
-                                         ; if the target-depth is hit, we stop
                                          (set! depth (- depth 1))
-                                         (if (or (= depth 0)
-                                                 (= depth (and target-depth target-depth)))
-                                             (create-state)
-                                             (begin 
-                                               (set! seen (rest seen))
-                                               (loop j)))]
+                                         (set! seen (rest seen))
+                                         (loop j)]
                                         [else
                                          ; (message
                                          ;   (~a "forward-sexp: expected " (first seen)))
-                                         (create-state)])]
+                                         (skip) (create-state)])] ; error situation
                 [_                   (skip) (loop j)])])]))]))
   (forward-whitespace/quotes limit)
   (unless start-current
@@ -1674,6 +1668,12 @@ If the closer doesn't belong to a balanced expression, return false."
          (buffer-overlay-range-set! b rb re sym val)
          (cond [(region-mark) => mark-deactivate!])] ; deactivate region
         [else (void)]))
+
+(define-interactive (balance-parens)
+  (define seen (state-seen (parse-state-at-point)))  
+  (if (empty? seen)
+      (insert-char #\])
+      (insert-char (first seen))))
 
 (define (show-paren-ranges b)
   (define before-from  #f)

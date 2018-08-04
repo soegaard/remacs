@@ -66,14 +66,11 @@ because the line starts inside a string.
 This is `calculate-lisp-indent' distilled to what we actually
 need."
   (with-saved-point
-    (displayln 'a)
     (beginning-of-line)
     (define indent-point (point))
-    (displayln 'b)
     ; move back to position with an empty parse state
-    (displayln 'c)
     (plain-beginning-of-define)
-    (displayln 'd)
+    (displayln (list 'point-at-beginnning-of-define (point)))
     ; parse forward to the indent-point
     (define state
       (let loop ([s empty-state] [old-point #f])
@@ -84,9 +81,9 @@ need."
             (begin
               (when (equal? old-point (point))
                 (display-state s)
-                (displayln (list 'indent-point indent-point 'point (point))))
+                (displayln (list 'zz 'indent-point indent-point 'point (point))))
               s))))
-    (displayln 'e)
+    (displayln (list 'point-after-state-found (point)))
     (display-state state)
     (let ([str?  (state-inside-string  state)]   ; inside string?
           [cmt?  (state-inside-comment state)]   ; inside comment?
@@ -95,7 +92,6 @@ need."
           [depth (state-depth          state)])  ; paren depth
       (display (list 'str? str? 'cmt? cmt? 'last last 'cont cont 'depth depth)
                (current-error-port))
-      (displayln 'f)
       (cond
         ; no indentation if point is in a string or comment
         [(or str? cmt?)                    (displayln "X")
@@ -135,6 +131,7 @@ the `racket-indent-function` property."
   ; 
   (cond
     [(or (hash-literal-or-keyword?) (data-sequence?))
+     (displayln "YYY")
      (backward-prefix-chars)
      (current-column)]
     [else
@@ -333,52 +330,54 @@ Returns nil for #% identifiers like #%app."
   (looking-at #rx"#(:|[^%])"))
 
 (define (data-sequence?)
-  "Looking at \"data\" sequences where we align under head item?
-These sequences include '() `() #() -- and {} when
-`racket-indent-curly-as-sequence' is t -- but never #'() #`() ,()
-,@().
-To handle nested items, we search `backward-up-list' up to
-`racket-indent-sequence-depth' times."
-  #f
-  #;(and (< 0 racket-indent-sequence-depth)
+  (displayln 'data-sequence (current-error-port))
+  "Looking at 'data' sequences where we align under head item?
+   These sequences include '() `() #() -- and {} when
+   racket-indent-curly-as-sequence is #t -- but never #'() #`() ,()
+   ,@().
+   To handle nested items, we search backward-up-list up to
+   racket-indent-sequence-depth times."
+  (and (< 0 racket-indent-sequence-depth)
        (with-saved-point
-         (define answer 'unknown)
-         (define depth  racket-indent-sequence-depth)
-         (while (and (eq? answer 'unknown) (< 0 depth))
-           (displayln 1)
-           (backward-up-list)
-           (displayln 2)
-           (dec! depth)
-           (displayln 3)
-           (cond
-             [(or
-               ;; a quoted '( ) or quasiquoted `( ) list --
-               ;; but NOT syntax #'( ) or quasisyntax #`( )
-               (and (displayln '3a)
-                    (memq (char-before (point)) '(#\' #\`))
-                    (eqv? (char-after  (point)) #\()
-                    (not (eqv? (char-before (- (point) 1)) #\#)))
-               ;; a vector literal: #( )
-               (and (displayln '3b)
-                    (eqv? (char-before (point)) #\#)
-                    (eqv? (char-after  (point)) #\())
-               ;; { }
-               (and (displayln '3c)
-                    racket-indent-curly-as-sequence
-                    (let ([t (eqv? (char-after (point)) #\{)])
-                      (displayln '3d)
-                      t)))
-               (displayln 4)
-               (set! answer #t)]
-             [;; unquote or unquote-splicing
-              (and (or (eqv? (char-before (point)) #\,)
-                       (and (eqv? (char-before (- (point) 1)) #\,)
-                            (eqv? (char-before    (point))    #\@)))
-                   (eqv? (char-after (point)) #\())
-              (displayln 5)
-              (set! answer #f)]))
-         answer)))
-
+         (let loop ([answer 'unknown])
+           (define depth  racket-indent-sequence-depth)
+           (when (and (eq? answer 'unknown) (> depth 0))
+             (displayln 1)
+             (backward-up-list)
+             (displayln 2)
+             (dec! depth)
+             (displayln 3)
+             (cond
+               [(or
+                 ;; a quoted '( ) or quasiquoted `( ) list --
+                 ;; but NOT syntax #'( ) or quasisyntax #`( )
+                 (and (displayln '3a)
+                      (memq (char-before (point)) '(#\' #\`))
+                      (eqv? (char-after  (point)) #\()
+                      (not (eqv? (char-before (- (point) 1)) #\#)))
+                 ;; a vector literal: #( )
+                 (and (displayln '3b)
+                      (eqv? (char-before (point)) #\#)
+                      (eqv? (char-after  (point)) #\())
+                 ;; { }
+                 (and (displayln '3c)
+                      racket-indent-curly-as-sequence
+                      (let ([t (eqv? (char-after (point)) #\{)])
+                        (displayln '3d)
+                        t)))
+                (displayln 4)
+                (loop #t)]
+               [;; unquote or unquote-splicing
+                (and (or (eqv? (char-before (point)) #\,)
+                         (and (eqv? (char-before (- (point) 1)) #\,)
+                              (eqv? (char-before    (point))    #\@)))
+                     (eqv? (char-after (point)) #\())
+                (displayln 5)
+                (loop #f)]))
+           (if (eq? answer 'unknown)
+               #f
+               answer)))))
+  
 (define (racket:set-indentation)
   "Set indentation for various Racket forms.
 Note that `beg*`, `def*` and `with-*` aren't listed here because
