@@ -46,6 +46,9 @@
 (define fill-column         76)
 (define fill-prefix         "")
 
+;;; Show Paren
+(define show-paren-mode? #t) 
+
 ;;;
 ;;; RENDERING
 ;;;

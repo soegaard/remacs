@@ -137,7 +137,7 @@
   ;; paren-mode
   (define-values (show-paren-from-1 show-paren-to-1 show-paren-from-2 show-paren-to-2
                  show-paren-error-1 show-paren-error-2)
-    (if #t ; XXX
+    (if (local show-paren-mode?)
         (show-paren-ranges b)
         (values #f #f #f #f #f #f)))
   ;
@@ -230,7 +230,7 @@
         (define from (or (position (window-start-mark w)) 0))
         (define to   (or (position (window-end-mark w)) (buffer-length b)))
         ; (displayln (list from to))
-        ((local color-buffer) b (max 0 from) (max 0 to))) ; xxx
+        ((local color-buffer) b (max 0 from) (max 0 to)))
       ;; Render
       (unless (current-render-points-only?)
         (when b
@@ -690,8 +690,6 @@
   ; Buffers, mini buffers and the echo area are rendered into 
   ; into the canvas of the window to which they belong.
   
-  ; (define canvas 'todo #;(create-window-canvas w))
-  ; (set-frame-canvas! this-frame canvas) ; XXX
   ;; Status line
   (define status-line (new message% [parent frame] [label "Welcome"]
                            ; [auto-resize #t]

@@ -495,7 +495,7 @@
      (buffer-insert-property-at-point! b sym val)]))
 
 #;(define (buffer-move-point-to-position! b n)
-    (mark-move-to-position! (buffer-point b) n)) ; xxxx
+    (mark-move-to-position! (buffer-point b) n)) 
 
 (define (buffer-move-mark-to-position! m n)
   (mark-move-to-position! m n))

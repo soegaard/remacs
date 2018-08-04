@@ -195,7 +195,7 @@
          ["M-S-@"         mark-word]
          ["M-left"        backward-word]
          ["M-right"       forward-word]
-         ["C-M-left"      backward-list] ; xxx
+         ["C-M-left"      backward-list]
          ["C-M-right"     forward-list]
          ["C-M-up"        backward-up-list]
          ; ["C-M-down"      forward-up-list] ; up-list in emcas

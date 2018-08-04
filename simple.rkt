@@ -84,12 +84,9 @@
       (mark-move-down! p)))
 
 (define-interactive (backward-line)
-  ;(displayln "backward-line: x")
   ; Moves point one text line up.
-  ;(cond [(region-mark) => mark-deactivate!])
-  ;(displayln "backward-line: xx")
+  (cond [(region-mark) => mark-deactivate!])
   (define p (get-point))
-  ;(displayln "backward-line: xxx")
   (if (mark-on-first-line? p)
       (mark-move-to-beginning-of-line! p)
       (mark-move-up! p)))
@@ -638,7 +635,7 @@
   (refresh-frame))
 
 (define-interactive (recenter-top-bottom)
-  (maybe-recenter-top-bottom #t)) ; todo: changed this from #t
+  (maybe-recenter-top-bottom #t))
 
 (define-interactive (insert-latest-kill)
   ; If another application has put any text onto the system clipboard
