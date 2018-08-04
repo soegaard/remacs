@@ -280,7 +280,6 @@
 ;;;
 
 ; Running the contents of a buffer in racket-mode
-; Take 1: No repl - just run program and see output in buffer.
 ;   1) Setup an output buffer
 ;   2) Setup an environment in which the program can run without any risk of affecting the editor.
 ;      Things to consider:
@@ -337,44 +336,46 @@
     (set! namespace (make-base-namespace))
     (set-repl-namespace! repl namespace)
     ; 5. Evaluate the user program
-    (parameterize ([current-output-port out-port]
-                   ; [current-error-port  out-port]
-                   [current-namespace   namespace]
-                   [current-custodian   custodian])
       ;; Start user process
-      (when user-thread (displayln "\n---")) ; omit on first run
-      (set! user-thread
-            (thread
-             (λ ()
-               (define (handle-exn e)
-                 (define msg (exn-message e))
-                 (define ctx (continuation-mark-set->context (exn-continuation-marks e)))
-                 (displayln msg)
-                 (displayln ctx))
-               (namespace-require program-path)
-               (parameterize ([current-namespace (module->namespace program-path)])
-                 (let loop ()
-                   (display "1" (current-error-port))
-                   (match-define (list beg end str) (channel-get channel))
-                   (display "2" (current-error-port))
-                   (goto-char end)
-                   (display "3" (current-error-port))
-                   (break-line)
-                   (display "4" (current-error-port))
-                   (insert prompt-string) ; after point
-                   (display "5" (current-error-port))
-                   (goto-char (+ end 1) before-prompt-mark)
-                   (display "6" (current-error-port))
-                   (define stx (read-syntax 'repl (open-input-string str)))
-                   (display "7" (current-error-port))
-                   (call-with-values
-                    (λ () (with-handlers ([exn:fail? handle-exn])
-                            (eval (with-syntax ([stx stx])
-                                    (syntax/loc #'stx (#%top-interaction . stx))))))
-                    (λ vs (for ([v vs])
-                            (unless (void? v)
-                              (print v))
-                            (newline))))
-                   (display "8" (current-error-port))
-                   (loop))))))
-      (set-repl-thread! repl user-thread))))
+    (when user-thread (displayln "\n---")) ; omit on first run
+    (set!
+     user-thread
+     (thread
+      (λ ()
+        (parameterize ([current-output-port out-port]
+                       ; [current-error-port  out-port]
+                       [current-namespace   namespace]
+                       [current-custodian   custodian]                 
+                       [current-namespace   (begin
+                                              (namespace-require program-path)
+                                              (module->namespace program-path))])
+          (define (handle-exn e)
+            (define msg (exn-message e))
+            (define ctx (continuation-mark-set->context (exn-continuation-marks e)))
+            (displayln msg)
+            (displayln ctx))
+          (let loop ()
+            (display "1" (current-error-port))
+            (match-define (list beg end str) (channel-get channel))
+            (display "2" (current-error-port))
+            (goto-char end)
+            (display "3" (current-error-port))
+            (break-line)
+            (display "4" (current-error-port))
+            (insert prompt-string) ; after point
+            (display "5" (current-error-port))
+            (goto-char (+ end 1) before-prompt-mark)
+            (display "6" (current-error-port))
+            (define stx (read-syntax 'repl (open-input-string str)))
+            (display "7" (current-error-port))
+            (call-with-values
+             (λ () (with-handlers ([exn:fail? handle-exn])
+                     (eval (with-syntax ([stx stx])
+                             (syntax/loc #'stx (#%top-interaction . stx))))))
+             (λ vs (for ([v vs])
+                     (unless (void? v)
+                       (print v))
+                     (newline))))
+            (display "8" (current-error-port))
+            (loop))))))
+    (set-repl-thread! repl user-thread)))

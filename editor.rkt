@@ -1,4 +1,6 @@
 #lang racket
+;;; NOW: Indentation of region
+
 ;;;
 ;;; INSTRUCTIONS
 ;;;
@@ -219,7 +221,8 @@
       (local! screen-line-length (inexact->exact (quotient (- (- xmax xmin) 10) font-width)))
       ;; Placement of point relative to lines on screen
       (define-values (row col)           (mark-row+column (buffer-point b)))
-      (define-values (start-row end-row) (maybe-recenter-top-bottom #t w)) ; XXX
+      (define-values (start-row end-row) (maybe-recenter-top-bottom #f w))
+      ;(displayln (list '(start-row end-row) (list start-row end-row)))
       (define num-lines-to-skip   start-row)
       ;; Color area on screen (TODO: cache the coloring)
       (when (local color-buffer)

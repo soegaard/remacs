@@ -38,9 +38,9 @@
 
 (define-interactive (indent-line)
   "Indent a single line"
-  (displayln 'indent-line (current-error-port))
+  ;(displayln 'indent-line (current-error-port))
   (define amount (calculate-indent))
-  (displayln (list 'indent-line 'amount amount))
+  ;(displayln (list 'indent-line 'amount amount))
   (when amount
     ;; When point is within the leading whitespace, move it past the
     ;; new indentation whitespace. Otherwise preserve its position
@@ -58,7 +58,7 @@
   (backward-to-open-parenthesis-on-beginning-of-line))
 
 (define (calculate-indent)
-  (displayln 'calculate-indent (current-error-port))
+  ;(displayln 'calculate-indent (current-error-port))
   "Return appropriate indentation for current line as Lisp code.
 In usual case returns an integer: the column to indent to.
 If the value is #f, that means don't change the indentation
@@ -70,7 +70,7 @@ need."
     (define indent-point (point))
     ; move back to position with an empty parse state
     (plain-beginning-of-define)
-    (displayln (list 'point-at-beginnning-of-define (point)))
+    ;(displayln (list 'point-at-beginnning-of-define (point)))
     ; parse forward to the indent-point
     (define state
       (let loop ([s empty-state] [old-point #f])
@@ -79,36 +79,36 @@ need."
             (loop (parse-partial-sexp (point) indent-point #:state s #:target-depth 0)
                   (point))
             (begin
-              (when (equal? old-point (point))
+              #;(when (equal? old-point (point))
                 (display-state s)
                 (displayln (list 'zz 'indent-point indent-point 'point (point))))
               s))))
-    (displayln (list 'point-after-state-found (point)))
-    (display-state state)
+    ;(displayln (list 'point-after-state-found (point)))
+    ;(display-state state)
     (let ([str?  (state-inside-string  state)]   ; inside string?
           [cmt?  (state-inside-comment state)]   ; inside comment?
           [last  (state-last-complete  state)]   ; start of last complete s-expr 
           [cont  (state-inner-start    state)]   ; start of inners most parent s-expr (containing)
           [depth (state-depth          state)])  ; paren depth
-      (display (list 'str? str? 'cmt? cmt? 'last last 'cont cont 'depth depth)
+      #;(display (list 'str? str? 'cmt? cmt? 'last last 'cont cont 'depth depth)
                (current-error-port))
       (cond
         ; no indentation if point is in a string or comment
-        [(or str? cmt?)                    (displayln "X")
+        [(or str? cmt?)                    ;(displayln "X")
                                            #f]
         [(= depth 0)                       0]
-        [(and (not (= depth 0)) last cont) (displayln "Y")
+        [(and (not (= depth 0)) last cont) ;(displayln "Y")
                                            (indent-function indent-point state)]
-        [cont                              (displayln "Z")
+        [cont                              ;(displayln "Z")
                                            (goto-char (+ cont 1)) ; why?
                                            (current-column)]
-        [else                              (displayln "W")
+        [else                              ;(displayln "W")
                                            (current-column)]))))
 
 (define lisp-body-indent 2)
 
 (define (indent-function indent-point state)
-  (displayln 'indent-function (current-error-port))
+  ; (displayln 'indent-function (current-error-port))
   "Called by `calculate-indent' to get indent column.
 INDENT-POINT is the position at which the line being indented begins.
 STATE is the `parse-partial-sexp' state for that position.
@@ -131,7 +131,7 @@ the `racket-indent-function` property."
   ; 
   (cond
     [(or (hash-literal-or-keyword?) (data-sequence?))
-     (displayln "YYY")
+     ; (displayln "YYY")
      (backward-prefix-chars)
      (current-column)]
     [else
@@ -139,7 +139,7 @@ the `racket-indent-function` property."
      (define head (buffer-substring (current-buffer) (point) (begin (forward-sexp 1) (point))))
      ; find out how to indent that type of s-expression
      (define method (get-indent-function-method head)) ; method = #f when head empty          
-     (displayln (list 'head head 'method method 'body-indent body-indent))
+     ; (displayln (list 'head head 'method method 'body-indent body-indent))
      (cond
        [(only-whitespace-and-newline? head) no-head-indent]
        [(integer? method)                   (racket-indent-special-form method indent-point state)]
@@ -170,7 +170,7 @@ the `racket-indent-function` property."
        (car (first ps))))
 
 (define (racket-normal-indent indent-point state)
-  (displayln 'racket-normal-indent-function (current-error-port))  
+  ; (displayln 'racket-normal-indent-function (current-error-port))  
   "Return the indentation column for an s-expression with standard indentation."
   ; In the following examples, the x marks the spot where the point should end up.
   ;    (       (a         (a b     (a b c   (a b c d     (   (a  (a b   (a b     (a b
@@ -210,7 +210,7 @@ the `racket-indent-function` property."
               (loop here)])])))
 
 (define (racket-indent-special-form method indent-point state)
-  (displayln 'racket-indent-special-form (current-error-port))
+  ; (displayln 'racket-indent-special-form (current-error-port))
   "METHOD must be a nonnegative integer -- the number of
   \"special\" args that get extra indent when not on the first
   line. Any additional args get normal indent."
@@ -330,7 +330,7 @@ Returns nil for #% identifiers like #%app."
   (looking-at #rx"#(:|[^%])"))
 
 (define (data-sequence?)
-  (displayln 'data-sequence (current-error-port))
+  ; (displayln 'data-sequence (current-error-port))
   "Looking at 'data' sequences where we align under head item?
    These sequences include '() `() #() -- and {} when
    racket-indent-curly-as-sequence is #t -- but never #'() #`() ,()
@@ -342,37 +342,37 @@ Returns nil for #% identifiers like #%app."
          (let loop ([answer 'unknown])
            (define depth  racket-indent-sequence-depth)
            (when (and (eq? answer 'unknown) (> depth 0))
-             (displayln 1)
+             ; (displayln 1)
              (backward-up-list)
-             (displayln 2)
+             ; (displayln 2)
              (dec! depth)
-             (displayln 3)
+             ; (displayln 3)
              (cond
                [(or
                  ;; a quoted '( ) or quasiquoted `( ) list --
                  ;; but NOT syntax #'( ) or quasisyntax #`( )
-                 (and (displayln '3a)
+                 (and #;(displayln '3a)
                       (memq (char-before (point)) '(#\' #\`))
                       (eqv? (char-after  (point)) #\()
                       (not (eqv? (char-before (- (point) 1)) #\#)))
                  ;; a vector literal: #( )
-                 (and (displayln '3b)
+                 (and #;(displayln '3b)
                       (eqv? (char-before (point)) #\#)
                       (eqv? (char-after  (point)) #\())
                  ;; { }
-                 (and (displayln '3c)
+                 (and #;(displayln '3c)
                       racket-indent-curly-as-sequence
                       (let ([t (eqv? (char-after (point)) #\{)])
-                        (displayln '3d)
+                        #;(displayln '3d)
                         t)))
-                (displayln 4)
+                ;(displayln 4)
                 (loop #t)]
                [;; unquote or unquote-splicing
                 (and (or (eqv? (char-before (point)) #\,)
                          (and (eqv? (char-before (- (point) 1)) #\,)
                               (eqv? (char-before    (point))    #\@)))
                      (eqv? (char-after (point)) #\())
-                (displayln 5)
+                ;(displayln 5)
                 (loop #f)]))
            (if (eq? answer 'unknown)
                #f
