@@ -65,13 +65,9 @@
 (define-interactive (move-to-column n [m #f])  
   (mark-move-to-column! (or m (get-point)) n)) ; n=numprefix 
 
-(define-interactive (forward-char [n +1] [m #f])
-  (when (= (position (or m (get-point)))
-           (end-of-buffer-position))
-    (displayln "F" (current-error-port)))
-  (when m
-    (check-mark m)
-    (cond [(region-mark) => mark-deactivate!]))
+(define-interactive (forward-char [n +1] [m #f])  
+  (and m (check-mark m))
+  (cond [(region-mark) => mark-deactivate!])
   (mark-move! (or m (get-point)) n))
 
 (define-interactive (backward-char [n -1] [m #f])
@@ -658,7 +654,7 @@
      (buffer-insert-latest-kill)]
     [else
      ; system clipboard is newer
-     (buffer-insert-string! (get-point) s)]))
+     (buffer-insert-string! (current-buffer) (get-point) s)]))
 
 (define-interactive (copy-region)
   (update-current-clipboard-at-latest-kill)
@@ -741,6 +737,61 @@
 ;;; INDENTATION
 ;;;
 
+
+;;; 32.17.1 Indentation Primitives
+
+(define (current-indentation)
+  "Column of first non-blank character. "
+  "If line is all blank, then the position of the end of line is returned"
+  (with-saved-point
+    (beginning-of-line)
+    (if (blank-line?)
+        (position-of-end-of-line)
+        (forward-whitespace))))
+
+(define (indent-to column [minimum #f])
+  "Indent from point to column."
+  "If minimum is present, insert at least minimum spaces even if column is exceeded."
+  "If point is past column do nothing (except when minimum is given)."
+  "Return column of position where indentation ends."
+  (define c      (current-column))  
+  (define amount (max (if (< c column) (- column c) 0)
+                      (or minimum 0)))
+  (insert (make-string amount #\space))
+  (+ c amount))
+
+;;; 24.1 Indentation Commands
+
+(define-interactive (back-to-indentation)
+  "Move to first non-blank character on line."
+  (beginning-of-line)
+  (let loop ()
+    (unless (eol?)
+      (when (blank? (char-category (char-after-point)))
+        (forward-char)
+        (loop)))))
+
+(define (change-indentation column)
+  (back-to-indentation)
+  (define cur (current-column))
+  (define n   (abs (- cur column)))
+  (cond
+    [(< column cur) (delete-region column (point))]
+    [(= column cur) (void)]
+    [(> column cur) (insert (make-string n #\space))]))
+  
+(define-interactive (split-line)
+  "Split line at two at point. Keep point at first line, indent second line to align with point."
+  ; TODO: Insert fill prefix on new line.
+  (define c (current-column))
+  (break-line)
+  (backward-char)
+  (with-saved-point
+    (forward-char)
+    (change-indentation c)))
+
+;;;
+
 (define-interactive insert-space
   (self-insert-command #\space))
 
@@ -768,6 +819,10 @@
   (define next-tab-stop     (cond [tabs (next-greater-in-list col tabs next-by-width)]
                                   [else next-by-width]))
   (insert-spaces (- next-tab-stop col)))
+
+
+
+
 
 ;;;
 ;;; 7.7 Blank Lines
@@ -931,10 +986,16 @@
 (define (end-of-buffer-position)
   (max 0 (- (buffer-length (current-buffer)) 1)))
 
+(define (line-end-position) ; emacs name
+  (position-of-end-of-line (get-point)))
+
 (define (eob?)
   ; is point at end of buffer?
   (>= (point) (end-of-buffer-position)))
 
+(define (eol?)
+  ; is point at end of line
+  (= (point) (line-end-position)))
 
 ;;; Looking
 
@@ -1007,7 +1068,7 @@
                       (cons #\;       (comment-starter))
                       (cons #\'       (expression-prefix))
                       (cons #\,       (expression-prefix))
-                      (cons #\#       (expression-prefix)))))
+                      (cons #\#       (expression-prefix))))) ; @ ?
 (define (add-char-range from to cat)
   (for ([c (in-range (char->integer from) (char->integer to))])
     (hash-set! syntax-category-ht (integer->char c) cat)))
@@ -1020,6 +1081,8 @@
 (define (char-category c)
   (hash-ref syntax-category-ht c #f))
 
+
+      
 (define (forward-whitespace)
   "Move forward over any whitespace."
   (let loop ()
@@ -1084,6 +1147,7 @@
                last-complete   ; start of last complete sexp terminated (paren or non-paren sexp)
                inside-string   ; string ender if inside string
                inside-comment  ; #t if inside comment, number if in nestable comment
+               inside-symbol   ; #t if inside symbol or number
                after-quote     ; #t if point right after quote
                comment-style
                comment-start   ; valid if inside-comment is true (position)
@@ -1096,8 +1160,8 @@
 
 (define (display-state s)
   (match-define (state depth inner-start last-complete
-                       inside-string inside-comment after-quote comment-style
-                       comment-start string-start seen inner-starts start-current)
+                       inside-string inside-comment inside-symbol after-quote
+                       comment-style comment-start string-start seen inner-starts start-current)
     s)
   (displayln "State: ")
   (map displayln (list (list 'depth          depth)
@@ -1105,6 +1169,7 @@
                        (list 'last-complete  last-complete)
                        (list 'inside-string  inside-string)
                        (list 'inside-comment inside-comment)
+                       (list 'inside-symbol  inside-symbol)
                        (list 'after-quote    after-quote)
                        (list 'comment-style  comment-style)
                        (list 'comment-start  comment-start)
@@ -1116,11 +1181,11 @@
 
 (require (for-syntax racket/base syntax/parse))
 
-(define empty-state (state 0 #f #f #f #f #f #f #f #f '() '() #f))
+(define empty-state (state 0 #f #f #f #f #f #f #f #f #f '() '() #f))
 
 (define-syntax (push! stx) (syntax-parse stx [(_push! id:id e:expr) #'(set! id (cons e id))]))
 (define-syntax (pop! stx) (syntax-parse stx[(_pop! id:id) #'(begin0 (first id) (set! id (rest id)))]))
-
+        
 (define (parse-partial-sexp start limit #:state [start-state #f] #:target-depth [target-depth #f])
   ; TODO: set last-complete correctly for non-string, non-parens e.g. for a symbol
   ; (displayln (list 'parse-partial-sexp 'start start 'limit limit))
@@ -1130,7 +1195,7 @@
 
   ; define the loop variables
   (match-define (state depth inner-start last-complete
-                       inside-string inside-comment after-quote comment-style
+                       inside-string inside-comment inside-symbol after-quote comment-style
                        comment-start string-start seen inner-starts start-current)
     (or start-state empty-state))
 
@@ -1141,20 +1206,31 @@
   (define-syntax (create-state stx)
     (syntax-parse stx [(_) (syntax/loc stx
                              (state depth inner-start last-complete inside-string inside-comment
+                                    inside-symbol
                                     after-quote comment-style comment-start string-start
                                     seen inner-starts start-current))]))
   
   (define-syntax (complete-parens! stx) ; an parenthesized sexp was completed
     (syntax-parse stx [(_) #'(when inner-start
                                (set! last-complete inner-start)
+                               (set! inside-symbol #f)
                                (set! start-current #f))]))
   (define-syntax (complete! stx) ; an (non-parenthesized) sub-sexp was completed
-    (syntax-parse stx [(_) #'(when start-current
+    (syntax-parse stx [(_) #'(when (and (or inside-string inside-symbol)
+                                        start-current (not inner-start))
                                (set! last-complete start-current)
-                               (set! start-current #f))]))
+                               (set! start-current #f)
+                               (set! inside-symbol #f)
+                               (set! inside-string #f))]))
   (define (loop i)
     (define-syntax (new! stx)    ; possible new sexp start
-      (syntax-parse stx [(_new!) #'(unless start-current (set! start-current i))]))
+      (syntax-parse stx [(_new!) #'(unless (or start-current inside-symbol)
+                                     (set! inside-symbol #f)
+                                     (set! start-current i))]))
+    (define-syntax (new-symbol! stx)    ; possible new sexp start
+      (syntax-parse stx [(_new!) #'(unless inside-symbol
+                                     (set! inside-symbol #t)
+                                     (set! start-current i))]))
     #; (displayln (list i (create-state)))
     (define j i)
     ; Invariant: Exactly one (skip) in all paths not returning (create-state)
@@ -1164,9 +1240,16 @@
       [(= i limit)
        ; Set last-complete and start-current to proper values, before returning the parse state
        (define x (char-category (char-after-point)))
+       (displayln (list 'x (char-after-point) (char-category (char-after-point))))
+       (when (and inside-string (not (symbol-constituent? x)))
+         (set! inside-string #f))
        #;(when (and (not (or inside-string inside-comment))
-                    (or (blank? x) (string-starter? x) (comment-starter? x) (closer? x)))
+                    (or (blank? x) (string-starter? x) (comment-starter? x) (closer? x)
+                        (comment-ender? x)))
+           (displayln "complete!")
            (complete!))
+
+       (displayln "(= i limit")
        (create-state)]
       [else
        (define c (char-after-point))
@@ -1194,12 +1277,14 @@
               (match (char-category c)
                 [(blank)              (complete!) (create-state)] ; space and tab
                 [(comment-ender)      (complete!) (create-state)] ; newline
-                [(symbol-constituent) (new!) (skip) (loop j)]
+                [(symbol-constituent) (new-symbol!) (skip) (loop j)]
                 [(string-starter e)   (set! string-start i)  (set! inside-string e)
                                       (complete!) (new!) (skip) (loop j)]
-                [(comment-starter)    (set! comment-start i) (set! inside-comment #t)
+                [(comment-starter)    (set! comment-start i)
+                                      (set! inside-comment #t)
                                       (complete!)        (skip) (loop j)]
-                [(opener cp)          (complete!) (skip)
+                [(opener cp)          (complete!)
+                                      (skip)
                                       (push! inner-starts inner-start)
                                       (set! inner-start i)      ; needs to be after (skip)
                                       (set! depth (+ depth 1))
@@ -1225,7 +1310,7 @@
               (match (char-category c)
                 [(blank)              (complete!)             (skip) (loop j)] ; space and tab
                 [(comment-ender)      (complete!)             (skip) (loop j)] ; newline
-                [(symbol-constituent) (new!)                  (skip) (loop j)]                
+                [(symbol-constituent) (new-symbol!)           (skip) (loop j)]                
                 [(string-starter e)   (set! string-start i) (set! inside-string e)
                                       (complete!) (new!)      (skip) (loop j)]
                 [(comment-starter)    (set! comment-start i) (set! inside-comment #t)
@@ -1253,8 +1338,8 @@
                                         [else
                                          ; (message
                                          ;   (~a "forward-sexp: expected " (first seen)))
-                                         (create-state)])]                
-                [_                (skip) (loop j)])])]))]))
+                                         (create-state)])]
+                [_                   (skip) (loop j)])])]))]))
   (forward-whitespace/quotes limit)
   (unless start-current
     (set! start-current (point)))
@@ -1289,7 +1374,7 @@
        (define new-state (parse-partial-sexp (point) here #:state state #:target-depth 0))
        (define new-point (point))
        (when (= new-point old-point)
-         (error 'parse-state-at-ppoint "sigh"))
+         (error 'parse-state-at-point "sigh"))
        (loop new-state)]
       [else
        state])))
@@ -1303,7 +1388,7 @@
   (define s (parse-state-at-point))
   ; (display-state s)
   (match-define (state depth inner-start last-complete
-                       inside-string inside-comment after-quote comment-style
+                       inside-string inside-comment inside-symbol after-quote comment-style
                        comment-start string-start seen inner-starts start-current)
     s)
   (goto-char (max (or last-complete 0)
@@ -1570,27 +1655,6 @@ If the closer doesn't belong to a balanced expression, return false."
   ;       such as tab. The function mark-column works on logical characters.
   (mark-column (get-point)))
 
-;;; 32.17.1 Indentation Primitives
-
-(define (current-indentation)
-  "Column of first non-blank character. "
-  "If line is all blank, then the position of the end of line is returned"
-  (with-saved-point
-    (beginning-of-line)
-    (if (blank-line?)
-        (position-of-end-of-line)
-        (forward-whitespace))))
-
-(define (indent-to column [minimum #f])
-  "Indent from point to column."
-  "If minimum is present, insert at least minimum spaces even if column is exceeded."
-  "If point is past column do nothing (except when minimum is given)."
-  "Return column of position where indentation ends."
-  (define c      (current-column))  
-  (define amount (max (if (< c column) (- column c) 0)
-                      (or minimum 0)))
-  (insert (make-string amount #\space))
-  (+ c amount))
   
 
 ;;; 37.9 Overlays
@@ -1620,31 +1684,38 @@ If the closer doesn't belong to a balanced expression, return false."
   (define after-error  #f)
 
   (localize ([current-buffer b])
-    ; before
-    (define cb (char-before-point))
-    (when (and (char? cb) (closer? (char-category cb)))
-      (define to   (point))
-      (define from (and (backward-list #f) (point)))
-      (goto-char to)
-      (cond [from (set! before-from from)
-                  (set! before-to   to)]
-            [else (set! before-error #t)
-                  (set! before-from (- to 1))
-                  (set! before-to   to)]))
-    ; after
-    (define ca (char-after-point))
-    (when (and (char? ca) (opener? (char-category ca)))
-      (define from (point))
-      (define to   (and (forward-list #f) (point)))
-      (goto-char from)
-      (cond [to   (set! after-from from)
-                  (set! after-to   to)]
-            [else (set! after-error #t)
-                  (set! after-from from)
-                  (set! after-to   (+ from 1))]))
-  (values before-from  before-to
-          after-from   after-to
-          before-error after-error)))
+    (with-saved-point
+      (define active? (mark-active? (get-mark)))
+      ; before
+      (define cb (char-before-point))
+      (when (and (char? cb) (closer? (char-category cb)))
+        (define to   (point))
+        (define from (and (backward-list #f) (point)))
+        (goto-char to)
+        (cond [from (set! before-from from)
+                    (set! before-to   to)]
+              [else (set! before-error #t)
+                    (set! before-from (- to 1))
+                    (set! before-to   to)]))
+      ; after
+      (define ca (char-after-point))
+      (when (and (char? ca) (opener? (char-category ca)))
+        (define from (point))
+        (define to   (and (forward-list #f) (point)))
+        (goto-char from)
+        (cond [to   (set! after-from from)
+                    (set! after-to   to)]
+              [else (set! after-error #t)
+                    (set! after-from from)
+                    (set! after-to   (+ from 1))]))
+      ; restore mark
+      (define m (get-mark))
+      (if active? 
+          (mark-activate! m)
+          (mark-deactivate! m)))
+    (values before-from  before-to
+            after-from   after-to
+            before-error after-error)))
 
 
 (define (line-number-at-pos [pos #f])

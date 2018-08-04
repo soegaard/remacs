@@ -122,7 +122,7 @@
          [_           #f])]
       [(list "C-x")
        (match key
-         [#\t         split-line]
+         [#\t         (λ () (display-state (parse-state-at-point)))]
          [#\0         delete-window]
          [#\1         delete-other-windows]
          [#\2         split-window-below]

@@ -570,9 +570,7 @@
     (if (mark? pos) (mark-position pos) pos))
 
 (define (get-mark [b (current-buffer)])
-  (define marks (buffer-marks b))
-  (if (empty? marks) #f (first marks)))
-
+  (buffer-the-mark b))
 
 (define (push-mark [pos-or-mark 0] [b (current-buffer)] #:name [name "*mark*"])
   (define m  (or (and (mark? pos-or-mark) pos-or-mark)
