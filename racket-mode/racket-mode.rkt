@@ -1,11 +1,13 @@
 #lang racket/base
-(provide color-buffer     ; from "syntax-coloring.rkt"
-         indent-for-tab   ; from "indentation.rkt"
+(provide color-buffer            ; from "syntax-coloring.rkt"
+         racket-indent-for-tab   ; from "indentation.rkt"
          ; ---
          racket-mode
          ; ---
          get-repl     
          racket-run)
+
+
 
 ;;;
 ;;; RACKET MODE
@@ -85,6 +87,8 @@
                    [_           #f])]
                 [_ #f]))
             b)
+    ; Locals
+    (local! indent-for-tab racket-indent-for-tab)
     ; import racket-mode into buffer-locals
     (parameterize ([current-namespace (buffer-locals b)])
       (namespace-attach-module ns 'racket/gui/base)
@@ -379,3 +383,4 @@
             (display "8" (current-error-port))
             (loop))))))
     (set-repl-thread! repl user-thread)))
+

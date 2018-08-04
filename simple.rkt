@@ -790,7 +790,41 @@
     (forward-char)
     (change-indentation c)))
 
-;;;
+(define-interactive (indent-region)
+  (define b (current-buffer))
+  ; Indent line or region.
+  ; Use `indent-line-function` to indent each line.
+  (define indent-line (local indent-for-tab))
+  (cond
+    [(use-region?)
+     (define beg     (region-beginning))
+     (define end     (region-end))
+     ; indenting the lines in the region affects the position of end,
+     ; so we need a mark that moves along.
+     (define end-m   (new-mark b "*temp" end))
+     (backward-char -1 end-m)
+     ; go to the beginning of the region and indent each line
+     (goto-char beg)
+     (let loop ()
+       (when (< (point) (mark-position end-m))
+         (indent-line)
+         (when (< (point) (mark-position end-m))
+           (beginning-of-line)
+           (forward-line)
+           (loop))))
+     ; clean up
+     (delete-mark! end-m)
+     #;(back-to-indentation)]
+    [else
+     (indent-line)]))
+
+(define (on-same-line? pos1 pos2 [b (current-buffer)])
+  (define p1 (position pos1))
+  (define p2 (position pos2))
+  (define t (buffer-text b))
+  (text-on-same-line? t p1 p2))
+
+;;; Indentation helpers
 
 (define-interactive insert-space
   (self-insert-command #\space))
@@ -1240,7 +1274,7 @@
       [(= i limit)
        ; Set last-complete and start-current to proper values, before returning the parse state
        (define x (char-category (char-after-point)))
-       (displayln (list 'x (char-after-point) (char-category (char-after-point))))
+       ; (displayln (list 'x (char-after-point) (char-category (char-after-point))))
        (when (and inside-string (not (symbol-constituent? x)))
          (set! inside-string #f))
        #;(when (and (not (or inside-string inside-comment))
@@ -1248,8 +1282,6 @@
                         (comment-ender? x)))
            (displayln "complete!")
            (complete!))
-
-       (displayln "(= i limit")
        (create-state)]
       [else
        (define c (char-after-point))
@@ -1724,3 +1756,6 @@ If the closer doesn't belong to a balanced expression, return false."
            (goto-char pos)
            (mark-row (get-point)))]
     [else  (mark-row (get-point))]))
+
+
+  

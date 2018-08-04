@@ -1,5 +1,6 @@
 #lang racket
-;;; NOW: Indentation of region
+;;; BUG: In fundamentatal-mode and text-mode the indentation of the
+;;;      preceding line needs to be added as a "tab stop".
 
 ;;;
 ;;; INSTRUCTIONS

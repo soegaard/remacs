@@ -213,7 +213,7 @@
          [#\backspace     backward-delete-char]   ; backspace
          [#\rubout        (λ () (error 'todo))]   ; delete
          ; make tab insert 4 spaces
-         [#\tab           (local indent-for-tab)]
+         [#\tab           indent-region] ; was indent-for-tab
          ['home           beginning-of-line] ; fn+left
          ['end            end-of-line]       ; fn+right
          ['next           page-down] 

@@ -1,6 +1,6 @@
 #lang racket/base
 (provide break-line-and-indent
-         indent-for-tab
+         racket-indent-for-tab
          indent-line)
 ;;;
 ;;; INDENTATION FOR RACKET
@@ -29,12 +29,12 @@
 ;;; GENERAL
 ;;; 
 
-(define (indent-for-tab)
+(define (racket-indent-for-tab)
   (indent-line))
 
 (define (break-line-and-indent)
   (break-line)
-  (indent-for-tab))
+  (racket-indent-for-tab))
 
 (define-interactive (indent-line)
   "Indent a single line"

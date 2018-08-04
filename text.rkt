@@ -10,6 +10,7 @@
          text-insert-string-at-mark!
          text-line                   ; text integer -> line    the i'th line
          text-num-lines
+         text-on-same-line?          ; text int int -> bool    positions on same line?
          text-stats         
          text->string
          subtext->string
@@ -241,3 +242,9 @@
      (interval-map-insert!   im pstart (- end 1) pd)]
     [else      ; 
      (error 'todo)]))
+
+(define (text-on-same-line? t p1 p2)
+  ; is the two positions on the same line?
+  (define im (text-positions t))
+  (define-values (start end d) (interval-map-ref/bounds im p1))
+  (<= start p2 (+ end 1)))
