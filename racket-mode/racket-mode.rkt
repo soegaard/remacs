@@ -8,7 +8,6 @@
          racket-run)
 
 
-
 ;;;
 ;;; RACKET MODE
 ;;;
@@ -144,9 +143,9 @@
     (buffer-insert-string! b (get-point) (banner))
     ;; Marks before and after prompt
     (define before-prompt-mark (buffer-set-mark-to-point b))
-    (define  after-prompt-mark (buffer-set-mark-to-point b))
+    ;  (define  after-prompt-mark (buffer-set-mark-to-point b))
     (mark-deactivate! before-prompt-mark)
-    (mark-deactivate!  after-prompt-mark)
+    ; (mark-deactivate!  after-prompt-mark)
     ;; Insertion into the buffer needs to be before the prompt
     (define out-port (make-output-buffer b before-prompt-mark))
     (define in-port  (open-input-string "42"))
@@ -165,7 +164,7 @@
           out-port
           in-port
           before-prompt-mark   
-          after-prompt-mark    
+          #f ; after-prompt-mark    
           #f                   ; running?             
           #f                   ; thread               
           custodian
@@ -230,6 +229,9 @@
                      [_           #f])]
                   [_ #f]))
               b)
+      (local! color-buffer     #f)
+      (local! show-paren-mode? #f)
+      (local! auto-fill-mode?  #f)
       (parameterize ()
         (namespace-attach-module ns 'racket/gui/base)
         (namespace-attach-module ns 'data/interval-map)
@@ -268,9 +270,13 @@
     ; (log-debug (~a (list 'm (position m) 'beg0 beg0 'beg1 beg1 'end end)))
     (cond
       ; complete s-expression?
-      [(and (= beg0 beg1) (= beg0 end)) (break-line)]
-      [(= beg0 beg1)                    (racket-repl-eval r beg0 end)]
-      [else                             (break-line)])))
+      [(and (= beg0 beg1) (= beg0 end)) (display 'E (current-error-port))
+                                        (break-line)]
+      [(= beg0 beg1)                    (display 'F (current-error-port))
+                                        (racket-repl-eval r beg0 end)]
+      [else                             (display 'G (current-error-port))
+                                        (break-line)])
+    (display 'H (current-error-port))))
 
 (define (racket-repl-eval repl beg end)
   (define b  (current-buffer))
@@ -344,43 +350,41 @@
     (when user-thread (displayln "\n---")) ; omit on first run
     (set!
      user-thread
-     (thread
-      (λ ()
-        (parameterize ([current-output-port out-port]
-                       ; [current-error-port  out-port]
-                       [current-namespace   namespace]
-                       [current-custodian   custodian]                 
-                       [current-namespace   (begin
-                                              (namespace-require program-path)
-                                              (module->namespace program-path))])
+     (parameterize ([current-output-port out-port]
+                    ; [current-error-port  out-port]
+                    [current-namespace   namespace]
+                    [current-custodian   custodian])
+       (thread
+        (λ ()
+          (namespace-require program-path)
           (define (handle-exn e)
             (define msg (exn-message e))
             (define ctx (continuation-mark-set->context (exn-continuation-marks e)))
             (displayln msg)
             (displayln ctx))
-          (let loop ()
-            (display "1" (current-error-port))
-            (match-define (list beg end str) (channel-get channel))
-            (display "2" (current-error-port))
-            (goto-char end)
-            (display "3" (current-error-port))
-            (break-line)
-            (display "4" (current-error-port))
-            (insert prompt-string) ; after point
-            (display "5" (current-error-port))
-            (goto-char (+ end 1) before-prompt-mark)
-            (display "6" (current-error-port))
-            (define stx (read-syntax 'repl (open-input-string str)))
-            (display "7" (current-error-port))
-            (call-with-values
-             (λ () (with-handlers ([exn:fail? handle-exn])
-                     (eval (with-syntax ([stx stx])
-                             (syntax/loc #'stx (#%top-interaction . stx))))))
-             (λ vs (for ([v vs])
-                     (unless (void? v)
-                       (print v))
-                     (newline))))
-            (display "8" (current-error-port))
-            (loop))))))
+          (parameterize ([current-namespace (module->namespace program-path)])
+            (let loop ()
+              (display "1" (current-error-port))
+              (match-define (list beg end str) (channel-get channel))
+              (display "2" (current-error-port))
+              (goto-char end)
+              (display "3" (current-error-port))
+              (break-line)
+              (display "4" (current-error-port))
+              (insert prompt-string) ; after point
+              (display "5" (current-error-port))
+              (goto-char (+ end 1) before-prompt-mark)
+              (display "6" (current-error-port))
+              (define stx (read-syntax 'repl (open-input-string str)))
+              (display "7" (current-error-port))
+              (call-with-values
+               (λ () (with-handlers ([exn:fail? handle-exn])
+                       (eval (with-syntax ([stx stx])
+                               (syntax/loc #'stx (#%top-interaction . stx))))))
+               (λ vs (for ([v vs])
+                       (unless (void? v)
+                         (print v))
+                       (newline))))
+              (display "8" (current-error-port))
+              (loop)))))))
     (set-repl-thread! repl user-thread)))
-

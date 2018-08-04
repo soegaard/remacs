@@ -444,8 +444,9 @@
       (define len+ (- end+ start+))        ; length of next line
       (define new-col (min len+ col))      ; stay at current column if possible
       (define new-pos (+ start+ new-col))
-      (mark-move-to-position! m new-pos))
-
+      (mark-move-to-position! m new-pos)
+      (check-mark m #'here3))
+    (check-mark m #'here4)
     #;(unless (mark-on-last-line? m)
       (unless (dempty? d)
         (set-linked-line-marks! d (set-remove (linked-line-marks d) m))
@@ -518,21 +519,26 @@
 
 
 (define (mark-move-to-position! m n)
+  (define who 'mark-move-to-position!)
   (unless (and (integer? n) (>= n 0))
-    (error 'mark-move-to-position! (~a "expected index, got " n)))
+    (error who (~a "expected index, got " n)))
+  (unless (mark? m)
+    (error who (~a "expected mark, got " m)))
   (check-mark m)
   (define b (mark-buffer m))
   (cond
     [(not b) ; if the mark does not belong to a buffer, ignore the link
      (set-mark-position! m n)]
     [else
+     ; find the new line
+     (define t (buffer-text (mark-buffer m)))
+     (define d (interval-map-ref (text-positions t) n 'huh))
      ; remove mark from its current line
      (define l (mark-link m))
      (remove-mark-from-linked-line! m l)
-     ; find the new line
-     (define t (buffer-text (mark-buffer m)))
-     (define d (interval-map-ref (text-positions t) n #f))
      ; add mark to the new line
+     (when (eq? d 'huh)
+       (error))
      (unless (linked-line? d)
        (displayln (list n (text-positions t)) (current-error-port)))
      (add-mark-to-linked-line! m d)  

@@ -11,6 +11,7 @@
          framework
          "buffer-locals.rkt" 
          "buffer-namespace.rkt"
+         "command-loop.rkt"
          "default.rkt"
          "embedded.rkt"
          "line.rkt"
@@ -250,19 +251,17 @@
     (λ (out-bytes start end buffered? enable-breaks?)
       ; write bytes from out-bytes from index start (inclusive) to index end (exclusive)
       (define the-bytes (subbytes out-bytes start end))
-      (define as-string (bytes->string/utf-8 the-bytes))
-      ;(displayln as-string (current-error-port))
-      ;(displayln (~a "mark: " (position m) " point: " (point)) (current-error-port))
+      (define as-string (bytes->string/utf-8 the-bytes))      
       (check-mark m)
       (cond
-        [m    (buffer-insert-string! b m       as-string)
-              #;(mark-move! m     (string-length as-string))]
-        [else (buffer-insert-string! b (point) as-string)
-              #;(mark-move! point (string-length as-string))])
+        [m    (buffer-insert-string! b m       as-string)]
+        [else (buffer-insert-string! b (point) as-string)])
       (check-mark m)
       (buffer-dirty! b)
-      (parameterize ([current-rendering-suspended? #f])
-        (refresh-buffer name))     ; todo how to find the correct the frame?
+      (send-command
+       (λ() (parameterize ([current-rendering-suspended? #f]
+                           [current-buffer b])
+              (refresh-buffer name))))     ; todo how to find the correct the frame?
       ; number of bytes written
       (- end start)))
   (define close                 ; closes port

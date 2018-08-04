@@ -1306,9 +1306,10 @@
               (match (char-category c)
                 [(blank)              (complete!) (create-state)] ; space and tab
                 [(comment-ender)      (complete!) (create-state)] ; newline
-                [(symbol-constituent) (new-symbol!) (skip) (loop j)]
-                [(string-starter e)   (set! string-start i)  (set! inside-string e)
-                                      (complete!) (new!) (skip) (loop j)]
+                [(string-starter e)   (complete!) ; order important here!
+                                      (set! string-start i)  (set! inside-string e)
+                                      (new!)
+                                      (skip) (loop j)]
                 [(comment-starter)    (set! comment-start i)
                                       (set! inside-comment #t)
                                       (complete!)        (skip) (loop j)]
@@ -1320,6 +1321,7 @@
                                       (set! seen (cons cp seen))
                                       (loop j)]
                 [(closer _)           (skip) (create-state)] ; unexpected closer - do eat
+                [(symbol-constituent) (new-symbol!) (skip) (loop j)]
                 [_                    (skip) (loop j)])])]
           [d ; inside at least one parenthesis, not at target-depth
            (cond
@@ -1339,7 +1341,6 @@
               (match (char-category c)
                 [(blank)              (complete!)             (skip) (loop j)] ; space and tab
                 [(comment-ender)      (complete!)             (skip) (loop j)] ; newline
-                [(symbol-constituent) (new-symbol!)           (skip) (loop j)]                
                 [(string-starter e)   (set! string-start i) (set! inside-string e)
                                       (complete!) (new!)      (skip) (loop j)]
                 [(comment-starter)    (set! comment-start i) (set! inside-comment #t)
@@ -1362,6 +1363,7 @@
                                          ; (message
                                          ;   (~a "forward-sexp: expected " (first seen)))
                                          (skip) (create-state)])] ; error situation
+                [(symbol-constituent) (new-symbol!)           (skip) (loop j)]                
                 [_                   (skip) (loop j)])])]))]))
   (forward-whitespace/quotes limit)
   (unless start-current

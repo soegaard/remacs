@@ -1,5 +1,5 @@
 #lang racket
-;;; BUG: In fundamentatal-mode and text-mode the indentation of the
+;;; BUG: In fundamental-mode and text-mode the indentation of the
 ;;;      preceding line needs to be added as a "tab stop".
 
 ;;;
@@ -226,11 +226,14 @@
       ;(displayln (list '(start-row end-row) (list start-row end-row)))
       (define num-lines-to-skip   start-row)
       ;; Color area on screen (TODO: cache the coloring)
-      (when (local color-buffer)
-        (define from (or (position (window-start-mark w)) 0))
-        (define to   (or (position (window-end-mark w)) (buffer-length b)))
-        ; (displayln (list from to))
-        ((local color-buffer) b (max 0 from) (max 0 to)))
+      (when (local color-buffer)        
+        (send-command
+         (λ()
+           (parameterize ([current-buffer b])
+             (define from (or (position (window-start-mark w)) 0))
+             (define to   (or (position (window-end-mark w)) (buffer-length b)))
+             ; (displayln (list from to))
+             ((local color-buffer) b (max 0 from) (max 0 to))))))
       ;; Render
       (unless (current-render-points-only?)
         (when b
