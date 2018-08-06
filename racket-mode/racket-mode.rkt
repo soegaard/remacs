@@ -27,6 +27,7 @@
 (require racket/match 
          "../buffer.rkt"
          "../buffer-locals.rkt"
+         "../command-loop.rkt"
          "../commands.rkt"
          "../locals.rkt"
          "../mark.rkt"
@@ -226,12 +227,14 @@
                      ["M-S-right" forward-sexp/extend-region]
                      ["M-S-left"  backward-sexp/extend-region]
                      ["D-e"       show-definitions]
+                     [#\]         balance-parens]
                      [_           #f])]
                   [_ #f]))
               b)
       (local! color-buffer     #f)
       (local! show-paren-mode? #f)
       (local! auto-fill-mode?  #f)
+      ; (local! indent-for-tab racket-indent-for-tab)
       (parameterize ()
         (namespace-attach-module ns 'racket/gui/base)
         (namespace-attach-module ns 'data/interval-map)
@@ -239,51 +242,93 @@
         (namespace-require          "racket-mode/racket-mode.rkt")))))
 
 (define-interactive (racket-repl-eval-or-newline-and-indent)
-  "If there is a complete s-expression before point, then evaluate it."
+  "If there is a one or more complete s-expressions after the prompt, then evaluate them."
+  "If there is an incomplete s-expression, then simply insert newline and indent."
   "Otherwise use racket-newline-and-indent."  
   (define b (current-buffer))
   (localize ([current-buffer b])
-    (define r (get-repl b))
-    (define m (repl-before-prompt-mark r))
     (define (skip-prompt)       (forward-char prompt-length))
     (define (goto-after-prompt) (goto-char m) (skip-prompt))
-    (display 'A (current-error-port))
-    (define beg0 (with-saved-point (goto-after-prompt)
-                                   (forward-whitespace)
-                                   (point)))
-    (display 'B (current-error-port))
-    (define beg1 (with-saved-point
-                   (display 'B1 (current-error-port))
-                   (goto-after-prompt)
-                   (display 'B2 (current-error-port))
-                   (forward-whitespace)
-                   (display 'B3 (current-error-port))
-                   (forward-sexp)
-                   (display 'B4 (current-error-port))
-                   (backward-sexp)
-                   (display 'B5 (current-error-port))
-                   (point)))
-    (display 'C (current-error-port))
-    (define end  (with-saved-point (goto-after-prompt)
-                                   (forward-sexp) (point)))
-    (display 'D (current-error-port))
-    ; (log-debug (~a (list 'm (position m) 'beg0 beg0 'beg1 beg1 'end end)))
-    (cond
-      ; complete s-expression?
-      [(and (= beg0 beg1) (= beg0 end)) (display 'E (current-error-port))
-                                        (break-line)]
-      [(= beg0 beg1)                    (display 'F (current-error-port))
-                                        (racket-repl-eval r beg0 end)]
-      [else                             (display 'G (current-error-port))
-                                        (break-line)])
-    (display 'H (current-error-port))))
 
-(define (racket-repl-eval repl beg end)
+    (define r    (get-repl b))
+    (define m    (repl-before-prompt-mark r))
+    ; 1. Find position after prompt.
+    (define beg (with-saved-point (goto-after-prompt)
+                                  (forward-whitespace)
+                                  (point)))
+    ; 2. Find end
+    (define end (end-of-buffer-position))
+    ; 3. Attempt to read s-expressions after prompt
+    (define s  (subtext->string (buffer-text b) beg end))
+    (define xs (string->s-expressions 'repl beg s))
+    (cond
+      ; If all s-expressions are complete, evaluate them.
+      [(andmap sexp? xs) (racket-repl-eval r xs)]
+      ; Otherwise insert a newline and indent the new line.
+      [else              (break-line)
+                         #;(racket-indent-for-tab)])
+    (send-command
+     (λ () ((current-render-window) (current-window))))))
+
+(define (racket-repl-eval repl xs)
   (define b  (current-buffer))
   (localize ([current-buffer b])
     (define ch (repl-channel repl))
-    (define s  (subtext->string (buffer-text b) beg end))
-    (channel-put ch (list beg end s))))
+    (channel-put ch xs)))
+
+;;;
+;;; Reading S-expressions from the REPL
+;;;
+
+; remember: filepositions such as start and end count from 1
+(struct sexp (source start end stx) #:transparent)
+
+; string->s-expressions : symbol integer string -> list of stx and exn
+;  Read s-expressions in string and return them as a list.
+;  If a read error occurs the last element in the list is
+;  the corresponding exception.
+(define (string->s-expressions source start s)
+  (define in (open-input-string s))
+  (define (adjust p) (+ start p))
+  (define (skip-whitespace)
+    (match (peek-char in)
+      [(? eof-object?)      (void)]
+      [(? char-whitespace?) (read-char in) (skip-whitespace)]
+      [_                    (void)]))  
+  (let loop ([xs '()])  ; reverse list of read sexps
+    (skip-whitespace)
+    (define start (adjust (file-position in)))
+    (define stx
+      (with-handlers ([exn? values])
+        (read-syntax 'repl in)))
+    (cond
+      [(eof-object? stx) (reverse xs)]
+      [(exn? stx)        (reverse (cons stx xs))]
+      [else              (define end (adjust (file-position in)))
+                         (define x (sexp source start end stx))
+                         (loop (cons x xs))])))
+
+(define (string->first-s-expression source start s)
+  (define in (open-input-string s))
+  (define (adjust p) (+ start p))
+  (define (skip-whitespace)
+    (match (peek-char in)
+      [(? eof-object?)      (void)]
+      [(? char-whitespace?) (read-char in) (skip-whitespace)]
+      [_                    (void)]))
+  (let ()
+    (skip-whitespace)
+    (define start (adjust (file-position in)))
+    (define stx
+      (with-handlers ([exn? values])
+        (read-syntax 'repl in)))
+    (define end (adjust (file-position in)))
+    (define x (cond
+                [(eof-object? stx) stx]
+                [(exn? stx)        stx]
+                [else              (sexp source start end stx)]))
+    x))
+
 
 ;;;
 ;;; RUN
@@ -364,27 +409,27 @@
             (displayln ctx))
           (parameterize ([current-namespace (module->namespace program-path)])
             (let loop ()
-              (display "1" (current-error-port))
-              (match-define (list beg end str) (channel-get channel))
-              (display "2" (current-error-port))
+              (define xs (channel-get channel))
+              ; Each s-exp x has a start and end.
+              ; Inserting strings before start will affect these positions.
+
+              ; 1. Insert new prompt at the end
+              (define end (end-of-buffer-position)) 
               (goto-char end)
-              (display "3" (current-error-port))
               (break-line)
-              (display "4" (current-error-port))
               (insert prompt-string) ; after point
-              (display "5" (current-error-port))
               (goto-char (+ end 1) before-prompt-mark)
-              (display "6" (current-error-port))
-              (define stx (read-syntax 'repl (open-input-string str)))
-              (display "7" (current-error-port))
-              (call-with-values
-               (λ () (with-handlers ([exn:fail? handle-exn])
-                       (eval (with-syntax ([stx stx])
-                               (syntax/loc #'stx (#%top-interaction . stx))))))
-               (λ vs (for ([v vs])
-                       (unless (void? v)
-                         (print v))
-                       (newline))))
-              (display "8" (current-error-port))
+
+              ; 2. Evaluate the expressions and print results
+              (for ([x xs])
+                (match-define (sexp source start end stx) x)
+                (call-with-values
+                 (λ () (with-handlers ([exn:fail? handle-exn])
+                         (eval (with-syntax ([stx stx])
+                                 (syntax/loc #'stx (#%top-interaction . stx))))))
+                 (λ vs (for ([v vs])
+                         (unless (void? v)
+                           (println v))))))
+              ; 3. Loop
               (loop)))))))
     (set-repl-thread! repl user-thread)))

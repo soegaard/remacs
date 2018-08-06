@@ -83,7 +83,7 @@
 (define current-frame                (make-local #f))
 (define current-window               (make-local #f))
 
-; This is a temporary fix to avoid circular module dependencies.
+; This is a temporary(?) fix to avoid circular module dependencies.
 (define current-render-frame         (make-local void))
 (define current-render-window        (make-local #f))
 
