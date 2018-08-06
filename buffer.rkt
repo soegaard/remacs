@@ -15,6 +15,7 @@
          "default.rkt"
          "embedded.rkt"
          "line.rkt"
+         "locals.rkt"
          "mark.rkt"
          "overlays.rkt"
          "parameters.rkt"
@@ -259,9 +260,9 @@
       (check-mark m)
       (buffer-dirty! b)
       (send-command
-       (λ() (parameterize ([current-rendering-suspended? #f]
-                           [current-buffer b])
-              (refresh-buffer name))))     ; todo how to find the correct the frame?
+       (parameterize ([current-rendering-suspended? #f])
+         (localize ([current-buffer b])
+           (refresh-buffer name))))     ; todo how to find the correct the frame?
       ; number of bytes written
       (- end start)))
   (define close                 ; closes port

@@ -538,6 +538,9 @@
      (remove-mark-from-linked-line! m l)
      ; add mark to the new line
      (when (eq? d 'huh)
+       (displayln "---")
+       (println m)
+       (displayln "---")
        (error))
      (unless (linked-line? d)
        (displayln (list n (text-positions t)) (current-error-port)))

@@ -89,6 +89,7 @@
             b)
     ; Locals
     (local! indent-for-tab racket-indent-for-tab)
+    (local! color-buffer   color-buffer)
     ; import racket-mode into buffer-locals
     (parameterize ([current-namespace (buffer-locals b)])
       (namespace-attach-module ns 'racket/gui/base)
@@ -231,7 +232,7 @@
                      [_           #f])]
                   [_ #f]))
               b)
-      (local! color-buffer     #f)
+      (local! color-buffer     color-buffer)
       (local! show-paren-mode? #f)
       (local! auto-fill-mode?  #f)
       ; (local! indent-for-tab racket-indent-for-tab)
