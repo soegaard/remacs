@@ -127,7 +127,17 @@
 
 (define sema-render-buffer (make-semaphore 1))
 
-(define (render-buffer w)
+(define (prepare-colors w)
+  (define b (window-buffer w))
+  (localize ([current-window w] [current-buffer b])
+    (when (local color-buffer)
+      (send-command
+       (localize ([current-buffer b])
+         (define from (or (position (window-start-mark w)) 0))
+         (define to   (or (position (window-end-mark w)) (buffer-length b)))
+         ((local color-buffer) b (max 0 from) (max 0 to)))))))
+
+(define (render-buffer w #:second-render [second-render? #f])
   (semaphore-wait sema-render-buffer)
   (define b (window-buffer w))
   (define now (current-milliseconds))
@@ -226,13 +236,10 @@
       ;(displayln (list '(start-row end-row) (list start-row end-row)))
       (define num-lines-to-skip   start-row)
       ;; Color area on screen (TODO: cache the coloring)
-      (when (local color-buffer)
+      (unless second-render?
         (send-command
-         (localize ([current-buffer b])
-           (define from (or (position (window-start-mark w)) 0))
-           (define to   (or (position (window-end-mark w)) (buffer-length b)))
-           ; (displayln (list from to))
-           ((local color-buffer) b (max 0 from) (max 0 to)))))
+         (prepare-colors w)
+         (render-buffer w #:second-render #t)))
       ;; Render
       (unless (current-render-points-only?)
         (when b
