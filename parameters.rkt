@@ -4,6 +4,7 @@
          current-refresh-frame
          current-refresh-buffer
          current-append-next-kill
+         current-prepare-color
          ; gui
          current-render-points-only?
          ; current-show-points?
@@ -44,6 +45,8 @@
 (define current-refresh-buffer     (make-local void)) ; used in "buffer.rkt"
 
 (define current-append-next-kill   (make-local #f))
+
+(define current-prepare-color      (make-local #f))
 
 ;;;
 ;;; FILE AND I/O

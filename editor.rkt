@@ -3,7 +3,6 @@
 ;;;      preceding line needs to be added as a "tab stop".
 ;;; BUG: syntax-coloring happens one frame too late.
 ;;;      solution: call color-buffer before calling render-buffer
-;;;      
 
 ;;;
 ;;; INSTRUCTIONS
@@ -130,17 +129,6 @@
 
 (define sema-render-buffer (make-semaphore 1))
 
-(define (prepare-colors w)
-  (define b (window-buffer w))
-  (localize ([current-window w] [current-buffer b])
-    (when (local color-buffer)
-      (send-command
-       (localize ([current-buffer b] [current-window w])
-         (define from (or (position (window-start-mark w)) 0))
-         (define to   (min (or (position (window-end-mark w)) +inf.0)
-                           (- (buffer-length b) 1)))
-         ((local color-buffer) b (max 0 from) (max 0 to)))))))
-
 (define (render-buffer w #:second-render [second-render? #f])
   (semaphore-wait sema-render-buffer)
   (define b (window-buffer w))
@@ -237,16 +225,11 @@
       ;; Placement of point relative to lines on screen
       (define-values (row col)           (mark-row+column (buffer-point b)))
       (define-values (start-row end-row)
-        (begin (send-command (maybe-recenter-top-bottom #f w))
+        (begin #;(send-command (maybe-recenter-top-bottom #f w))
                (values (mark-row (window-start-mark w))
                        (mark-row (window-end-mark w)))))
       ;(displayln (list '(start-row end-row) (list start-row end-row)))
       (define num-lines-to-skip   start-row)
-      ;; Color area on screen (TODO: cache the coloring)
-      (unless second-render?
-        (send-command
-         (prepare-colors w)
-         #;(render-buffer w #:second-render #t))) ; xxx todo find better solution
       ;; Render
       (unless (current-render-points-only?)
         (when b

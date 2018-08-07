@@ -40,8 +40,10 @@
      (let loop ()
        (define cmd (sync command-channel alarm))
        (cond
-         [(evt? cmd)     (set! alarm (new-alarm))
-                         (current-point-color (cdr (current-point-color)))]
+         [(evt? cmd)     (set! alarm (new-alarm))                         
+                         ((current-prepare-color) (current-window))
+                         (current-point-color (cdr (current-point-color)))
+                         ((current-refresh-frame))]
          [else           (cmd)])
        (loop)))))
 

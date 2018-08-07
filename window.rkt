@@ -100,7 +100,7 @@
     ; the new split window get the parent of our old window
     (define parent-panel (if root? (frame-panel f) (window-panel p)))
     (define pan (new horizontal-panel% [parent parent-panel]))
-    (define sp  (horizontal-split-window f pan bs #f p #f #f #f #f w #f))
+    (define sp  (horizontal-split-window f pan bs #f p  #f #f w #f))
     ; the old window get a new parent
     (set-window-parent! w sp)
     (send c reparent pan)
@@ -250,6 +250,22 @@
   (send fp end-container-sequence)
   ;; send keyboard focus to other window
   (send (window-backend ow) focus))
+
+
+(define (prepare-colors w)
+  (define b (window-buffer w))
+  (localize ([current-window w] [current-buffer b])
+    (maybe-recenter-top-bottom #f w) ; set start and end mark
+    (when (local color-buffer)
+      (send-command
+       (localize ([current-buffer b] [current-window w])
+         (define from (or (position (window-start-mark w)) 0))
+         (define to   (min ;(or (position (window-end-mark w)) +inf.0)
+                           (- (buffer-length b) 1)))
+         ((local color-buffer) b (max 0 from) (max 0 to)))))))
+
+(current-prepare-color prepare-colors)
+
 
 ; window-install-canvas! : window panel% -> canvas
 ; this-window : the non-gui structure representing the window used to display a buffer.
@@ -439,6 +455,7 @@
            (unless (current-rendering-suspended?)
              (parameterize (#;[current-show-points? #t])
                (display-status-line (status-line-hook))
+               (prepare-colors this-window)
                ((current-render-frame) f)))))
         (super-new)))
     (define canvas (new window-canvas% [parent panel] [style '(no-autoclear)]))
@@ -478,6 +495,9 @@
     (set! start-row new-start-row)
     (set! end-row   new-end-row))
   (values start-row end-row))
+  
+
+
 
 (define (window-switch-buffer! w b)
   ; switch to buffer
