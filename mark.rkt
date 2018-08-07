@@ -57,6 +57,10 @@
     (define i   (position m))
     (define im  (text-positions (buffer-text (mark-buffer m))))
     (define-values (start end d) (interval-map-ref/bounds im i #f))
+    (unless d
+      (displayln (list 'who who))
+      (error 'check-mark "no link found in text-positions: ~a"
+             m))
     (define l2  (and d (dfirst d)))
     ; check that l1 and l2 are the same line
     (unless (and d (eq? l1 l2))
@@ -530,6 +534,13 @@
     [(not b) ; if the mark does not belong to a buffer, ignore the link
      (set-mark-position! m n)]
     [else
+     (unless (<= n (max 0 (- (buffer-length b) 1)))
+       (displayln "---" (current-error-port))
+       (println m (current-error-port))
+       (displayln "---" (current-error-port))
+       (display "n: " (current-error-port))
+       (println n (current-error-port))
+       (error 'mark-move-to-position "attempt to move mark beyond end"))     
      ; find the new line
      (define t (buffer-text (mark-buffer m)))
      (define d (interval-map-ref (text-positions t) n 'huh))
@@ -537,6 +548,7 @@
      (define l (mark-link m))
      (remove-mark-from-linked-line! m l)
      ; add mark to the new line
+     ; (todo check that the position n is legal in the first place ...)
      (when (eq? d 'huh)
        (displayln "---")
        (println m)

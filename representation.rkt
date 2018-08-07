@@ -26,7 +26,7 @@
          mark-row+column
          mark-row
          (struct-out mode)
-         (struct-out window)
+         (struct-out window) window-start-mark window-end-mark
          (struct-out frame)
          (struct-out split-window)
          (struct-out horizontal-split-window)
@@ -69,7 +69,8 @@
   ; buffer-name and buffer-modified? are extendeded to handle current-buffer later on
   (provide (except-out (struct-out buffer) buffer-name buffer-modified?) 
            (rename-out [buffer-name -buffer-name] [buffer-modified? -buffer-modified?]))
-  (struct buffer (text name path point the-mark marks modes cur-line num-chars num-lines modified?
+  (struct buffer (text name path point the-mark start-mark end-mark
+                       marks modes cur-line num-chars num-lines modified?
                        locals overlays)
     #:transparent #:mutable))
 (require (submod "." buffer-struct))
@@ -81,6 +82,8 @@
 ;   path = path   <=>  reads and writes to the file given by the path
 ; point    = cursor represented as a mark
 ; the-mark = mark used together with point to make a region
+; start = mark of first position in buffer to display
+; end   = mark of last posistion in buffer to display
 ; marks    = list of all marks using in buffer including point and the-mark
 ; Notes:
 ;   Insertions and deletion will happen at the points (usually only one).
@@ -118,16 +121,16 @@
 (struct mode (name) #:transparent)
 ; A mode has a name (displayed in the status bar).
 
-(struct window (frame panel borders canvas parent buffer start-mark end-mark point)
+(struct window (frame panel borders canvas parent buffer point)
   #:mutable #:transparent)
+(define (window-start-mark w) (buffer-start-mark (window-buffer w)))
+(define (window-end-mark w)   (buffer-end-mark   (window-buffer w)))
 ; A window is an area in which a buffer is displayed.
 ; Multiple windows are grouped in a frame.
 ; Split  windows are backed by a panel.
 ; Single windows are backed by a canvas into which the buffer is rendered.
 ; borders is a set of symbols indicating which borders to draw
 ;   'left 'right 'top 'bottom
-; start = mark of first position in buffer to display
-; end   = mark of last posistion in buffer to display
 ; The marks start and end are updated on redisplay such that the point is visible.
 ; point = mark holding the position of the cursor [See Emacs Reference "Windows and Point"]
 ;         used to set the buffer point, when the window is selected

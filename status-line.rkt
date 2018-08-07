@@ -31,6 +31,9 @@
 (define the-render-time 0)
 (define (status-line-render-time t) (set! the-render-time t))
 
+(define (position pos)
+  (if (mark? pos) (mark-position pos) pos))
+
 ; The default function used to compute status line information
 (define (status-line-hook)
   (define w     (current-window))
@@ -53,6 +56,9 @@
            "   " "Length: "          (buffer-length b)
            "   " "Mode: "            "(" (get-mode-name) ")"
            "   " "Time: "            the-time
-           "   " "Render Time: "     the-render-time)]
+           "   " "Render Time: "     the-render-time
+           ; "   " "Window: "          (position (window-start-mark w)) "-"
+           ;                          (position (window-end-mark w))
+           )]
     [else
      "No current buffer"]))

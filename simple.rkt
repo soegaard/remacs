@@ -278,7 +278,11 @@
   (when path ; #f = none selected
     ; open buffer and display it in window
     (define b (buffer-open-file-or-create path))
-    (set-window-buffer! (current-window) b)
+    (window-switch-buffer! (current-window) b)
+    ; (todo -switch-start-and-end-marks-here-) ; xxx
+    ; Problem: The start and end marks are currently owned by the window.
+    ;          Should they be be in the buffer instead?
+    ;          Or should we delete them, change their buffer, and add them to the new buffer?  
     (current-buffer b)    
     ; set mode
     (cond [(file-path->mode-function path) => (λ (mode) (mode))]
@@ -294,7 +298,7 @@
   (when (file-exists? path)
     ; open buffer and display it in window
     (define b (buffer-open-file-or-create path))
-    (set-window-buffer! (current-window) b)
+    (window-switch-buffer! (current-window) b)
     (current-buffer b)
     ; set mode
     (cond [(file-path->mode-function path) => (λ (mode) (mode))]
@@ -311,13 +315,13 @@
 (define-interactive (next-buffer) ; show next buffer in current window
   (define w (current-window))
   (define b (get-next-buffer))
-  (set-window-buffer! w b)
+  (window-switch-buffer! w b)
   (current-buffer b))
 
 (define-interactive (previous-buffer) ; show next buffer in current window
   (define w (current-window))
   (define b (get-previous-buffer))
-  (set-window-buffer! w b)
+  (window-switch-buffer! w b)
   (current-buffer b))
 
 (define (switch-to-buffer buffer-or-name)
@@ -326,7 +330,7 @@
   (when (string? buffer-or-name)
     (set! b (get-buffer b)))
   (when (buffer? b)
-    (set-window-buffer! (current-window) b)
+    (window-switch-buffer! (current-window) b)
     (current-buffer b)))
 
 ;;;
@@ -440,7 +444,7 @@
 ;   create new buffer and switch to it
 (define-interactive (create-new-buffer [title "Untitled"])
   (define b (new-buffer (new-text) #f (generate-new-buffer-name title)))
-  (set-window-buffer! (current-window) b)
+  (window-switch-buffer! (current-window) b)
   (current-buffer b)
   (refresh-frame (current-frame)))
 
@@ -498,7 +502,7 @@
 (define-interactive (test-buffer-output)
   (define b (new-buffer (new-text) #f (generate-new-buffer-name "*output*")))
   (define p (make-output-buffer b))
-  (set-window-buffer! (current-window) b)
+  (window-switch-buffer! (current-window) b)
   (parameterize ([current-output-port p])
     (localize ([current-buffer      b])
       (thread

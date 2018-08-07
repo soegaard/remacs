@@ -76,7 +76,7 @@
                                     (define ws (frame-window-tree (current-frame)))
                                     (define w  (list-next ws (current-window) eq?))
                                     (define ob (window-buffer w))
-                                    (set-window-buffer! w nb)
+                                    (window-switch-buffer! w nb)
                                     (current-completion-window ob))
                                   (localize ([current-buffer b])
                                     ;; text in *completion* buffer

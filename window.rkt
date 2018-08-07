@@ -39,11 +39,9 @@
 (define (new-window f panel b [parent #f] #:borders [borders #f])
   ; parent is the parent window, #f means no parent parent window
   (define bs (or borders (seteq)))
-  (define start (new-mark b "*start*"))
-  (define end   (new-mark b "*end*"))
   (define point (copy-mark (buffer-point b)))
-  (mark-move! end (buffer-length b))
-  (define w (window f panel bs #f parent b start end point))
+  (mark-move! (buffer-end-mark b) (buffer-length b))
+  (define w (window f panel bs #f parent b point))
   (window-install-canvas! w panel)
   (set! all-windows (cons w all-windows))
   w)
@@ -480,6 +478,12 @@
     (set! start-row new-start-row)
     (set! end-row   new-end-row))
   (values start-row end-row))
+
+(define (window-switch-buffer! w b)
+  ; switch to buffer
+  (set-window-buffer! w b)
+  ; make sure the window start and end marks are set correctly
+  (maybe-recenter-top-bottom #t w))
 
 
 ;;;

@@ -21,18 +21,18 @@
 (define (frame-window-tree [f (current-frame)])
   (define (loop w)
     (match w
-      [(horizontal-split-window f _ __  c p b  s e m  l r)                (append (loop l) (loop r))]
-      [(vertical-split-window   f _ __  c p b  s e m  u l)                (append (loop u) (loop l))]
-      [(window frame panel borders canvas parent buffer start end point) (list w)]
+      [(horizontal-split-window f _ __  c p b  m  l r)                (append (loop l) (loop r))]
+      [(vertical-split-window   f _ __  c p b  m  u l)                (append (loop u) (loop l))]
+      [(window frame panel borders canvas parent buffer point) (list w)]
       [_ (error)]))
   (flatten (loop (frame-windows f))))
 
 (define (frame->windows f)
   (define (loop ws)
     (match ws
-      [(vertical-split-window   _ _ _  _ _ _  _ _ _ upper lower)
+      [(vertical-split-window   _ _ _  _   _ _ _ upper lower)
        (append (loop upper) (loop lower))]
-      [(horizontal-split-window _ _ _  _ _ _  _ _ _ left right)
+      [(horizontal-split-window _ _ _  _   _ _ _ left right)
        (append (loop left) (loop right))]
       [w (list w)]))
   (loop (frame-windows f)))

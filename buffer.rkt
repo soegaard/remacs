@@ -78,20 +78,26 @@
   (define locals (new-buffer-namespace)) ; see "buffer-namespace.rkt"
   (define overlays (new-overlays))
   (define b (buffer text name path
-                    'point     ; point
-                    'the-mark  ; the mark
-                    '()        ; marks
-                    '()        ; modes 
-                    0          ; cur-line
-                    0          ; num-chars
-                    0          ; num-lines
-                    #f         ; modified?
-                    locals     ; locals
-                    overlays)) ; overlays
+                    'point      ; point
+                    'the-mark   ; the mark
+                    'start-mark ; start mark (screen start)
+                    'end-mark   ; end mark   (screen end)
+                    '()         ; marks
+                    '()         ; modes 
+                    0           ; cur-line
+                    0           ; num-chars
+                    0           ; num-lines
+                    #f          ; modified?
+                    locals      ; locals
+                    overlays))  ; overlays
   (define point    (new-mark b "*point*"))
   (set-buffer-point! b point)
-  (define the-mark (new-mark b "*mark-nb*" 0 #f #:active? #f #:insertion-type #f))
-  (set-buffer-the-mark! b the-mark)
+  (define the-mark   (new-mark b "*mark-nb*" 0 #f #:active? #f #:insertion-type #f))
+  (define start-mark (new-mark b "*start*"   0 #f #:active? #f #:insertion-type #f))
+  (define end-mark   (new-mark b "*end*"     0 #f #:active? #f #:insertion-type #f))
+  (set-buffer-the-mark!   b the-mark)
+  (set-buffer-start-mark! b start-mark)
+  (set-buffer-end-mark!   b end-mark)
   (define stats (text-stats text))
   (define num-lines (stats-num-lines stats))
   (set-buffer-num-lines! b num-lines)
@@ -233,7 +239,8 @@
 ; TODO implement it properly
 (define (open-input-buffer b) ; temporary definition
   (open-input-string
-   (text->string (buffer-text b))))
+   (text->string
+    (buffer-text b))))
 
 ; make-output-buffer : buffer -> output-buffer
 ;   Return an output buffer. When written to, the data is inserted into
