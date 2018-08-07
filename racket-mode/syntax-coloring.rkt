@@ -5,6 +5,7 @@
 ;;;
 
 (require syntax-color/racket-lexer
+         racket/format
          "../buffer.rkt"
          "../buffer-locals.rkt"
          "../colors.rkt"
@@ -44,19 +45,23 @@
   ; (displayln (list "racket-mode: color-buffer"))
   ;; set optional arguments
   (localize ([current-buffer b])
-    (unless to (set! to (buffer-length b)))
+    (set! to (or to (buffer-length b)))
     ;; turn buffer into input port
     (define in (open-input-buffer b))
+    (port-count-lines! in) ; otherwise setting the port location has no effect
     ;; backtrack to a known place outside strings, comments etc.
     (define safe-pos
       (with-saved-point
         (goto-char from)
         (backward-to-open-parenthesis-on-beginning-of-line)
-        (point)))
+        (point)))    
     (file-position in safe-pos)
+    (define ignored-line-no 1) 
+    (set-port-next-location! in ignored-line-no 0 (+ safe-pos 1))
+    ; (set-port-next-location! safe-pos)
     ;; call the lexer in a loop and use overlays to record the colors
     (let loop ()
-      (define-values (token style paren start end) (racket-lexer in))
+      (define-values (token style paren start end) (racket-lexer in))            
       (cond
         [(eof-object? token) (void)]
         [else                ; (writeln (list token style (~a paren) (list start end)))

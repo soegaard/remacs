@@ -1,8 +1,6 @@
 #lang racket
 ;;; BUG: In fundamental-mode and text-mode the indentation of the
 ;;;      preceding line needs to be added as a "tab stop".
-;;; BUG: syntax-coloring happens one frame too late.
-;;;      solution: call color-buffer before calling render-buffer
 
 ;;;
 ;;; INSTRUCTIONS
@@ -225,10 +223,8 @@
       ;; Placement of point relative to lines on screen
       (define-values (row col)           (mark-row+column (buffer-point b)))
       (define-values (start-row end-row)
-        (begin #;(send-command (maybe-recenter-top-bottom #f w))
-               (values (mark-row (window-start-mark w))
-                       (mark-row (window-end-mark w)))))
-      ;(displayln (list '(start-row end-row) (list start-row end-row)))
+        (values (mark-row (window-start-mark w))
+                (mark-row (window-end-mark   w))))
       (define num-lines-to-skip   start-row)
       ;; Render
       (unless (current-render-points-only?)
