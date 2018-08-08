@@ -1,5 +1,6 @@
 #lang racket/base
-(provide (all-defined-out))
+(provide (all-defined-out)
+         (all-from-out "narrow.rkt"))
 
 ;;;
 ;;; SIMPLE 
@@ -34,6 +35,7 @@
          "mark.rkt"
          "message.rkt"
          "mode.rkt"
+         "narrow.rkt"
          "parameters.rkt"
          "point.rkt"
          "recently-opened.rkt"
@@ -1014,12 +1016,6 @@
 
 ;;; Positions
 
-(define (start-of-buffer-position)
-  ; preparation for introduction of narrowing
-  0)
-
-(define (end-of-buffer-position)
-  (max 0 (- (buffer-length (current-buffer)) 1)))
 
 (define (line-end-position) ; emacs name
   (position-of-end-of-line (get-point)))
@@ -1377,8 +1373,6 @@
     ; (writeln (list 'state: result))
     result))
 
-(define (point-min)      0)
-(define (point-max)      (end-of-buffer-position))
 (define (point-position) (position (get-point)))
 
 (define (at-beginning-of-buffer?)

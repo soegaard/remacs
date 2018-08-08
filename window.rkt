@@ -1,8 +1,5 @@
 #lang racket/base
 (provide (all-defined-out))
-
-(displayln "WINDOW.RKT")
-
 (define (debug-display x) (void x))
 
 (require racket/class racket/format racket/list racket/match racket/math racket/set

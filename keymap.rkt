@@ -120,8 +120,13 @@
          [#\b         backward-word]
          [#\f         forward-word]
          [_           #f])]
+      [(list "C-x" #\n) ; narrowing prefix
+       (match key
+         [#\n         narrow-to-region]
+         [_           #f])]         
       [(list "C-x")
        (match key
+         [#\n         'prefix]
          [#\t         (λ () (display-state (parse-state-at-point)))]
          [#\0         delete-window]
          [#\1         delete-other-windows]

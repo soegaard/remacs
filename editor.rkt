@@ -11,7 +11,9 @@
 ;;; PRIORITY: HIGH
 
 ;;;   TODO indentation (almost done)
-;;;   TODO completion for modes
+;;;   TODO Completion
+;;;          - text mode completion: build trie of all words in text
+;;;          - racket mode: same + use namespace when cmd+r is used
 ;;;   TODO buffer narrowing
 ;;;   TODO The column position of the cursor when using down should stay the same
 ;;;        even if one goes across short line.
@@ -19,6 +21,7 @@
 
 ;;; PRIORITY: MEDIUM
 
+;;; TODO Gutter (line numbers etc)
 ;;; TODO documentation
 ;;; TODO Render #\tab correctly
 ;;; TODO Implement open-input-buffer (naive implementation already done)

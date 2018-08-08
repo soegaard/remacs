@@ -535,12 +535,13 @@
      (set-mark-position! m n)]
     [else
      (unless (<= n (max 0 (- (buffer-length b) 1)))
-       (displayln "---" (current-error-port))
+       (displayln "\nmark-move-to-position! error: attempt to move mark beyond end")
+       (displayln "--- mark:" (current-error-port))
        (println m (current-error-port))
-       (displayln "---" (current-error-port))
+       (displayln "--- position:" (current-error-port))
        (display "n: " (current-error-port))
        (println n (current-error-port))
-       (error 'mark-move-to-position "attempt to move mark beyond end"))     
+       (error 'mark-move-to-position "attempt to move mark beyond end"))
      ; find the new line
      (define t (buffer-text (mark-buffer m)))
      (define d (interval-map-ref (text-positions t) n 'huh))
@@ -555,7 +556,7 @@
        (displayln "---")
        (error))
      (unless (linked-line? d)
-       (displayln (list n (text-positions t)) (current-error-port)))
+       (displayln (list mark-move-to-position! n (text-positions t)) (current-error-port)))
      (add-mark-to-linked-line! m d)  
      (set-mark-link! m d)
      ; store the new position

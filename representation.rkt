@@ -69,8 +69,11 @@
   ; buffer-name and buffer-modified? are extendeded to handle current-buffer later on
   (provide (except-out (struct-out buffer) buffer-name buffer-modified?) 
            (rename-out [buffer-name -buffer-name] [buffer-modified? -buffer-modified?]))
-  (struct buffer (text name path point the-mark start-mark end-mark
-                       marks modes cur-line num-chars num-lines modified?
+  (struct buffer (text name path point the-mark
+                       start-mark end-mark               ; area in window
+                       restricted? restriction-start restriction-end ; narrowing
+                       marks                             ; all marks
+                       modes cur-line num-chars num-lines modified?
                        locals overlays)
     #:transparent #:mutable))
 (require (submod "." buffer-struct))

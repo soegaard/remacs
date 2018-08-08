@@ -82,6 +82,9 @@
                     'the-mark   ; the mark
                     'start-mark ; start mark (screen start)
                     'end-mark   ; end mark   (screen end)
+                    #f          ; restricted?
+                    #f          ; restriction start (narrowing)
+                    #f          ; restriction end
                     '()         ; marks
                     '()         ; modes 
                     0           ; cur-line
