@@ -361,9 +361,6 @@
     (text-display (buffer-text b))
     (status-display)))
 
-(module+ test
-  #;(buffer-display illead-buffer))
-
 ; buffer-insert-string! : mark string -> void
 ;   insert string at mark,
 ;   move marks according to adjustment type
@@ -556,10 +553,9 @@
 (define (get-next-buffer [b (current-buffer)])
   (define next (list-next all-buffers b eq?))
   (unless (buffer? next)
-    (displayln 'get-next-buffer)
-    (displayln (list 'next next))
-    (displayln (list 'b    b))
-    (error))
+    (error 'get-next-buffer
+           "internal-error: the next buffer is not a buffer: ~a"
+           next))
   next)
 
 (define (get-previous-buffer [b (current-buffer)])
