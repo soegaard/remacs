@@ -471,7 +471,7 @@
             (define screen-lines (append* (map second positions+screen-lines)))
             (define sl  (for/first ([sl (in-list screen-lines)]
                                     #:when (and (<=   (screen-line-start-position sl) n)
-                                                (<  n (screen-line-end-position   sl))))
+                                                (<= n (screen-line-end-position   sl))))
                           sl))
             (when sl
               (define s (screen-line-start-position sl))
