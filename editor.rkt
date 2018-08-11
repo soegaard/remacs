@@ -156,7 +156,7 @@
     (define strings   (line-strings l))
     (define n         (length strings))
     ; first break the line into smaller pieces
-    (define pieces
+    (define pieces ; list of (list position string-or-property) 
       (append*       
        (for/list ([s (in-list strings)]) ; invariant: p is position of start of s
          (cond
@@ -185,14 +185,34 @@
             (set! p (+ p sn))
             substrings]
            [else (list (list p s))]))))
-    ; second, group strings in screen lines
+    ;;; second, group strings in screen lines
+    (define restriction?             (buffer-restricted? b))
+    (define restriction-start-row    (when restriction? (mark-row    (buffer-restriction-start b))))
+    (define restriction-start-column (when restriction? (mark-column (buffer-restriction-start b))))
+    (define restriction-end-row      (when restriction? (mark-row    (buffer-restriction-end   b))))
     (let loop ([ps pieces] [start start-pos] [end start-pos]
                            [c 0] [i k] [l '()] [ls '()])
-      ; c = column, d=index in text line, l= current line, ls = lines
+      ; c = column, d=index in text line, l= current line, ls = lines, i = screen line number
       (cond
+        ;; Restriction: skip anything outside the restriction
+        [(and restriction? (or (< start (point-min)) (>= end  (point-max))))
+         (match ps
+           [(list)
+            (cond [(empty? l) (values (reverse ls) i)]
+                  [else       (define sl (screen-line line row i start end (reverse l)))
+                              (values (reverse (cons sl ls)) (+ i 1))])]
+           [(cons (list p (? string? s)) ps)
+            (define n (string-length s))
+            (if (< start (point-min))
+                (loop ps (+ start n) (+ end n) c i l ls)
+                (loop ps start       end       c i l ls))]
+           [(cons (list p x) ps)
+            (loop ps start    end       c    i (cons (list p x) l) ls)])]
+        ;; New screen line
         [(>= c (screen-line-length)) ; make new line
          (define sl (screen-line line row i start end (reverse l)))
          (loop ps end end 0 (+ i 1) '() (cons sl ls))]
+        ;; Standard line
         [else                      ; on same line, accumulate strings and properties
          (match ps
            [(list)                 ; last line
@@ -201,9 +221,8 @@
                               (values (reverse (cons sl ls)) (+ i 1))])]
            [(cons (list p (? string? s)) ps)
             (define n (string-length s))
-            (loop ps start (+ end n) (+ c n) i (cons (list p s) l) ls)]
+            (loop ps start (+ end n) (+ c n) i(cons (list p s) l) ls)]
            [(cons (list p x) ps)
-            ; (displayln (list p x))
             (loop ps start    end       c    i (cons (list p x) l) ls)])])))
   (define (remove-trailing-newline s)
     (or (and (not (equal? s ""))
@@ -344,16 +363,19 @@
               (match x [(list* (cons p _) more) p] [(list) #f]))
             (map screen-line->start-position xs))
           
-          ;
+          ;;; Main Loop: Loop over screen lines
           (define-values (_ __ ___ all-screen-lines)
             ; render lines on screen
-            (for/fold ([y ymin] [p 0] [n 0] [screen-line-positions '()]) ; n = screen line number
+            (for/fold ([y ymin] [p 0] [n 0] [screen-line-positions '()])
+                      ; y = screen y, p = position in buffer, n = screen line number
                       ([l (text-lines (buffer-text b))]
                        [i (in-range (+ start-row num-lines-on-screen))])
               (cond
                 [(< i num-lines-to-skip)
-                 ; show-paren mode
-                 (when #t
+                 ; Even though we don't render any characters from the first lines,
+                 ; we need to handle any changes to the drawing context such as
+                 ; color, background color, font style and weight.                 
+                 (when #t ; show-paren mode
                    (define (indicator error-code) (if error-code 'error #t))
                    (when (and     show-paren-from-1         show-paren-to-1
                                   (<= show-paren-from-1 p) (< p show-paren-to-1))
@@ -449,7 +471,7 @@
             (define screen-lines (append* (map second positions+screen-lines)))
             (define sl  (for/first ([sl (in-list screen-lines)]
                                     #:when (and (<=   (screen-line-start-position sl) n)
-                                                (<  n (screen-line-end-position sl))))
+                                                (<  n (screen-line-end-position   sl))))
                           sl))
             (when sl
               (define s (screen-line-start-position sl))
@@ -481,10 +503,21 @@
     (send dc set-text-background (ref-buffer-local 'background-color b))
     (send dc set-text-foreground (ref-buffer-local 'text-color b))
     
+    ;; find visible part of buffer
+    (define start-mark (window-start-mark w))
+    (define end-mark   (window-end-mark   w))
+    (when (mark< start-mark (point-min))
+      (mark-move-to-position! start-mark (point-min))
+      ; since we moved start-mark (probably due to narrow-region)
+      ; we also need to adjust the end-mark
+      (mark-move-to-position! end-mark (point-min))
+      (mark-move-down!        end-mark (number-of-lines-on-screen w)))
+    
     ;; render buffer
     (define-values (xmin xmax ymin ymax) (canvas-dimensions c))
     (render-buffer w)
-    ;; draw borders (draw borders last to avoid flickering)  
+
+      ;; draw borders (draw borders last to avoid flickering)  
     (define bs (window-borders w))
     (define op (send dc get-pen))
     (send dc set-pen border-pen)
