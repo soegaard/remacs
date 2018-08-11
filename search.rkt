@@ -11,7 +11,7 @@
 (define (rest-of-line)
   (define m  (get-point))
   (define p1 (mark-position m))
-  (define p2 (position-of-end-of-line m))
+  (define p2 (line-end-position m))
   (subtext->string (buffer-text (current-buffer)) p1 p2))
 
 (define (looking-at regexp)

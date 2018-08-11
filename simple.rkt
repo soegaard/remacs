@@ -19,7 +19,8 @@
 ;; The user can invoke them either via key bindings or via M-x.
 ;; See more on interactive commands in "commands.rkt".
 
-(require racket/class racket/format racket/list racket/match racket/set racket/string
+(require (for-syntax syntax/parse racket/base)
+         racket/class racket/format racket/list racket/match racket/set racket/string
          syntax/to-string
          racket/gui/base
          framework
@@ -56,88 +57,126 @@
 
 ; beginning-of-line
 ;   move point to beginning of line (logical line, not screen line)
-(define-interactive (beginning-of-line [m #f])
-  (when (buffer? m) (error 'beginning-of-line "fix caller"))    
-  (mark-move-to-beginning-of-line! (or m (get-point))))
+(define-interactive (beginning-of-line [m (get-point)])
+  (goto-char (line-beginning-position m) m))
 
-(define-interactive (end-of-line [m #f])
-  (when (buffer? m) (error 'end-of-line "fix caller"))
-  (mark-move-to-end-of-line! (or m (get-point))))
+(define-interactive (end-of-line [m (get-point)])
+  (goto-char (line-end-position m) m))
 
-(define-interactive (move-to-column n [m #f])  
-  (mark-move-to-column! (or m (get-point)) n)) ; n=numprefix 
+(define-interactive (move-to-column n [m (get-point)])
+  ; n = numprefix
+  (define-values (start end) (mark-line-span m))
+  (goto-char (clamp start (+ start n) end) m))
 
-(define-interactive (forward-char [n +1] [m #f])  
-  (and m (check-mark m))
-  (cond [(region-mark) => mark-deactivate!])
-  (mark-move! (or m (get-point)) n))
+(define-interactive (forward-char [n 1] #:keep-region [keep? #f])
+  (define m (get-point))
+  (check-mark m)
+  (unless keep? (deactivate-region-mark))
+  (define-values (start end) (point-min+max))
+  (define i (clamp start (+ (mark-position m) n) end))
+  (mark-move-to-position! m i))
 
-(define-interactive (backward-char [n -1] [m #f])
-  (and m (check-mark m))
-  (cond [(region-mark) => mark-deactivate!])
-  (mark-move! (or m (get-point)) n))
+(define-interactive (backward-char [n 1] #:keep-region [keep? #f])
+  (forward-char (- n) #:keep-region keep?))
 
-(define-interactive (forward-line)
-  ; Move point an entire text-line (see next-line for moving a screen line).
-  (cond [(region-mark) => mark-deactivate!])
-  (define p (get-point))
-  (if (mark-on-last-line? p)
-      (mark-move-to-end-of-line! p)
-      (mark-move-down! p)))
-
-(define-interactive (backward-line)
-  ; Moves point one text line up.
-  (cond [(region-mark) => mark-deactivate!])
-  (define p (get-point))
-  (if (mark-on-first-line? p)
-      (mark-move-to-beginning-of-line! p)
-      (mark-move-up! p)))
-
-(define-interactive (next-line)
-  ; Moves point one screen line down. Attempts to keep the column.
-  (cond [(region-mark) => mark-deactivate!])  
-  (define point    (get-point))
-  (define n        (local screen-line-length))
-  (define len      (line-length (mark-line point)))
-  (define col      (mark-column point))
-  (define screen-col (remainder col n))
-  (define whole    (quotient  len n))   ; number of full screen lines
-  (cond       
-    [(and (not (mark-on-last-line? point))
-          (>= col (* whole n)))             ; we need to move to the next text line
-     (beginning-of-line)
-     (forward-line)        
-     (move-to-column (min screen-col (line-length (mark-line point))))]
-    [(<= (+ col n) len)   ; there is room to move an entire screen line (same text line)
-     (move-to-column (+ col n))]
-    [else          ; there is not room to move an entire line, so go to end of this text line
-     (move-to-column (line-length (mark-line point)))]))
-
-(define-interactive (previous-line)
-  ; Moves point one screen line up.
-  (cond [(region-mark) => mark-deactivate!])
-  (define point  (get-point))
+(define-interactive (forward-line [n 1])
+  ; Move point to start of text line i+n, where i is the current line.
+  (deactivate-region-mark)
   (cond
-    [(mark-on-first-line? point)  (void)]
-    [else (define n              (local screen-line-length))
-          (define len            (line-length (mark-line point)))
-          (define col            (mark-column point))
-          (define screen-col     (remainder col n))
-          (define whole          (quotient  len n))   ; number of full screen lines
-          (cond
-            [(>= col n)   ; room to move entire screen line (same text line)
-             (move-to-column (- col n))]
-            [else               
-             (beginning-of-line)
-             (backward-line)
-             (define prev-len (line-length (mark-line point)))
-             (move-to-column (+ (- prev-len (remainder prev-len n))
-                                (min screen-col (remainder prev-len n))))])]))
+    [(< n 0) (backward-line (- n 1))]
+    [(= n 0) (beginning-of-line)]
+    [else    (define b (current-buffer))
+             (let loop ([n n] [i (position (get-point))])
+               (define-values (start end) (buffer-line-span b i))
+               (cond [(= n 0) (goto-char start)]
+                     [else    (loop (- n 1) (+ end 1))]))]))
+
+(define-interactive (backward-line [n 1])
+  ; Move point to start of text line i-n, where i is the current line.
+  (deactivate-region-mark)
+  (cond
+    [(< n 0) (forward-line (- n 1))]
+    [(= n 0) (beginning-of-line)]
+    [else    (define b (current-buffer))
+             (let loop ([n n] [i (position (get-point))])
+               (define-values (start end) (buffer-line-span b i))
+               (cond [(= n 0) (goto-char start)]
+                     [else    (loop (- n 1) (- start 1))]))]))
+
+(define-interactive (next-line [n 1])
+  ; Moves point one screen line down. Attempts to keep the column.
+  (deactivate-region-mark)
+  (define point    (get-point))
+  (define (next-line1)
+    (define n        (local screen-line-length))
+    (define len      (line-length (mark-line point)))
+    (define col      (mark-column point))
+    (define screen-col (remainder col n))
+    (define whole    (quotient  len n))   ; number of full screen lines
+    (cond       
+      [(and (not (mark-on-last-line? point))
+            (>= col (* whole n)))             ; we need to move to the next text line
+       (beginning-of-line)
+       (forward-line)        
+       (move-to-column (min screen-col (line-length (mark-line point))))]
+      [(<= (+ col n) len)   ; there is room to move an entire screen line (same text line)
+       (move-to-column (+ col n))]
+      [else          ; there is not room to move an entire line, so go to end of this text line
+       (move-to-column (line-length (mark-line point)))]))
+  (cond
+    [(> n 0) (for ([_ n]) (next-line1))]
+    [(< n 0) (previous-line (- n))]
+    [else    (void)]))
+
+(define-interactive (previous-line [n 1])
+  ; Moves point one screen line up.
+  (deactivate-region-mark)
+  (define point  (get-point))
+  (define (previous-line1)
+    (cond
+      [(mark-on-first-line? point) (void)]
+      [else (define n              (local screen-line-length))
+            (define len            (line-length (mark-line point)))
+            (define col            (mark-column point))
+            (define screen-col     (remainder col n))
+            (define whole          (quotient  len n))   ; number of full screen lines
+            (cond
+              [(>= col n)   ; room to move entire screen line (same text line)
+               (move-to-column (- col n))]
+              [else               
+               (beginning-of-line)
+               (backward-line)
+               (define prev-len (line-length (mark-line point)))
+               (move-to-column (+ (- prev-len (remainder prev-len n))
+                                  (min screen-col (remainder prev-len n))))])]))
+  (cond
+    [(> n 0) (for ([_ n]) (previous-line1))]
+    [(< n 0) (next-line (- n))]
+    [else    (void)]))
+
+(define (forward-char-predicate pred)
+  ; Skip ahead until (pred (char-after-point)) is no longer true
+  (let loop ()
+    (define c (char-after-point))
+    (cond
+      [(not c)  (void)]
+      [(pred c) (forward-char) (loop)]
+      [else     (void)])))
+
+(define (backward-char-predicate pred)
+  ; Skip ahead until (pred (char-after-point)) is no longer true
+  (let loop ()
+    (define c (char-before-point))
+    (cond
+      [(not c)  (void)]
+      [(pred c) (backward-char) (loop)]
+      [else     (void)])))
 
 (define-interactive (forward-word [n 1])
-  (cond [(region-mark) => mark-deactivate!])
-  (define p (get-point))
-  (define (forward-word1) (mark-forward-word! p))  
+  (deactivate-region-mark)  
+  (define (forward-word1)
+    (forward-char-predicate (λ (c) (not (char-alphabetic? c))))
+    (forward-char-predicate char-alphabetic?))
   (cond
     [(= n 1) (forward-word1)]
     [(= n 0) (void)]
@@ -145,9 +184,10 @@
     [else    (for ([_ n]) (forward-word1))]))
 
 (define-interactive (backward-word [n 1])
-  (cond [(region-mark) => mark-deactivate!])
-  (define p (get-point))
-  (define (backward-word1) (mark-backward-word! p))  
+  (deactivate-region-mark)
+  (define (backward-word1)
+    (backward-char-predicate (λ (c) (not (char-alphabetic? c))))
+    (backward-char-predicate char-alphabetic?))
   (cond
     [(= n 1) (backward-word1)]
     [(= n 0) (void)]
@@ -207,44 +247,51 @@
 
 
 (define (prepare-extend-region)
-  (define b        (current-buffer))
-  (define the-mark (buffer-the-mark b))
-  (unless (mark-active? the-mark)
+  (unless (mark-active? (get-mark))
     (set-mark (get-point))))
+
+(define-syntax (save-region-activity stx)
+  (syntax-parse stx
+    [(_save-region-activity body ...)
+     (syntax/loc stx
+       (let* ([m (get-mark)] [active? (mark-active? m)])
+         (begin0 (begin body ...)
+                 (set-mark-active?! m active?))))]))
 
 (define-interactive (backward-char/extend-region)
   (check-mark (get-point))
   (prepare-extend-region)
-  (mark-move! (get-point) -1))
+  (save-region-activity
+   (backward-char +1)))
 (define-interactive (forward-char/extend-region)
   (check-mark (get-point))
   (prepare-extend-region)
-  (check-mark (get-point))
-  (mark-move! (get-point) +1))
-(define-interactive (previous-line/extend-region) 
+  (save-region-activity
+   (forward-char +1)))
+(define-interactive (previous-line/extend-region [n 1])
   (prepare-extend-region)
-  (define p (get-point))
-  (if (mark-on-first-line? p)
-      (mark-move-to-beginning-of-line! p)
-      (mark-move-up! p)))
-(define-interactive (next-line/extend-region)
+  (save-region-activity
+   (previous-line n)))
+(define-interactive (next-line/extend-region [n 1])
   (prepare-extend-region)
-  (define p (get-point))
-  (if (mark-on-last-line? p)
-      (mark-move-to-end-of-line! p)
-      (mark-move-down! p)))
+  (save-region-activity
+   (next-line n)))
 (define-interactive (forward-word/extend-region) 
   (prepare-extend-region)
-  (mark-forward-word! (get-point)))
+  (save-region-activity
+   (forward-word)))
 (define-interactive (backward-word/extend-region)
   (prepare-extend-region)
-  (mark-backward-word! (get-point)))
+  (save-region-activity
+   (backward-word)))
 (define-interactive (beginning-of-line/extend-region)
   (prepare-extend-region)
-  (beginning-of-line))
+  (save-region-activity
+   (beginning-of-line)))
 (define-interactive (end-of-line/extend-region)
   (prepare-extend-region)
-  (end-of-line))
+  (save-region-activity
+   (end-of-line)))
 
 ;;;
 ;;; BUFFER
@@ -252,10 +299,9 @@
 
 ;;; Buffer Movement
 (define-interactive (beginning-of-buffer)
-  (define p (get-point))
-  (mark-move-to-beginning-of-buffer! p))
+  (goto-char (point-min)))
 (define-interactive (end-of-buffer)
-  (mark-move-to-end-of-buffer! (get-point)))
+  (goto-char (point-max)))
 (define-interactive (end-of-buffer/extend-region)
   (prepare-extend-region)
   (end-of-buffer))
@@ -404,14 +450,14 @@
     (error who "expected a position (index or mark), got ~a" what)))
 
 (define-interactive (goto-char pos [m #f])
+  (define who 'goto-char)
   (check-position 'goto-char pos)
-  ; todo: add narrowing
-  (define idx (position->index pos))
-  (unless (and (integer? idx) (>= idx 0))
-    (error 'goto-char (~a "expected index, got " idx)))
-  (cond
-    [m    (mark-move-to-position! m           idx)]
-    [else (mark-move-to-position! (get-point) idx)]))
+  (define i (position pos))
+  (unless (and (integer? i) (>= i 0)) (error who (~a "expected index, got " i)))
+  (let ([i (clamp (point-min) i (point-max))]) ; handles narrowing
+    (cond
+      [m    (mark-move-to-position! m           i)]
+      [else (mark-move-to-position! (get-point) i)])))
 
 
 (define-interactive (set-mark pos)
@@ -577,19 +623,19 @@
 ;   Delete n characters backwards.
 ;   If n=1 and region is active, delete region.
 (define-interactive (backward-delete-char [n 1])
-  (if (and (= n 1) (use-region?))
-      (begin
-        (delete-region)
-        #;(deactivate! (region-mark)))
-      (buffer-delete-backward-char! (current-buffer) (get-point) n)))
+  (define b (current-buffer))
+  (cond
+    [(and (= n 1) (use-region?))  (delete-region)]
+    [(not (buffer-restricted? b)) (buffer-delete-backward-char! b (get-point) n)]
+    [else                         (define limit (- (point) (point-min)))
+                                  (buffer-delete-backward-char! b (get-point) (min limit n))]))
 
 ; select all
 (define-interactive (mark-whole-buffer [b (current-buffer)])
   (localize ([current-buffer b])
     (end-of-buffer)
     (command-set-mark)
-    (beginning-of-buffer)
-    #;(refresh-frame)))
+    (beginning-of-buffer)))
 
 (define-interactive (kill-line)
   (buffer-kill-line)
@@ -616,7 +662,7 @@
 (define (mark-kill-line-to-beginning [m (get-point)])
   ; TODO : store deleted text in kill ring
   (define p1 (mark-position m))
-  (define p2 (position-of-beginning-of-line m))
+  (define p2 (line-beginning-position m))
   (define rest-of-line (subtext->string (buffer-text b) p2 p1))
   ; delete to beginning of line
   (define b  (mark-buffer m))
@@ -665,13 +711,13 @@
 
 (define-interactive (kill-word)
   ; kill to end of word
-  (cond [(get-mark) => mark-deactivate!])  
+  (deactivate-region-mark)
   (forward-word/extend-region)
   (kill-region))
 
 (define-interactive (backward-kill-word)
   ; Kill to beginning of word
-  (cond [(get-mark) => mark-deactivate!])  
+  (deactivate-region-mark)
   (backward-word/extend-region)
   (kill-region))
 
@@ -749,7 +795,7 @@
   (with-saved-point
     (beginning-of-line)
     (if (blank-line?)
-        (position-of-end-of-line)
+        (line-end-position)
         (forward-whitespace))))
 
 (define (indent-to column [minimum #f])
@@ -870,7 +916,7 @@
   (insert-newline)
   (backward-char)  
   (when (and (local fill-prefix)
-             (= (position) (position-of-beginning-of-line)))
+             (= (position) (line-beginning-position)))
     (insert (local fill-prefix))))
 
 ;;;
@@ -984,7 +1030,7 @@
   ; Move backward one word at a time until we are before fill-column.
   ; Return position of the break point.
   ; If there is no break point before beginning of the line, return #f.
-  (define beg (position-of-beginning-of-line))
+  (define beg (line-beginning-position))
   (define end (+ beg (local fill-column)))
   (let loop ()
     (define p (position))
@@ -994,7 +1040,7 @@
                        (position)])))
 
 (define (backward-skip-word-separators #:stay-on-line? stay?)
-  (define beg (if stay? (position-of-beginning-of-line) (start-of-buffer-position)))
+  (define beg (if stay? (line-beginning-position) (start-of-buffer-position)))
   (let loop ()
     (define p (position))
     (when (> p beg)
@@ -1005,7 +1051,7 @@
 ;;; Filling
 
 (define (fill-needed?)
-  (define col (- (position) (position-of-beginning-of-line)))
+  (define col (- (position) (line-beginning-position)))
   (> col (local fill-column)))
 
 (define-interactive (normal-auto-fill-function)
@@ -1017,8 +1063,6 @@
 ;;; Positions
 
 
-(define (line-end-position) ; emacs name
-  (position-of-end-of-line (get-point)))
 
 (define (eob?)
   ; is point at end of buffer?
@@ -1034,10 +1078,10 @@
   (cond
     [(mark? m) (define l (mark-line m))
                (define c (mark-column m))
-               (cond [(= (position m) (start-of-buffer-position)) #f]
-                     [(not c)                                     #f] ; ??
-                     [(= c 0)                                     #\newline]
-                     [else                                        (line-ref l (- c 1))])]
+               (cond [(= (position m) (point-min)) #f]
+                     [(not c)                      #f] ; ??
+                     [(= c 0)                      #\newline]
+                     [else                         (line-ref l (- c 1))])]
     [(integer? m) (if (= m (point))
                       (char-before (get-point))
                       (with-saved-point
@@ -1060,7 +1104,7 @@
   (define p   (get-point))
   (define l   (mark-line p))
   (define c   (mark-column p))
-  (cond [(= (position p) (end-of-buffer-position)) #f]
+  (cond [(= (position p) (point-max))              #f]
         [(not c)                                   #f]  ; empty line?
         [(= c (line-length l))                     #\newline]
         [(> c (line-length l))
@@ -1112,15 +1156,45 @@
 (define (char-category c)
   (hash-ref syntax-category-ht c #f))
 
-
-      
-(define (forward-whitespace)
-  "Move forward over any whitespace."
+(define (backward-whitespace)
+  "Place the point at the start of the previous whitespace sequence."
+  ; 1. Find next whitespace sequence  
   (let loop ()
-    (define c   (char-after-point))
-    (when (blank? (char-category c)) 
-      (forward-char)
-      (loop))))
+    (unless (<= (point) (point-min))
+      (define c (char-after-point))
+      (unless (blank? (char-category c))
+        (backward-char)
+        (loop))))
+  ; 2. Skip whitespace sequence
+  (let loop ()
+    (unless (<= (point) (point-min))
+      (define c (char-after-point))
+      (when (blank? (char-category c)) 
+        (backward-char)
+        (loop)))))
+
+(define (make-skip-char-category char-category-pred)
+  (λ ([direction +1])
+    (define start (point-min))
+    (define end   (point-max))
+    (define next  (if (positive? direction) forward-char backward-char))
+    (let loop ()
+      (when (< start (point) end)
+        (define c (char-after-point))
+        (when (char-category-pred (char-category c))
+          (next)
+          (loop))))))
+
+(define (make-skip-unless-char-category char-category-pred)
+  (make-skip-char-category (λ (c) (not (char-category-pred c)))))
+  
+(define skip-whitespace        (make-skip-char-category        blank?))
+(define skip-unless-whitespace (make-skip-unless-char-category blank?))
+
+(define (forward-whitespace)
+  "Place the point at the end of the next whitespace sequence."
+  (skip-unless-whitespace) ; Finds next whitespace sequence
+  (skip-whitespace))       ; Skips whitespace sequence
 
 (define (forward-whitespace/quotes [limit #f])
   "Move forward over any whitespace (newline), quotes or quasiquotes - not scanning past limit."
@@ -1695,7 +1769,7 @@ If the closer doesn't belong to a balanced expression, return false."
          (define rb (region-beginning b))
          (define re (region-end b))
          (buffer-overlay-range-set! b rb re sym val)
-         (cond [(region-mark) => mark-deactivate!])] ; deactivate region
+         (deactivate-region-mark)]
         [else (void)]))
 
 (define-interactive (balance-parens)
@@ -1753,6 +1827,3 @@ If the closer doesn't belong to a balanced expression, return false."
            (goto-char pos)
            (mark-row (get-point)))]
     [else  (mark-row (get-point))]))
-
-
-  

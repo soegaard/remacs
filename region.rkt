@@ -56,3 +56,5 @@
 (define (region-mark [b (current-buffer)])
   (buffer-the-mark b))
 
+(define (deactivate-region-mark)
+  (cond [(region-mark) => mark-deactivate!]))

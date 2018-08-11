@@ -73,4 +73,5 @@
 (define (point-max)
   (end-of-buffer-position))
 
-
+(define (point-min+max)
+  (values (point-min) (point-max)))

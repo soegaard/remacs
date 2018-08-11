@@ -1,6 +1,7 @@
 #lang racket
 ;;; BUG: In fundamental-mode and text-mode the indentation of the
 ;;;      preceding line needs to be added as a "tab stop".
+;;; BUG  Previous line used on first line of narrowed region.
 
 ;;;
 ;;; INSTRUCTIONS

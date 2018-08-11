@@ -87,6 +87,29 @@
   (if (mark? pos) (mark-position pos) pos))
 
 ;;;
+;;; LINES
+;;;
+
+; buffer-line-span : buffer position -> integer integer
+;   Return start and end positions of the current line.
+;   Restrictions due to narrowing are respected.
+(define (buffer-line-span b p)
+  (define i   (position p))
+  (define im  (text-positions (buffer-text b)))
+  (define-values (start end d) (interval-map-ref/bounds im i #f))
+  (cond
+    [(buffer-restricted? b) (values (max (position (buffer-restriction-start b)) start)
+                                    (min (position (buffer-restriction-end   b)) end))]
+    [else                   (values start end)]))
+
+(define (mark-line-span m)
+  (define who 'mark-line-span)
+  (define b (mark-buffer m))
+  (unless (buffer? b) (error who (~a "given mark has no buffer" m)))
+  (buffer-line-span b m))
+
+
+;;;
 ;;; WORDS
 ;;;
 
@@ -294,6 +317,9 @@
 (define (clamp minimum x maximum)
   (max minimum (min x maximum)))
 
+  
+
+
 ; mark-move-to-column! : mark integer -> void
 ;   move mark to column n (stay at text line)
 (define (mark-move-to-column! m n)
@@ -329,33 +355,38 @@
   (when (and p col)
     (set-mark-position! m (- p col))))
 
-; position-of-end-of-line : mark -> integer
+; line-end-position : mark -> integer
 ;   return the position just before the newline of the line of mark
-(define (position-of-end-of-line m)
-  (unless (mark? m)
-    (error 'position-of-end-line (~a "expected mark, got " m)))
-  (define b (mark-buffer m))
-  (unless (buffer? b)
-    (error 'position-of-end-of-line "the given mark does not belong to a buffer: ~a" m))
-  (define p (mark-position m))
-  (define-values (start end d) (interval-map-ref/bounds (text-positions (buffer-text b)) p))
-  (max 0 (- end 1)))
-
-; position-of-beginning-of-line : mark -> integer
-;   return the position of the beginning of the line of the mark
-(define (position-of-beginning-of-line [m #f])
+;   the position returned is within any restriction
+(define (line-end-position [m #f])
+  (define who 'line-end-position)
   (set! m (or m (buffer-point (current-buffer))))
-  (unless (mark? m)
-    (error 'position-of-beginning-of-line (~a "expected mark, got " m)))
   (define b (mark-buffer m))
-  (unless (buffer? b)
-    (error 'position-of-end-of-line "the given mark does not belong to a buffer: ~a" m))
+  (unless (buffer? b) (error who "given mark has no buffer: ~a" m))
   (define p (mark-position m))
   (define-values (start end d) (interval-map-ref/bounds (text-positions (buffer-text b)) p))
-  start)
+  (define pos (max 0 (- end 1)))
+  (if (buffer-restricted? b)
+      (clamp (position (buffer-restriction-start b))
+             pos
+             (position (buffer-restriction-end b)))
+      pos))
 
-(define (line-beginning-position) ; emacs name
-  (position-of-beginning-of-line))
+; line-beginning-position : mark -> integer
+;   return the position of the beginning of the line of the mark
+(define (line-beginning-position [m #f])
+  (define who 'line-beginning-position)
+  (set! m (or m (buffer-point (current-buffer))))
+  (unless (mark? m) (error who (~a "expected mark, got " m)))
+  (define b (mark-buffer m))
+  (unless (buffer? b) (error who "the given mark does not belong to a buffer: ~a" m))
+  (define p (mark-position m))
+  (define-values (start end d) (interval-map-ref/bounds (text-positions (buffer-text b)) p))
+  (if (buffer-restricted? b)
+      (clamp (position (buffer-restriction-start b))
+             start
+             (position (buffer-restriction-end b)))
+      start))
 
 (define (position-of-end [b (current-buffer)])
   (text-length (buffer-text b)))
@@ -389,7 +420,7 @@
 ;   move the mark to the end of its line
 (define (mark-move-to-end-of-line! m)
   (check-mark m)
-  (set-mark-position! m (position-of-end-of-line m))
+  (set-mark-position! m (line-end-position m))
   (check-mark m))
 
 ; mark-move-up! : mark -> void
@@ -450,19 +481,7 @@
       (define new-pos (+ start+ new-col))
       (mark-move-to-position! m new-pos)
       (check-mark m #'here3))
-    (check-mark m #'here4)
-    #;(unless (mark-on-last-line? m)
-      (unless (dempty? d)
-        (set-linked-line-marks! d (set-remove (linked-line-marks d) m))
-        (define l1 (dfirst d))
-        (define l2 (dlist-ref d 1))
-        (define new-col (min (line-length l2) col))
-        (define new-pos (+ p (- (line-length l1) col) new-col))
-        (set-mark-position! m new-pos)
-        (define d+ (dlist-move d 1))
-        (set-linked-line-marks! d+ (set-add (linked-line-marks d+) m))
-        (set-mark-link! m d+)
-        (check-mark m #'here3))))
+    (check-mark m #'here4))
   (begin0
     (cond
       [(< n 0) (mark-move-up! m (- n))]

@@ -83,7 +83,7 @@
   ; setup region, then use kill-ring-push-region and delete-region
   (define b  (current-buffer))
   (define p1 (mark-position m))
-  (define p2 (position-of-end-of-line m))
+  (define p2 (line-end-position m))
   (define rest-of-line (subtext->string (buffer-text b) p1 p2))
   (define eol? (and (string-whitespace? rest-of-line)
                     (not (= (+ (mark-position m) 1) (position-of-end b)))))
