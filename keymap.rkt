@@ -3,18 +3,18 @@
 
 (require racket/format racket/list racket/match racket/string
          "buffer.rkt"
-         "buffer-locals.rkt"
+         ;"buffer-locals.rkt"
          "colors.rkt"
          "completion.rkt"
          "commands.rkt"
-         "embedded.rkt"
+         ;"embedded.rkt"
          "frame.rkt"
          "killing.rkt"
          "locals.rkt"
-         "mark.rkt"
+         ;"mark.rkt"
          "message.rkt"
          "parameters.rkt"
-         "point.rkt"
+         ;"point.rkt"
          "representation.rkt"
          "simple.rkt"
          "text.rkt"
@@ -51,7 +51,7 @@
        (match key
          [(or "ESC" "C-g")  (message "") 'clear-prefix]
          ["backspace"       (define new (remove-last more))
-                            (message (string-append* `("M-x " ,@(map ~a new))))
+                            (message (string-append* `("M-x " ,@(map ~a new) "|")))
                             `(replace ,(cons "M-x" new))]
          [#\tab             (cond
                               [(equal? (last more) "C-g")
@@ -61,7 +61,7 @@
                                (define cs     (completions-lookup so-far))
                                (writeln cs)
                                (cond 
-                                 [(empty? cs) (message (~a "M-x " so-far key))
+                                 [(empty? cs) (message (~a "M-x " so-far key "|"))
                                               'ignore]
                                  [else
                                   (define b (current-completion-buffer))                                  
@@ -87,16 +87,16 @@
                                     (insert (text->string t))
                                     ;; replace prefix with the longest unique completion
                                     (define pre (longest-common-prefix cs))
-                                    (message (~a "M-x " pre))
+                                    (message (~a "M-x " pre "|"))
                                     (list 'replace (cons "M-x" (string->list pre))))])])]
          ["return"          (define cmd-name (string-append* (map ~a more)))
                             (define cmd      (lookup-interactive-command cmd-name))
                             (cond [cmd   (message "") cmd]
                                   [else  (match prefix
                                            [(list _M-x c ...)
-                                            (message (~a "M-x " (apply ~a c) " [Unbound]"))
+                                            (message (~a "M-x " (apply ~a c) "| [Unbound]"))
                                             (list 'replace (cons "M-x" c))])])]
-         [_                 (message (string-append* `("M-x " ,@(map ~a more) ,(~a key))))
+         [_                 (message (string-append* `("M-x " ,@(map ~a more) ,(~a key) "|")))
                             'prefix])]
       [(list "C-u" (? digit-char? ds) ... x ...)
        (match key
