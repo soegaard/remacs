@@ -145,9 +145,8 @@
     [(and (buffer? b) (buffer-restricted? b))
      (define s (position (buffer-restriction-start b)))
      (define-values (start1 end1 _) (interval-map-ref/bounds im s))
-     (if (<= start1 i (- end1 1))
-         (- c (- start1 start))
-         c)]
+     (cond [(<= start1 i (- end1 1)) (- c (- s start))]
+           [else                     c])]
     [else c]))
 
 
@@ -453,20 +452,7 @@
         (define len- (- end- start-))        ; length of previous line
         (define new-col (min len- col))      ; stay at current column if possible
         (define new-pos (+ start- new-col))
-        (mark-move-to-position! m new-pos))
-      
-      #;(when old-link
-        (unless (mark-on-first-line? m)
-          (define link (dprev old-link))
-          (define l (dfirst link)) ; line
-          (define new-col (min (line-length l) col))
-          (define new-pos (- p col (line-length l) (- new-col)))
-          (set-mark-position! m new-pos)
-          (set-linked-line-marks! link (set-add (linked-line-marks link) m))
-          (set-mark-link! m link)
-          (unless (dempty? old-link)
-            (set-linked-line-marks! old-link (set-remove (linked-line-marks link) m)))
-          (check-mark m 'move-one-up!-end)))))
+        (mark-move-to-position! m new-pos))))
   (cond
     [(< n 0) (mark-move-down! m (- n))]
     [else    (for ([i (in-range n)])
@@ -632,3 +618,16 @@
     (error 'mark-line "given mark does not belong to a buffer: ~a" m))
   (define l (mark-link m))
   (dfirst l))
+
+; mark-row+column : mark- > integer integer
+;   return row and column number for the mark m
+(define (mark-row+column m)
+  ; Get row and column in the text.
+  (define-values (row col) (position-row+column (buffer-text (mark-buffer m)) (mark-position m)))
+  ; If the buffer is restricted due to narrowing, then the column numbers on the first
+  ; line of the restriction needs to be adjusted. We therefore use mark-column instead.
+  (values row (mark-column m)))
+
+(define (mark-row m)
+  (define-values (r _) (mark-row+column m))
+  r)

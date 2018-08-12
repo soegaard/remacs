@@ -468,6 +468,7 @@
             (set! debug-buffer b)
             (define positions+screen-lines cached-info)
             (define screen-lines (append* (map second positions+screen-lines)))
+            ; find screen with poit - or #f if point is at the end of a restriction
             (define sl  (for/first ([sl (in-list screen-lines)]
                                     #:when (and (<=   (screen-line-start-position sl) n)
                                                 (<  n (screen-line-end-position   sl))))

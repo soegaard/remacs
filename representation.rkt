@@ -23,8 +23,6 @@
          buffer-name
          ; buffer-point
          (struct-out mark)
-         mark-row+column
-         mark-row
          (struct-out mode)
          (struct-out window) window-start-mark window-end-mark
          (struct-out frame)
@@ -209,12 +207,3 @@
     ; since we got here, row is larger than the larges row index in text
     last-pos))
 
-; mark-row+column : mark- > integer integer
-;   return row and column number for the mark m
-(define (mark-row+column m)
-  (position-row+column (buffer-text (mark-buffer m))
-                       (mark-position m)))
-
-(define (mark-row m)
-  (define-values (r _) (mark-row+column m))
-  r)
