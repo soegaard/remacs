@@ -15,7 +15,6 @@
 ;;;   TODO Completion
 ;;;          - text mode completion: build trie of all words in text
 ;;;          - racket mode: same + use namespace when cmd+r is used
-;;;   TODO buffer narrowing
 ;;;   TODO The column position of the cursor when using down should stay the same
 ;;;        even if one goes across short line.
 ;;;   TODO Implement undo
@@ -471,7 +470,7 @@
             (define screen-lines (append* (map second positions+screen-lines)))
             (define sl  (for/first ([sl (in-list screen-lines)]
                                     #:when (and (<=   (screen-line-start-position sl) n)
-                                                (<= n (screen-line-end-position   sl))))
+                                                (<  n (screen-line-end-position   sl))))
                           sl))
             (when sl
               (define s (screen-line-start-position sl))

@@ -137,8 +137,18 @@
   ; Sanity check: a column number must be smaller than the line length.
   (when (and c (> c (line-length (dfirst d))))
     (error 'mark-column "internal error"))
-  ; Done
-  c)
+  ; The value c is now correct in the common case.
+  ; If however narrowing is active, and we are on the first line of
+  ; the restricted area, the column might need to be adjusted.
+  (define b (mark-buffer m))
+  (cond
+    [(and (buffer? b) (buffer-restricted? b))
+     (define s (position (buffer-restriction-start b)))
+     (define-values (start1 end1 _) (interval-map-ref/bounds im s))
+     (if (<= start1 i (- end1 1))
+         (- c (- start1 start))
+         c)]
+    [else c]))
 
 
 ; mark-compare : mark mark comparator -> boolean
