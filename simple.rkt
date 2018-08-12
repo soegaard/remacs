@@ -1151,6 +1151,9 @@
                       (cons #\'       (expression-prefix))
                       (cons #\,       (expression-prefix))
                       (cons #\#       (expression-prefix))))) ; @ ?
+
+(define (char-category c)
+  (hash-ref syntax-category-ht c #f))
 (define (add-char-range from to cat)
   (for ([c (in-range (char->integer from) (char->integer to))])
     (hash-set! syntax-category-ht (integer->char c) cat)))
@@ -1158,10 +1161,6 @@
 (add-char-range #\A #\Z (symbol-constituent))
 (add-char-range #\0 #\9 (symbol-constituent))
 
-
-
-(define (char-category c)
-  (hash-ref syntax-category-ht c #f))
 
 (define (backward-whitespace)
   "Place the point at the start of the previous whitespace sequence."
@@ -1322,14 +1321,14 @@
                                     after-quote comment-style comment-start string-start
                                     seen inner-starts start-current))]))
   
-  (define-syntax (complete-parens! stx) ; an parenthesized sexp was completed
+  (define-syntax (complete-parens! stx) ; a parenthesized sexp was completed
     (syntax-parse stx [(_) #'(when inner-start
                                (set! last-complete inner-start)
                                (set! inside-symbol #f)
                                (set! start-current #f))]))
   (define-syntax (complete! stx) ; an (non-parenthesized) sub-sexp was completed
     (syntax-parse stx [(_) #'(when (and (or inside-string inside-symbol)
-                                        start-current (not inner-start))
+                                        start-current)
                                (set! last-complete start-current)
                                (set! start-current #f)
                                (set! inside-symbol #f)
@@ -1354,12 +1353,9 @@
        (define x (char-category (char-after-point)))
        ; (displayln (list 'x (char-after-point) (char-category (char-after-point))))
        (when (and inside-string (not (symbol-constituent? x)))
-         (set! inside-string #f))
-       #;(when (and (not (or inside-string inside-comment))
-                    (or (blank? x) (string-starter? x) (comment-starter? x) (closer? x)
-                        (comment-ender? x)))
-           (displayln "complete!")
-           (complete!))
+         (set! inside-string #f)) ; ???
+       (when (and inside-symbol (not (symbol-constituent? x)))
+         (complete!))
        (create-state)]
       [else
        (define c (char-after-point))

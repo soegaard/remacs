@@ -1,7 +1,6 @@
 #lang racket
 ;;; BUG: In fundamental-mode and text-mode the indentation of the
 ;;;      preceding line needs to be added as a "tab stop".
-;;; BUG  Previous line used on first line of narrowed region.
 
 ;;;
 ;;; INSTRUCTIONS
@@ -22,15 +21,15 @@
 ;;; PRIORITY: MEDIUM
 
 ;;; TODO Gutter (line numbers etc)
-;;; TODO documentation
+;;; TODO Documentation
 ;;; TODO Render #\tab correctly
 ;;; TODO Implement open-input-buffer (naive implementation already done)
-;;; TODO paragraphs
-;;; TODO gui: adjust size of buffers by dragging vertical line
+;;; TODO Paragraphs
+;;; TODO GUI: adjust size of buffers by dragging vertical line
 
-;;; TODO when normal-auto-fill needs to break the line, it shouldn't move the point
-;;; TODO run fundamental-mode in upstart
-;;; TODO support .remacs files
+;;; TODO When normal-auto-fill needs to break the line, it shouldn't move the point
+;;; TODO Run fundamental-mode in upstart
+;;; TODO Support .remacs files
 
 ;;; TODO eval-buffer
 ;;;        ok use buffer-local namespace for evaluation
@@ -310,7 +309,7 @@
             (define cur-text-color  default-color)
             (define-syntax (set-unless-same stx)
               (syntax-parse stx
-                [(_set-unless-smae p msg cur get)
+                [(_set-unless-same p msg cur get)
                  (syntax/loc stx
                    (let ([t (get p)])
                      (unless (equal? t cur)
@@ -430,7 +429,6 @@
       (status-line-render-time (- later now))))
   (semaphore-post sema-render-buffer))
 
-(define debug-buffer #f)
 (define debug-info #f)
 (define (render-points w start-row end-row)
   (define (find-index positions p [index 0])
@@ -465,14 +463,17 @@
           ; (define-values (r c) (mark-row+column p))
           (when #t #;(<= start-row r end-row)
             (define n (mark-position p))
-            (set! debug-buffer b)
             (define positions+screen-lines cached-info)
             (define screen-lines (append* (map second positions+screen-lines)))
-            ; find screen with poit - or #f if point is at the end of a restriction
+            ; find screen line with point - or #f if point is at the end of a restriction
             (define sl  (for/first ([sl (in-list screen-lines)]
                                     #:when (and (<=   (screen-line-start-position sl) n)
                                                 (<  n (screen-line-end-position   sl))))
                           sl))
+            (unless sl ; n=screen-line-position of point is at the end of a restriction
+              (when (and (buffer-restricted? b)
+                         (= n (screen-line-end-position (last screen-lines))))
+                (set! sl (last screen-lines))))
             (when sl
               (define s (screen-line-start-position sl))
               (define c (- n s))

@@ -123,7 +123,8 @@
       [(list "C-x" #\n) ; narrowing prefix
        (match key
          [#\n         narrow-to-region]
-         [_           #f])]         
+         [#\w         widen]
+         [_           #f])]
       [(list "C-x")
        (match key
          [#\n         'prefix]
@@ -163,7 +164,7 @@
          ["S-left"        backward-char/extend-region]
          ["S-right"       forward-char/extend-region]
          ["S-up"          previous-line/extend-region]
-         ["S-down"        next-line/extend-region]         
+         ["S-down"        next-line/extend-region]
          ; Ctrl + something
          ["C-a"           beginning-of-line]
          ["C-b"           backward-char]
