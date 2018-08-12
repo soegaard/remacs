@@ -601,7 +601,7 @@
                      [min-width min-width] [min-height min-height]
                          [width std-width]     [height std-height]))
   (set-frame-frame%! this-frame frame)
-  (define msg (new message% [parent frame] [label "No news"]))
+  (define msg (new message% [parent frame] [label "No news"] [stretchable-width #t]))
   (current-message msg)
   (send msg min-width min-width)
   ;;; MENUBAR
