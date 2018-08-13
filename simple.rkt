@@ -1063,7 +1063,11 @@
 (define-interactive (normal-auto-fill-function)
   (when (fill-needed?)
     (fill-move-to-break-point)
-    (insert-newline)))
+    (insert-newline)
+    (when (blank? (char-category (char-after-point)))
+      (forward-char)
+      (backward-delete-char))
+    (goto-char (line-end-position))))
 
 
 ;;; Positions

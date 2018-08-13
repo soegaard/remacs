@@ -27,7 +27,6 @@
 ;;; TODO Paragraphs
 ;;; TODO GUI: adjust size of buffers by dragging vertical line
 
-;;; TODO When normal-auto-fill needs to break the line, it shouldn't move the point
 ;;; TODO Run fundamental-mode in upstart
 ;;; TODO Support .remacs files
 
