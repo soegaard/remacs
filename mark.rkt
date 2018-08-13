@@ -91,8 +91,9 @@
 ;;;
 
 ; buffer-line-span : buffer position -> integer integer
-;   Return start and end positions of the current line.
+;   Return start and end positions of the line containing position p.
 ;   Restrictions due to narrowing are respected.
+;   Returns #f #f at end of buffer.
 (define (buffer-line-span b p)
   (define i   (position p))
   (define im  (text-positions (buffer-text b)))

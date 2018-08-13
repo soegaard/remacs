@@ -83,24 +83,24 @@
   ; Move point to start of text line i+n, where i is the current line.
   (deactivate-region-mark)
   (cond
-    [(< n 0) (backward-line (- n 1))]
+    [(< n 0) (backward-line (- n))]
     [(= n 0) (beginning-of-line)]
     [else    (define b (current-buffer))
-             (let loop ([n n] [i (position (get-point))])
+             (let loop ([n n] [i (point)])               
                (define-values (start end) (buffer-line-span b i))
-               (cond [(= n 0) (goto-char start)]
+               (cond [(= n 0) (goto-char (or start (point-max)))]
                      [else    (loop (- n 1) (+ end 1))]))]))
 
 (define-interactive (backward-line [n 1])
   ; Move point to start of text line i-n, where i is the current line.
   (deactivate-region-mark)
   (cond
-    [(< n 0) (forward-line (- n 1))]
+    [(< n 0) (forward-line (- n))]
     [(= n 0) (beginning-of-line)]
     [else    (define b (current-buffer))
              (let loop ([n n] [i (position (get-point))])
                (define-values (start end) (buffer-line-span b i))
-               (cond [(= n 0) (goto-char start)]
+               (cond [(= n 0) (goto-char (or start (point-min)))]
                      [else    (loop (- n 1) (- start 1))]))]))
 
 (define-interactive (next-line [n 1])
@@ -112,12 +112,12 @@
     (define len        (line-length (mark-line point)))
     (define col        (mark-column point))
     (define screen-col (remainder col n))
-    (define whole      (quotient  len n))   ; number of full screen lines
+    (define whole      (quotient  len n))   ; number of full screen lines    
     (cond       
       [(and (not (mark-on-last-line? point))
             (>= col (* whole n)))             ; we need to move to the next text line
        (beginning-of-line)
-       (forward-line)        
+       (forward-line)
        (move-to-column (min screen-col (line-length (mark-line point))))]
       [(<= (+ col n) len)   ; there is room to move an entire screen line (same text line)
        (move-to-column (+ col n))]
@@ -857,8 +857,7 @@
      (define end     (region-end))
      ; indenting the lines in the region affects the position of end,
      ; so we need a mark that moves along.
-     (define end-m   (new-mark b "*temp" end))
-     (backward-char -1 end-m)
+     (define end-m   (new-mark b "*temp" (- end 1)))
      ; go to the beginning of the region and indent each line
      (goto-char beg)
      (let loop ()
