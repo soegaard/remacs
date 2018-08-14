@@ -324,33 +324,7 @@
   (buffer-dirty! b))
 
 
-; buffer-point-set! : buffer mark -> void
-;   set the point at the position given by the mark m
-
-#;(define (buffer-move-point! b n)
-    (mark-move! (buffer-point b) n))
-
-#;(define (buffer-move-point-up! b)
-    (mark-move-up! (buffer-point b)))
-
-#;(define (buffer-move-point-down! b)
-    (mark-move-down! (buffer-point b)))
-
-#;(define (buffer-move-to-column! b n)
-    (mark-move-to-column! (buffer-point b) n))
-
-; buffer-backward-word! : buffer -> void
-;   move point backward until a word separator is found
-#;(define (buffer-backward-word! b)
-    (mark-backward-word! (buffer-point b)))
-
-; buffer-forward-word! : buffer -> void
-;   move point forward until a word delimiter is found
-#;(define (buffer-forward-word! b)
-    (mark-forward-word! (buffer-point b)))
-
-
-(define (buffer-display b [port current-output-port])
+(define (buffer-display b [port (current-output-port)])
   (parameterize ([current-output-port port])
     (define (line-display l)
       (write l) (newline)
@@ -501,18 +475,6 @@
     [else
      (buffer-insert-property-at-point! b sym val)]))
 
-#;(define (buffer-move-point-to-position! b n)
-    (mark-move-to-position! (buffer-point b) n)) 
-
-(define (buffer-move-mark-to-position! m n)
-  (mark-move-to-position! m n))
-
-#;(define (buffer-move-point-to-end-of-buffer b)
-    (mark-move-end-of-buffer! (buffer-point b)))
-
-#;(define (buffer-move-point-to-beginning-of-buffer b)
-    (mark-move-beginning-of-buffer! (buffer-point b)))
-
 (define (buffer-set-mark-to-point [b (current-buffer)])
   (check-mark (get-point))
   ; todo: what should happen with the old mark?
@@ -571,10 +533,6 @@
 ;;; POINT AND MARK
 ;;;
 
-(define (position [mark-or-pos (get-point)])
-    (define pos mark-or-pos)
-    (if (mark? pos) (mark-position pos) pos))
-
 (define (get-mark [b (current-buffer)])
   (buffer-the-mark b))
 
@@ -620,23 +578,4 @@
 
 ;;;
 ;;;
-
-(define (buffer-goto-char pos [m #f])
-  ; todo: add narrowing
-  (cond
-    [m    (buffer-move-mark-to-position! m (position pos))]
-    [else (buffer-move-mark-to-position! (get-point) (position pos))]))
-
-(define-syntax (with-saved-point stx)
-  (syntax-parse stx
-    [(_with-saved-point body ...)
-     (syntax/loc stx
-       (let* ([old-point (point)]
-              [our-point (point)])
-         (dynamic-wind
-          (λ () (buffer-goto-char our-point))
-          (λ ()  body ...)
-          (λ () (begin
-                  (set! our-point (point))
-                  (buffer-goto-char old-point))))))]))
 

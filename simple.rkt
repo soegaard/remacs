@@ -26,6 +26,7 @@
          framework
          "buffer.rkt"
          "buffer-locals.rkt"
+         "chars.rkt"
          "colors.rkt"
          "commands.rkt"         
          "deletion.rkt"
@@ -49,6 +50,7 @@
          "string-utils.rkt"
          "text.rkt"
          "window.rkt"
+         "words.rkt"
          (prefix-in overlays: "overlays.rkt"))
 
 ;;;
@@ -68,16 +70,6 @@
   (define-values (start end) (mark-line-span m))
   (goto-char (clamp start (+ start n) end) m))
 
-(define-interactive (forward-char [n 1] #:keep-region [keep? #f])
-  (define m (get-point))
-  (check-mark m)
-  (unless keep? (deactivate-region-mark))
-  (define-values (start end) (point-min+max))
-  (define i (clamp start (+ (mark-position m) n) end))
-  (mark-move-to-position! m i))
-
-(define-interactive (backward-char [n 1] #:keep-region [keep? #f])
-  (forward-char (- n) #:keep-region keep?))
 
 (define-interactive (forward-line [n 1])
   ; Move point to start of text line i+n, where i is the current line.
@@ -161,45 +153,8 @@
     [(< n 0) (next-line (- n))]
     [else    (void)]))
 
-(define (forward-char-predicate pred)
-  ; Skip ahead until (pred (char-after-point)) is no longer true
-  (let loop ()
-    (define c (char-after-point))
-    (cond
-      [(not c)  (void)]
-      [(pred c) (forward-char) (loop)]
-      [else     (void)])))
 
-(define (backward-char-predicate pred)
-  ; Skip ahead until (pred (char-after-point)) is no longer true
-  (let loop ()
-    (define c (char-before-point))
-    (cond
-      [(not c)  (void)]
-      [(pred c) (backward-char) (loop)]
-      [else     (void)])))
 
-(define-interactive (forward-word [n 1])
-  (deactivate-region-mark)  
-  (define (forward-word1)
-    (forward-char-predicate (λ (c) (not (char-alphabetic? c))))
-    (forward-char-predicate char-alphabetic?))
-  (cond
-    [(= n 1) (forward-word1)]
-    [(= n 0) (void)]
-    [(< n 0) (backward-word (- n))]
-    [else    (for ([_ n]) (forward-word1))]))
-
-(define-interactive (backward-word [n 1])
-  (deactivate-region-mark)
-  (define (backward-word1)
-    (backward-char-predicate (λ (c) (not (char-alphabetic? c))))
-    (backward-char-predicate char-alphabetic?))
-  (cond
-    [(= n 1) (backward-word1)]
-    [(= n 0) (void)]
-    [(< n 0) (forward-word (- n))]
-    [else    (for ([_ n]) (backward-word1))]))
 
 (define-interactive (page-down)
   (define w          (current-window))
@@ -456,15 +411,6 @@
   (unless (or (number? what) (mark? what))
     (error who "expected a position (index or mark), got ~a" what)))
 
-(define-interactive (goto-char pos [m #f])
-  (define who 'goto-char)
-  (check-position 'goto-char pos)
-  (define i (position pos))
-  (unless (and (integer? i) (>= i 0)) (error who (~a "expected index, got " i)))
-  (let ([i (clamp (point-min) i (point-max))]) ; handles narrowing
-    (cond
-      [m    (mark-move-to-position! m           i)]
-      [else (mark-move-to-position! (get-point) i)])))
 
 
 (define-interactive (set-mark pos)
@@ -922,7 +868,7 @@
   (insert-newline)
   (backward-char)  
   (when (and (local fill-prefix)
-             (= (position) (line-beginning-position)))
+             (= (point) (line-beginning-position)))
     (insert (local fill-prefix))))
 
 ;;;
@@ -1001,8 +947,8 @@
   ; make from point to beginning of line
   (define b (current-buffer))
   ; (with-saved-point (beginning-of-line) (set-mark))
-  (define pos             (position))
-  (define left-margin-pos (with-saved-point (move-to-left-margin) (position)))
+  (define pos             (point))
+  (define left-margin-pos (with-saved-point (move-to-left-margin) (point)))
   (cond
     [(> pos left-margin-pos) (define s (buffer-substring b left-margin-pos pos))
                              (local! fill-prefix (if (equal? s "") #f s))]
@@ -1039,16 +985,16 @@
   (define beg (line-beginning-position))
   (define end (+ beg (local fill-column)))
   (let loop ()
-    (define p (position))
+    (define p (point))
     (cond [(> p end)   (backward-word) (loop)]
           [(<= p beg)  #f]
           [else        (backward-skip-word-separators #:stay-on-line? #t)
-                       (position)])))
+                       (point)])))
 
 (define (backward-skip-word-separators #:stay-on-line? stay?)
   (define beg (if stay? (line-beginning-position) (start-of-buffer-position)))
   (let loop ()
-    (define p (position))
+    (define p (point))
     (when (> p beg)
       (when (word-separator? (char-before-point))
         (backward-char)
@@ -1057,7 +1003,7 @@
 ;;; Filling
 
 (define (fill-needed?)
-  (define col (- (position) (line-beginning-position)))
+  (define col (- (point) (line-beginning-position)))
   (> col (local fill-column)))
 
 (define-interactive (normal-auto-fill-function)
@@ -1082,49 +1028,7 @@
   ; is point at end of line
   (= (point) (line-end-position)))
 
-;;; Looking
 
-(define (char-before m)
-  (cond
-    [(mark? m) (define l (mark-line m))
-               (define c (mark-column m))
-               (cond [(= (position m) (point-min)) #f]
-                     [(not c)                      #f] ; ??
-                     [(= c 0)                      #\newline]
-                     [else                         (line-ref l (- c 1))])]
-    [(integer? m) (if (= m (point))
-                      (char-before (get-point))
-                      (with-saved-point
-                        (goto-char m)
-                        (char-before (get-point))))]
-    [else (error 'char-before "expected position")]))
-
-(define (char-before-point)
-  (char-before (get-point)))
-
-(define (char-after [m #f])
-  (cond
-    [(eq? m (get-point)) (char-after-point)]
-    [(and (integer? m)
-          (= m (point))) (char-after-point)]
-    [else                (error 'char-after "todo")]))
-
-(define (char-after-point)
-  ; (displayln 'char-after-point (current-error-port))
-  (define p   (get-point))
-  (define l   (mark-line p))
-  (define c   (mark-column p))
-  (cond [(= (position p) (point-max))              #f]
-        [(not c)                                   #f]  ; empty line?
-        [(= c (line-length l))                     #\newline]
-        [(> c (line-length l))
-         (displayln (~a "column: " c )             (current-error-port))
-         (displayln (~a "len: "   (line-length l)) (current-error-port))
-         (displayln (~a "line: " (line->string l)) (current-error-port))
-         (displayln (~a "point: "  (point))        (current-error-port))
-         (displayln p     (current-error-port))
-         (error 'char-after-point "internal error")]
-        [else                                      (line-ref l c)]))
 
 ;;; Syntax Categories
 ; Syntax categories are called syntax classes in Emacs

@@ -1,5 +1,6 @@
 #lang racket/base
-(provide (except-out (all-defined-out) position))
+; (provide (except-out (all-defined-out) position))
+(provide (except-out (all-defined-out) #;position))
 
 ;;;
 ;;; MARKERS
@@ -83,8 +84,11 @@
      (syntax/loc stx
        (do-check-mark m #'who))]))
 
+;;;
+
 (define (position pos)
   (if (mark? pos) (mark-position pos) pos))
+
 
 ;;;
 ;;; LINES

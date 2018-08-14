@@ -14,6 +14,7 @@
 (require (for-syntax racket/base syntax/parse)
          racket/format racket/list racket/match racket/set
          "../buffer.rkt"
+         "../chars.rkt"
          "../commands.rkt"
          "../mark.rkt"
          "../parameters.rkt"

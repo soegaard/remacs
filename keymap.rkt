@@ -4,6 +4,7 @@
 (require racket/format racket/list racket/match racket/string
          "buffer.rkt"
          ;"buffer-locals.rkt"
+         "chars.rkt"
          "colors.rkt"
          "completion.rkt"
          "commands.rkt"
@@ -18,7 +19,8 @@
          "representation.rkt"
          "simple.rkt"
          "text.rkt"
-         "window.rkt")
+         "window.rkt"
+         "words.rkt")
 
 ;;;
 ;;; KEYMAP

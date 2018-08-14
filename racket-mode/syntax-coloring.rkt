@@ -8,6 +8,7 @@
          racket/format
          "../buffer.rkt"
          "../buffer-locals.rkt"
+         "../chars.rkt"
          "../colors.rkt"
          "../locals.rkt"
          "../parameters.rkt"

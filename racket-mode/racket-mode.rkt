@@ -27,6 +27,7 @@
 (require racket/match 
          "../buffer.rkt"
          "../buffer-locals.rkt"
+         "../chars.rkt"
          "../command-loop.rkt"
          "../commands.rkt"
          "../locals.rkt"
