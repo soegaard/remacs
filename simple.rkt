@@ -1018,8 +1018,6 @@
 
 ;;; Positions
 
-
-
 (define (eob?)
   ; is point at end of buffer?
   (>= (point) (end-of-buffer-position)))
@@ -1028,45 +1026,6 @@
   ; is point at end of line
   (= (point) (line-end-position)))
 
-
-
-;;; Syntax Categories
-; Syntax categories are called syntax classes in Emacs
-
-(struct syntax-category ())
-(struct opener             syntax-category (close)) ; ( [ {
-(struct closer             syntax-category (open))  ; ) ] }
-(struct blank              syntax-category ())      ; space, tab
-(struct comment-ender      syntax-category ())      ; newline
-(struct comment-starter    syntax-category ())      ; ;
-(struct string-starter     syntax-category (ender)) ; "
-(struct symbol-constituent syntax-category ())      ; a-z A-Z 0-9
-(struct expression-prefix  syntax-category ())      ; ' , # 
-
-(define syntax-category-ht
-  (make-hasheqv (list (cons #\(       (opener #\)))
-                      (cons #\[       (opener #\]))
-                      (cons #\{       (opener #\}))
-                      (cons #\)       (closer #\())
-                      (cons #\]       (closer #\[))
-                      (cons #\}       (closer #\{))
-                      (cons #\"       (string-starter #\"))
-                      (cons #\space   (blank))
-                      (cons #\tab     (blank))
-                      (cons #\newline (comment-ender))
-                      (cons #\;       (comment-starter))
-                      (cons #\'       (expression-prefix))
-                      (cons #\,       (expression-prefix))
-                      (cons #\#       (expression-prefix))))) ; @ ?
-
-(define (char-category c)
-  (hash-ref syntax-category-ht c #f))
-(define (add-char-range from to cat)
-  (for ([c (in-range (char->integer from) (char->integer to))])
-    (hash-set! syntax-category-ht (integer->char c) cat)))
-(add-char-range #\a #\z (symbol-constituent))
-(add-char-range #\A #\Z (symbol-constituent))
-(add-char-range #\0 #\9 (symbol-constituent))
 
 
 (define (backward-whitespace)

@@ -1,12 +1,44 @@
 #lang racket/base
 (provide (all-defined-out))
 
-#;(define (position pos)
-    (if (mark? pos) (mark-position pos) pos))
-
 ;;;
 ;;; Character
 ;;;
+
+; Characters the bread and butter of a text editor are represented as normal Racket characters.
+; Different modes have a need to modify the classification of characters.
+; In Emacs the classification of characters is named "syntax classes". In Racket "syntax class"
+; is used in syntax-parse, so we use the term category instead.
+
+
+; Movement:
+;   forward-char            : move point forward
+;   backward-char           : move point backwards
+;   goto-char               : move point to position
+;   forward-char-predicate  : move forward while predicate is true
+;   backward-char-predicate ; move backward white predicate is true
+
+; Looking:
+;   char-before       : char before a mark
+;   char-after        : char after  a mark
+;   char-before-point : char before the point
+;   char-after-point  : char after  the point
+
+; Syntax category:
+;   char-category     : the category of a character
+
+; The categories of characters are represented as structs:
+
+(struct syntax-category ())
+(struct opener             syntax-category (close)) ; ( [ {
+(struct closer             syntax-category (open))  ; ) ] }
+(struct blank              syntax-category ())      ; space, tab
+(struct comment-ender      syntax-category ())      ; newline
+(struct comment-starter    syntax-category ())      ; ;
+(struct string-starter     syntax-category (ender)) ; "
+(struct symbol-constituent syntax-category ())      ; a-z A-Z 0-9
+(struct expression-prefix  syntax-category ())      ; ' , # 
+
 
 (require racket/format
          "buffer.rkt"
@@ -103,3 +135,37 @@
       [(not c)  (void)]
       [(pred c) (backward-char) (loop)]
       [else     (void)])))
+
+;;;
+;;; Syntax Categories
+;;;
+
+; Syntax categories are called syntax classes in Emacs
+
+
+(define syntax-category-ht
+  (make-hasheqv (list (cons #\(       (opener #\)))
+                      (cons #\[       (opener #\]))
+                      (cons #\{       (opener #\}))
+                      (cons #\)       (closer #\())
+                      (cons #\]       (closer #\[))
+                      (cons #\}       (closer #\{))
+                      (cons #\"       (string-starter #\"))
+                      (cons #\space   (blank))
+                      (cons #\tab     (blank))
+                      (cons #\newline (comment-ender))
+                      (cons #\;       (comment-starter))
+                      (cons #\'       (expression-prefix))
+                      (cons #\,       (expression-prefix))
+                      (cons #\#       (expression-prefix))))) ; @ ?
+
+(define (char-category c)
+  (hash-ref syntax-category-ht c #f))
+(define (add-char-range from to cat)
+  (for ([c (in-range (char->integer from) (char->integer to))])
+    (hash-set! syntax-category-ht (integer->char c) cat)))
+(add-char-range #\a #\z (symbol-constituent))
+(add-char-range #\A #\Z (symbol-constituent))
+(add-char-range #\0 #\9 (symbol-constituent))
+
+
