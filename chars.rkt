@@ -37,8 +37,10 @@
 (struct comment-starter    syntax-category ())      ; ;
 (struct string-starter     syntax-category (ender)) ; "
 (struct symbol-constituent syntax-category ())      ; a-z A-Z 0-9
-(struct expression-prefix  syntax-category ())      ; ' , # 
+(struct expression-prefix  syntax-category ())      ; ' , #
+; (struct word-constituent   syntax-category ())      ; alphabetic and numbers
 
+; The comments after the categories are examples.
 
 (require racket/format
          "buffer.rkt"
@@ -117,6 +119,7 @@
          (error 'char-after-point "internal error")]
         [else                                      (line-ref l c)]))
 
+;;; Skipping
 
 (define (forward-char-predicate pred)
   ; Skip ahead until (pred (char-after-point)) is no longer true
@@ -161,11 +164,12 @@
 
 (define (char-category c)
   (hash-ref syntax-category-ht c #f))
+      
+
 (define (add-char-range from to cat)
   (for ([c (in-range (char->integer from) (char->integer to))])
     (hash-set! syntax-category-ht (integer->char c) cat)))
+
 (add-char-range #\a #\z (symbol-constituent))
 (add-char-range #\A #\Z (symbol-constituent))
 (add-char-range #\0 #\9 (symbol-constituent))
-
-

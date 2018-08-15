@@ -8,12 +8,17 @@
 
 ; In text based modes the document is divided into:
 ;   characters, words, sentences, and, paragraphs.
+; 
 
 (require "chars.rkt"
          "commands.rkt"
          "region.rkt")
 
 (define-interactive (forward-word [n 1])
+  "Move point n word forwards."
+  "If n is negative, move backwards.
+The phrase 'move one word' means move until point the beginning of
+a word is found, then move across that word."
   (deactivate-region-mark)  
   (define (forward-word1)
     (forward-char-predicate (λ (c) (not (char-alphabetic? c))))

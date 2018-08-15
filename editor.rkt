@@ -10,7 +10,6 @@
 
 ;;; PRIORITY: HIGH
 
-;;;   TODO indentation (almost done)
 ;;;   TODO Completion
 ;;;          - text mode completion: build trie of all words in text
 ;;;          - racket mode: same + use namespace when cmd+r is used
@@ -20,6 +19,9 @@
 
 ;;; PRIORITY: MEDIUM
 
+;;; TODO links open in browser
+;;; TODO context menu open on right click
+;;; TODO incremental search
 ;;; TODO Gutter (line numbers etc)
 ;;; TODO Documentation
 ;;; TODO Render #\tab correctly
@@ -65,9 +67,7 @@
 ;;;   TODO Completions ala http://sublimetext.info/docs/en/extensibility/completions.html
 ;;;   TODO "Overlay" GUI Element as in Sublime Text
 ;;;   TODO Sidebar as in Visual Studio Code
-
-;;; BUGS
-;;;   TODO cursor blinking stops when menu bar is active ?!
+;;;   BUG? cursor blinking stops when menu bar is active ?!
 
 
 (module+ test (require rackunit))
@@ -428,7 +428,6 @@
       (status-line-render-time (- later now))))
   (semaphore-post sema-render-buffer))
 
-(define debug-info #f)
 (define (render-points w start-row end-row)
   (define (find-index positions p [index 0])
     (match positions
