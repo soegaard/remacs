@@ -1,4 +1,7 @@
 #lang racket
+;;;   DONE Implement Move line/selection up   [Sublime]
+;;;   TODO Implement Move line/selection down
+
 ;;; BUG: In fundamental-mode and text-mode the indentation of the
 ;;;      preceding line needs to be added as a "tab stop".
 
@@ -53,8 +56,6 @@
 ;;;   TODO [Sublime] If a selection is found elsewhere, they are boxed
 ;;;   TODO Hydra: https://github.com/abo-abo/hydra
 ;;;   TODO Implement subtext
-;;;   TODO Implement Move line/selection up   [Sublime]
-;;;   TODO Implement Move line/selection down
 
 ;;;   TODO Introduce double buffering to avoid any flicker? (Not a problem now)
 ;;;        https://www.facebook.com/notes/daniel-colascione/buttery-smooth-emacs/10155313440066102/

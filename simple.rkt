@@ -53,8 +53,9 @@
          "words.rkt"
          (prefix-in overlays: "overlays.rkt"))
 
+
 ;;;
-;;; MOVEMENT
+;;; LINES
 ;;;
 
 ; beginning-of-line
@@ -153,8 +154,22 @@
     [(< n 0) (next-line (- n))]
     [else    (void)]))
 
+(define-interactive (swap-line-up) ; C-D-<up>
+  ; Swap current line with previous line. Keep position of point.
+  (define col (current-column))
+  (beginning-of-line)
+  (command-set-mark)
+  (end-of-line)
+  (kill-region)
+  (backward-delete-char)
+  (beginning-of-line)
+  (buffer-insert-latest-kill)
+  (open-line)
+  (move-to-column col))
 
-
+;;;
+;;; PAGES
+;;;
 
 (define-interactive (page-down)
   (define w          (current-window))
