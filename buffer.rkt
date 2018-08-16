@@ -364,7 +364,6 @@
       [(list s) (text-insert-string-at-mark! t m b s)]
       [_        (text-insert-string-at-mark! t m b (first segs))
                 (text-break-line! t m) ; no marks adjustment
-                (mark-move! m -1) ; due to newline
                 (loop (rest segs))]))
   ; delete temporary mark
   (delete-mark! m))

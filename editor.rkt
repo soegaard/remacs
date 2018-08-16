@@ -1,6 +1,6 @@
 #lang racket
 ;;;   DONE Implement Move line/selection up   [Sublime]
-;;;   TODO Implement Move line/selection down
+;;;   TODO Implement Move line/selection down - problem on first line?
 
 ;;; BUG: In fundamental-mode and text-mode the indentation of the
 ;;;      preceding line needs to be added as a "tab stop".

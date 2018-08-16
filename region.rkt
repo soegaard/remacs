@@ -30,6 +30,9 @@
   (max (mark-position mark)
        (mark-position point)))
 
+(define (region-size)
+  (- (region-end) (region-beginning)))
+
 (define (region->string)
   (define b (current-buffer))
   (cond
@@ -58,3 +61,4 @@
 
 (define (deactivate-region-mark)
   (cond [(region-mark) => mark-deactivate!]))
+

@@ -82,7 +82,7 @@
              (let loop ([n n] [i (point)])               
                (define-values (start end) (buffer-line-span b i))
                (cond [(= n 0) (goto-char (or start (point-max)))]
-                     [else    (loop (- n 1) (+ end 1))]))]))
+                     [else    (loop (- n 1) end)]))]))
 
 (define-interactive (backward-line [n 1])
   ; Move point to start of text line i-n, where i is the current line.
@@ -155,17 +155,42 @@
     [else    (void)]))
 
 (define-interactive (swap-line-up) ; C-D-<up>
-  ; Swap current line with previous line. Keep position of point.
-  (define col (current-column))
-  (beginning-of-line)
-  (command-set-mark)
-  (end-of-line)
-  (kill-region)
-  (backward-delete-char)
-  (beginning-of-line)
-  (buffer-insert-latest-kill)
-  (open-line)
-  (move-to-column col))
+  ; Swap current line with the previous line. Keep position of point.
+  (unless (on-first-line?)
+    (define col (current-column))
+    (beginning-of-line)
+    (command-set-mark)
+    (end-of-line)
+    (kill-region)
+    (forward-char)
+    (backward-delete-char)
+    (beginning-of-line)
+    (buffer-insert-latest-kill)
+    (open-line)
+    (move-to-column col)))
+
+(define-interactive (swap-line-down) ; C-D-<down>
+  ; Swap current line with the next line. Keep position of point.
+  (unless (on-last-line?)
+    (define col (current-column))
+    (beginning-of-line)
+    (command-set-mark)
+    (end-of-line)
+    (kill-region)
+    (when (on-first-line?)
+      (forward-char))
+    (backward-delete-char)
+    (forward-char)
+    (forward-line)
+    (when (eob?)
+      (break-line))
+    (buffer-insert-latest-kill)
+    (unless (on-last-line?)
+      (open-line))
+    (move-to-column col)))
+
+(define (on-last-line?)
+  (mark-on-last-line? (get-point)))
 
 ;;;
 ;;; PAGES
@@ -663,13 +688,17 @@
   ; Note: The timestamp is ignored in OS X.
   (define time 0) ; current time
   (define s (send the-clipboard get-clipboard-string time))
-  (when (use-region?) (backward-delete-char))
+  (when (and (use-region?) (positive? (region-size)))
+    (displayln 1)
+    (backward-delete-char))
   (cond
     [(or (equal? s "") 
          (equal? s (current-clipboard-at-latest-kill)))
+     (displayln (list 2 (point)))
      ; no changes to the system clipboard, so latest kill is used
      (buffer-insert-latest-kill)]
     [else
+     (displayln 3)
      ; system clipboard is newer
      (buffer-insert-string! (current-buffer) (get-point) s)]))
 
