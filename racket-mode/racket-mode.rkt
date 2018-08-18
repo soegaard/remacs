@@ -24,7 +24,7 @@
 
 ; The syntax coloring use the color-lexer from syntax-color/racket-lexer
 
-(require racket/match 
+(require racket/match racket/pretty
          "../buffer.rkt"
          "../buffer-locals.rkt"
          "../chars.rkt"
@@ -403,13 +403,14 @@
                     [current-namespace   namespace]
                     [current-custodian   custodian])
        (thread
-        (λ ()
-          (namespace-require program-path)
+        (λ ()          
           (define (handle-exn e)
             (define msg (exn-message e))
             (define ctx (continuation-mark-set->context (exn-continuation-marks e)))
-            (displayln msg)
-            (displayln ctx))
+            (pretty-print msg) (newline)
+            (pretty-print ctx) (newline))
+          (with-handlers ([exn:fail? handle-exn])
+            (namespace-require program-path))
           (parameterize ([current-namespace (module->namespace program-path)])
             (let loop ()
               (define xs (channel-get channel))
