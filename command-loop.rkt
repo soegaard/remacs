@@ -30,7 +30,7 @@
   (async-channel-put command-channel cmd))
 
 (define (new-alarm)
-  (alarm-evt (+ (current-inexact-milliseconds) 100)))
+  (alarm-evt (+ (current-inexact-milliseconds) 50)))
 
 (define alarm (new-alarm))
 
@@ -40,10 +40,15 @@
      (let loop ()
        (define cmd (sync command-channel alarm))
        (cond
-         [(evt? cmd)     (set! alarm (new-alarm))                         
+         ; timer event
+         [(evt? cmd)     (set! alarm (new-alarm))
+                         ; call syntax colorer                         
                          ((current-prepare-color) (current-window))
+                         ; change point color
                          (current-point-color (cdr (current-point-color)))
+                         ; render frame
                          ((current-refresh-frame))]
+         ; user command
          [else           (cmd)])
        (loop)))))
 
