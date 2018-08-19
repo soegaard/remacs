@@ -1,4 +1,5 @@
 #lang racket
+;;;  BUG  - don't break when not saving at racket-run
 ;;;   DONE Implement Move line/selection up   [Sublime]
 ;;;   TODO Implement Move line/selection down - problem on first line?
 
@@ -12,7 +13,7 @@
 ; In order to start remacs, open this file in DrRacket and run it.
 
 ;;; PRIORITY: HIGH
-
+;;;   TODO [racket-mode] catch errors in racket-run
 ;;;   TODO Completion
 ;;;          - text mode completion: build trie of all words in text
 ;;;          - racket mode: same + use namespace when cmd+r is used

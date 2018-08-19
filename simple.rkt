@@ -1692,6 +1692,7 @@ If the closer doesn't belong to a balanced expression, return false."
       (insert-char (first seen))))
 
 (define (show-paren-ranges b)
+  (define now (current-milliseconds))  
   (define before-from  #f)
   (define before-to    #f)
   (define after-from   #f)
@@ -1729,9 +1730,11 @@ If the closer doesn't belong to a balanced expression, return false."
       (if active? 
           (mark-activate! m)
           (mark-deactivate! m)))
+    (status-line-show-paren-time (- (current-milliseconds) now))
     (values before-from  before-to
             after-from   after-to
             before-error after-error)))
+  
 
 
 (define (line-number-at-pos [pos #f])

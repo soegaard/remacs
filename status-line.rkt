@@ -1,7 +1,10 @@
 #lang racket/base
 (provide status-line-hook
          status-line-time
-         status-line-render-time)
+         status-line-coloring-time
+         status-line-command-time
+         status-line-render-time
+         status-line-show-paren-time)
 ;;;
 ;;; STATUS LINE
 ;;;
@@ -31,6 +34,15 @@
 (define the-render-time 0)
 (define (status-line-render-time t) (set! the-render-time t))
 
+(define the-coloring-time 0)
+(define (status-line-coloring-time t) (set! the-coloring-time t))
+
+(define the-command-time 0)
+(define (status-line-command-time t) (set! the-command-time t))
+
+(define the-show-paren-time 0)
+(define (status-line-show-paren-time t) (set! the-show-paren-time t))
+
 (define (position pos)
   (if (mark? pos) (mark-position pos) pos))
 
@@ -56,7 +68,10 @@
            "   " "Length: "          (buffer-length b)
            "   " "Mode: "            "(" (get-mode-name) ")"
            "   " "Time: "            the-time
+           "   " "Command Time:"     the-command-time
            "   " "Render Time: "     the-render-time
+           "   " "Coloring Time: "   the-coloring-time
+           "   " "Show Paren Time: " the-show-paren-time
            ; "   " "Window: "          (position (window-start-mark w)) "-"
            ;                          (position (window-end-mark w))
            )]

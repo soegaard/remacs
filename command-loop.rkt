@@ -21,6 +21,7 @@
 
 (require (for-syntax racket/base syntax/parse)
          racket/async-channel
+         "status-line.rkt"
          "parameters.rkt"
          "locals.rkt")
 
@@ -42,14 +43,18 @@
        (cond
          ; timer event
          [(evt? cmd)     (set! alarm (new-alarm))
-                         ; call syntax colorer                         
+                         ; call syntax colorer
+                         (define now (current-milliseconds))
                          ((current-prepare-color) (current-window))
+                         (status-line-coloring-time (- (current-milliseconds) now))
                          ; change point color
                          (current-point-color (cdr (current-point-color)))
                          ; render frame
                          ((current-refresh-frame))]
          ; user command
-         [else           (cmd)])
+         [else           (define now (current-milliseconds))
+                         (cmd)
+                         (status-line-command-time (- (current-milliseconds) now))])
        (loop)))))
 
 (define-syntax (send-command stx)
