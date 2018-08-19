@@ -79,21 +79,18 @@
 ;   Kill text from the given mark to end of line.
 ;   If the mark is at end of line, the newline is deleted.
 ;   Note: The mark is at the end of line, if text from mark to newline is all whitespace.
-(define (buffer-kill-line m [called-by-kill-whole-line #f])
+(define (buffer-kill-line [m (get-point)] [called-by-kill-whole-line #f])
   ; setup region, then use kill-ring-push-region and delete-region
-  (define b  (current-buffer))
-  (define p1 (mark-position m))
-  (define p2 (line-end-position m))
-  (define rest-of-line (subtext->string (buffer-text b) p1 p2))
+  (define b   (current-buffer))
+  (define beg (mark-position m))
+  (define end (line-end-position m))
+  (define rest-of-line (subtext->string (buffer-text b) beg end))
   (define eol? (and (string-whitespace? rest-of-line)
                     (not (= (+ (mark-position m) 1) (position-of-end b)))))
   ; delete to end of line
-  (error 'todo)
-  #;(buffer-set-mark-to-point b)  
-  #;(buffer-move-point-to-end-of-line! b)
-  #;(when eol?
-      (buffer-move-point! b +1))
-  
-  #;(kill-ring-push-region)
-  #;(region-delete b))
-
+  (displayln (list 'buffer-kill-line 'beg beg 'enf end))
+  (cond
+    [eol? (kill-new rest-of-line)
+          (region-delete-between! beg end)]
+    [else (kill-new rest-of-line)
+          (region-delete-between! beg (+ end 1))]))

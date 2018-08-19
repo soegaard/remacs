@@ -24,7 +24,7 @@
                      (define to   (position end))
                      (define n    (abs (- to from)))
                      (define end-is-a-mark? (member end (buffer-marks b) eq?))
-                     (when end-is-a-mark?
+                     (when end-is-a-mark? ; xxx ???
                        (mark-move-to-position! end   from)
                        (mark-move-to-position! point to))
                      (buffer-delete-backward-char! b point n)]
