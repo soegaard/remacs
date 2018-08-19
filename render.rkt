@@ -76,7 +76,14 @@
 ;;;
 
 ; The size of a line is the same as the font size plus one.
-(define (line-size) (+ (font-size) 1))
+(define (line-size)
+  (define multiplier
+    ; see https://docs.racket-lang.org/gui/windowing-overview.html#%28part._display-resolution%29
+    (case (system-type)
+      [(macosx)        1]
+      [(unix window)   96/72]
+      [else            1]))
+  (+ 1 (* multiplier (font-size))))
 
 (define (number-of-lines-on-screen w)
   (define b (window-buffer w))
