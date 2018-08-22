@@ -128,30 +128,33 @@
     [(buffer-restricted? b) (on-same-line? m (buffer-restriction-start b))]
     [else                   (mark-on-first-line? m)]))
 
-(define-interactive (previous-line [n 1])
+(define-interactive (previous-line [k 1])
   ; Moves point one screen line up.
   (deactivate-region-mark)
-  (define point (get-point))
+  (define point    (get-point))
+  (define prev-len (line-length (mark-line point)))
+  (define n        (local screen-line-length))
   (define (previous-line1)
     (cond
-      [(on-first-line?)            (void)]
-      [else (define n              (local screen-line-length))
-            (define len            (line-length (mark-line point)))
+      [(on-first-line?)            (void)] ; use bell?
+      [else (define len            (line-length (mark-line point)))
             (define col            (mark-column point))
             (define screen-col     (remainder col n))
-            (define whole          (quotient  len n))   ; number of full screen lines
+            (define whole          (quotient len (- n 1)))   ; number of full screen lines
+            (displayln (list 'col col 'screen-col screen-col 'whole whole 'n n 'prev-len prev-len))
             (cond
               [(>= col n)   ; room to move entire screen line (same text line)
                (move-to-column (- col n))]
-              [else               
+              [else
                (beginning-of-line)
                (backward-line)
-               (define prev-len (line-length (mark-line point)))
-               (move-to-column (+ (- prev-len (remainder prev-len n))
-                                  (min screen-col (remainder prev-len n))))])]))
+               (define new-len (line-length (mark-line point)))
+               (move-to-column (min (+ (* n (quotient new-len (- n 1))) screen-col)
+                                    (- new-len 1)))])]))
   (cond
-    [(> n 0) (for ([_ n]) (previous-line1))]
-    [(< n 0) (next-line (- n))]
+    [(= k 1) (previous-line1)]
+    [(> k 0) (for ([_ k]) (previous-line1))]
+    [(< k 0) (next-line (- k))]
     [else    (void)]))
 
 (define-interactive (swap-line-up) ; C-D-<up>
