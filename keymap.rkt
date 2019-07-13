@@ -206,7 +206,7 @@
          ["C-M-left"      backward-list]
          ["C-M-right"     forward-list]
          ["C-M-up"        backward-up-list]
-         ["C-D-up"        swap-line-up] ; mac only?
+         ["C-D-up"        swap-line-up]   ; mac only?
          ["C-D-down"      swap-line-down] ; mac only?
          ; ["C-M-down"      forward-up-list] ; up-list in emcas
          ["M-S-left"      backward-word/extend-region]

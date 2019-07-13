@@ -1,9 +1,12 @@
 #lang racket
-;;;  BUG  - don't break when not saving at racket-run
+;;;
+;;; BUGS
+;;;
 
-;;; BUG: In fundamental-mode and text-mode the indentation of the
-;;;      preceding line needs to be added as a "tab stop".
-
+;;;  - don't break when not saving at racket-run
+;;;  - In fundamental-mode and text-mode the indentation of the
+;;;    preceding line needs to be added as a "tab stop".
+ 
 ;;;
 ;;; INSTRUCTIONS
 ;;;

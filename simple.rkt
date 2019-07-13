@@ -141,7 +141,7 @@
             (define col            (mark-column point))
             (define screen-col     (remainder col n))
             (define whole          (quotient len (- n 1)))   ; number of full screen lines
-            (displayln (list 'col col 'screen-col screen-col 'whole whole 'n n 'prev-len prev-len))
+            ;(displayln (list 'col col 'screen-col screen-col 'whole whole 'n n 'prev-len prev-len))
             (cond
               [(>= col n)   ; room to move entire screen line (same text line)
                (move-to-column (- col n))]
