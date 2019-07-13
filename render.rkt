@@ -83,7 +83,7 @@
       [(macosx)        1]
       [(unix window)   96/72]
       [else            1]))
-  (+ 1 (* multiplier (font-size))))
+  (inexact->exact (floor (+ 1 (* multiplier (font-size))))))
 
 (define (number-of-lines-on-screen w)
   (define b (window-buffer w))
